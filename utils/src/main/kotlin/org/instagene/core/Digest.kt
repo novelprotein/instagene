@@ -1,0 +1,190 @@
+package org.instagene.core
+
+/**
+ * A single enzyme cut, in forward-strand coordinates.
+ *
+ * [topCut] is the phosphodiester bond broken on the top strand (the fragment
+ * boundary), [bottomCut] the corresponding bond on the bottom strand.
+ */
+data class CutSite(
+    val enzyme: Enzyme,
+    val recognitionStart: Int,
+    val topCut: Int,
+    val bottomCut: Int,
+    val strand: Strand,
+) {
+    val recognitionEnd: Int get() = recognitionStart + enzyme.siteLength
+}
+
+/** The single-stranded end left behind by a cut (or a native end of a linear molecule). */
+data class StickyEnd(val type: EndType, val overhang: String, val enzyme: String? = null) {
+
+    val isBlunt: Boolean get() = type == EndType.BLUNT
+
+    /** Two ends anneal when they leave the same overhang of the same polarity. */
+    fun isCompatibleWith(other: StickyEnd): Boolean =
+        type == other.type && overhang.equals(other.overhang, ignoreCase = true)
+
+    override fun toString(): String = when {
+        isBlunt -> "blunt"
+        else -> "${type.label} ${overhang.uppercase()}${enzyme?.let { " ($it)" } ?: ""}"
+    }
+
+    companion object {
+        val BLUNT = StickyEnd(EndType.BLUNT, "")
+    }
+}
+
+/**
+ * A double-stranded fragment. [bases] is the top strand running from this
+ * fragment's left top-strand cut to its right top-strand cut, so concatenating
+ * consecutive fragments reproduces the parent molecule exactly.
+ */
+data class Fragment(
+    val bases: String,
+    val leftEnd: StickyEnd,
+    val rightEnd: StickyEnd,
+    val sourceName: String = "",
+    val start: Int = 0,
+    val features: List<Feature> = emptyList(),
+) {
+    val length: Int get() = bases.length
+
+    val end: Int get() = start + length
+
+    fun toSeq(name: String = "${sourceName}_${start + 1}-$end"): Seq =
+        Seq(name, bases, SeqKind.DNA, Topology.LINEAR, features)
+
+    override fun toString(): String =
+        "$length bp [${leftEnd}] .. [${rightEnd}]"
+}
+
+/** Restriction mapping and digestion. */
+object Digest {
+
+    /** All cut sites of [enzymes] in [seq], sorted by top-strand cut position. */
+    fun cutSites(seq: Seq, enzymes: Collection<Enzyme>): List<CutSite> {
+        val sites = ArrayList<CutSite>()
+        for (enzyme in enzymes) sites += cutSites(seq, enzyme)
+        return sites.sortedWith(compareBy({ it.topCut }, { it.enzyme.name }))
+    }
+
+    fun cutSites(seq: Seq, enzyme: Enzyme): List<CutSite> {
+        val out = ArrayList<CutSite>()
+        val len = seq.length
+        if (len == 0) return out
+        val site = enzyme.site.uppercase()
+        val siteLen = site.length
+        // A linear molecule can only be cut where the whole site fits; a circular
+        // one is scanned all the way round the origin.
+        val limit = if (seq.isCircular) len else len - siteLen + 1
+        val rcSite = site.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
+
+        for (i in 0 until limit.coerceAtLeast(0)) {
+            val window = seq.sub(i, i + siteLen)
+            if (window.length < siteLen) continue
+            if (site.indices.all { Alphabet.matches(site[it], window[it]) }) {
+                out += CutSite(
+                    enzyme = enzyme,
+                    recognitionStart = i,
+                    topCut = normalize(i + enzyme.topCut, len, seq.isCircular),
+                    bottomCut = normalize(i + enzyme.bottomCut, len, seq.isCircular),
+                    strand = Strand.FORWARD,
+                )
+            } else if (!enzyme.isPalindromic &&
+                rcSite.indices.all { Alphabet.matches(rcSite[it], window[it]) }
+            ) {
+                out += CutSite(
+                    enzyme = enzyme,
+                    recognitionStart = i,
+                    topCut = normalize(i + siteLen - enzyme.bottomCut, len, seq.isCircular),
+                    bottomCut = normalize(i + siteLen - enzyme.topCut, len, seq.isCircular),
+                    strand = Strand.REVERSE,
+                )
+            }
+        }
+        return out.sortedBy { it.topCut }
+    }
+
+    private fun normalize(pos: Int, len: Int, circular: Boolean): Int =
+        if (circular) Math.floorMod(pos, len) else pos.coerceIn(0, len)
+
+    /**
+     * Digests [seq] with [enzymes].
+     *
+     * A circular molecule cut *n* times yields *n* fragments; a linear one yields
+     * *n + 1*. Cutting nothing returns the molecule unchanged as a single fragment.
+     */
+    fun digest(seq: Seq, enzymes: Collection<Enzyme>): List<Fragment> {
+        val sites = cutSites(seq, enzymes)
+            .distinctBy { it.topCut }
+            .sortedBy { it.topCut }
+
+        if (sites.isEmpty()) {
+            return listOf(
+                Fragment(seq.bases, StickyEnd.BLUNT, StickyEnd.BLUNT, seq.name, 0, seq.features)
+            )
+        }
+
+        return if (seq.isCircular) digestCircular(seq, sites) else digestLinear(seq, sites)
+    }
+
+    private fun digestLinear(seq: Seq, sites: List<CutSite>): List<Fragment> {
+        val boundaries = listOf(0) + sites.map { it.topCut } + listOf(seq.length)
+        val out = ArrayList<Fragment>()
+        for (i in 0 until boundaries.size - 1) {
+            val from = boundaries[i]
+            val to = boundaries[i + 1]
+            if (to <= from) continue
+            val leftEnd = if (i == 0) StickyEnd.BLUNT else endFor(seq, sites[i - 1])
+            val rightEnd = if (i == boundaries.size - 2) StickyEnd.BLUNT else endFor(seq, sites[i])
+            out += Fragment(seq.bases.substring(from, to), leftEnd, rightEnd, seq.name, from, featuresIn(seq, from, to))
+        }
+        return out
+    }
+
+    private fun digestCircular(seq: Seq, sites: List<CutSite>): List<Fragment> {
+        val out = ArrayList<Fragment>()
+        for (i in sites.indices) {
+            val from = sites[i].topCut
+            val next = sites[(i + 1) % sites.size]
+            // The last fragment wraps the origin back to the first cut.
+            val span = if (i == sites.size - 1) seq.length - from + next.topCut else next.topCut - from
+            if (span <= 0) continue
+            out += Fragment(
+                bases = seq.sub(from, from + span),
+                leftEnd = endFor(seq, sites[i]),
+                rightEnd = endFor(seq, next),
+                sourceName = seq.name,
+                start = from,
+                features = featuresIn(seq, from, from + span),
+            )
+        }
+        return out
+    }
+
+    /** The end produced at [site]: the overhang is the span between the two cuts. */
+    private fun endFor(seq: Seq, site: CutSite): StickyEnd {
+        val len = site.enzyme.overhangLength
+        if (len == 0) return StickyEnd(EndType.BLUNT, "", site.enzyme.name)
+        val lo = minOf(site.topCut, site.bottomCut)
+        val overhang = seq.sub(lo, lo + kotlin.math.abs(len))
+        return StickyEnd(site.enzyme.endType, overhang.uppercase(), site.enzyme.name)
+    }
+
+    private fun featuresIn(seq: Seq, from: Int, to: Int): List<Feature> =
+        seq.features.mapNotNull { f ->
+            val s = f.start - from
+            val e = f.end - from
+            if (e <= 0 || s >= to - from) null
+            else f.copy(start = s.coerceAtLeast(0), end = e.coerceAtMost(to - from))
+        }
+
+    /** Enzymes that cut [seq] exactly [times] — the usual way to find a unique site. */
+    fun enzymesCutting(seq: Seq, times: Int = 1, pool: List<Enzyme> = Enzymes.ALL): List<Enzyme> =
+        pool.filter { cutSites(seq, it).size == times }
+
+    /** Per-enzyme cut counts, for the digest panel's summary column. */
+    fun cutCounts(seq: Seq, pool: List<Enzyme> = Enzymes.ALL): Map<Enzyme, Int> =
+        pool.associateWith { cutSites(seq, it).size }
+}
