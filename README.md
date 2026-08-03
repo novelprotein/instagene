@@ -1,4 +1,7 @@
 # instagene
+vibe coded gene editing cli and gui tool, which does not work, ran out of tokens and might never be done
+
+
 
 This project uses [Gradle](https://gradle.org/). To build and run the application, use the *Gradle* tool window by
 clicking the Gradle icon in the right-hand toolbar, or run it directly from the terminal:
