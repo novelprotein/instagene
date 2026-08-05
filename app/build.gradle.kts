@@ -6,7 +6,8 @@ plugins {
 
 dependencies {
     implementation(project(":utils"))
-    // any other dependencies your CLI/GUI logic needs
+    implementation(libs.flatlaf)
+    implementation(libs.flatlafIntelliJ)
 }
 
 application {

@@ -2,6 +2,8 @@ package org.instagene.app
 
 import org.instagene.app.cli.Cli
 import org.instagene.app.gui.InstaGeneWindow
+import com.formdev.flatlaf.FlatDarkLaf
+import com.formdev.flatlaf.FlatLightLaf
 import java.awt.GraphicsEnvironment
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
@@ -29,7 +31,21 @@ fun main(argv: Array<String>) {
 
     val openPath = args.drop(1).firstOrNull { !it.startsWith("-") }
     SwingUtilities.invokeLater {
-        runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
+        setupTheme()
         InstaGeneWindow(openPath).isVisible = true
+    }
+}
+
+private fun setupTheme() {
+    try {
+        // Use FlatDarkLaf (modern dark theme inspired by IntelliJ IDEA)
+        UIManager.setLookAndFeel(FlatDarkLaf())
+    } catch (e: Exception) {
+        try {
+            // Fallback to light theme
+            UIManager.setLookAndFeel(FlatLightLaf())
+        } catch (e2: Exception) {
+            System.err.println("Warning: Could not load FlatLaf theme: ${e.message}")
+        }
     }
 }
