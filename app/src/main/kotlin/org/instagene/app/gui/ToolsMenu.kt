@@ -1,7 +1,6 @@
 package org.instagene.app.gui
 
 import org.instagene.core.Enzymes
-import org.instagene.core.Enzyme
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem

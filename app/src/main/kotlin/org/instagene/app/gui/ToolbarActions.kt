@@ -2,10 +2,8 @@ package org.instagene.app.gui
 
 import org.instagene.core.io.SeqIO
 import java.awt.Dimension
-import java.io.File
 import javax.swing.AbstractButton
 import javax.swing.JButton
-import javax.swing.JComboBox
 import javax.swing.JFileChooser
 import javax.swing.JFrame
 import javax.swing.JOptionPane
