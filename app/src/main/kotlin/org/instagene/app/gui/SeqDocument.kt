@@ -52,13 +52,27 @@ class SeqDocument(initial: Seq, file: File? = null) {
     private val undoStack = ArrayDeque<Pair<String, Seq>>()
     private val redoStack = ArrayDeque<Pair<String, Seq>>()
     private val historyLimit = 100
+    private var notificationsEnabled = true
 
     fun addListener(listener: Listener) {
         listeners += listener
     }
 
     private fun notify(reason: Reason) {
-        listeners.toList().forEach { it.documentChanged(this, reason) }
+        if (notificationsEnabled) {
+            listeners.toList().forEach { it.documentChanged(this, reason) }
+        }
+    }
+
+    /** Batch multiple updates without triggering listener notifications. Call endBatchUpdate() when done. */
+    fun beginBatchUpdate() {
+        notificationsEnabled = false
+    }
+
+    /** Re-enable notifications and notify listeners of the final state. */
+    fun endBatchUpdate(reason: Reason = Reason.SEQUENCE) {
+        notificationsEnabled = true
+        notify(reason)
     }
 
     // --------------------------------------------------------------- mutation
@@ -158,6 +172,13 @@ class SeqDocument(initial: Seq, file: File? = null) {
 
     fun replaceSequence(seq: Seq) {
         reset(seq, file)
+    }
+
+    /** Load a sequence while suppressing listener notifications for better performance. */
+    fun loadSequence(newSeq: Seq, newFile: File? = null) {
+        beginBatchUpdate()
+        reset(newSeq, newFile, false)
+        endBatchUpdate()
     }
 
     private fun refreshCutSites() {

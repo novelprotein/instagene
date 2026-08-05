@@ -3,8 +3,8 @@ package org.instagene.app.gui
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
-import java.awt.Dimension
 import java.io.File
+import javax.swing.AbstractButton
 import javax.swing.JFrame
 import javax.swing.JMenuBar
 import javax.swing.JPanel
@@ -12,8 +12,6 @@ import javax.swing.JScrollPane
 import javax.swing.JSplitPane
 import javax.swing.JTabbedPane
 import javax.swing.JToolBar
-import javax.swing.SwingUtilities
-import kotlin.system.exitProcess
 
 /**
  * Main application window for the InstaGene sequence editor.
@@ -25,6 +23,7 @@ class InstaGeneWindow(openPath: String? = null) : JFrame("InstaGene - Sequence E
     private val sequenceView: SequenceView
     private val digestPanel: DigestPanel
     private val plasmidMapPanel: PlasmidMapPanel
+    private lateinit var openButton: AbstractButton
 
     init {
         defaultCloseOperation = EXIT_ON_CLOSE
@@ -51,6 +50,18 @@ class InstaGeneWindow(openPath: String? = null) : JFrame("InstaGene - Sequence E
         add(createToolbar(), BorderLayout.NORTH)
         add(createMainContent(), BorderLayout.CENTER)
         add(createStatusBar(), BorderLayout.SOUTH)
+
+        // Listen for file changes to update open button visibility
+        doc.addListener { _, reason ->
+            if (reason == SeqDocument.Reason.SEQUENCE) {
+                updateOpenButtonVisibility()
+            }
+        }
+        updateOpenButtonVisibility()
+    }
+
+    private fun updateOpenButtonVisibility() {
+        openButton.isVisible = doc.file == null
     }
 
     private fun createMenuBar(): JMenuBar {
@@ -65,7 +76,8 @@ class InstaGeneWindow(openPath: String? = null) : JFrame("InstaGene - Sequence E
     private fun createToolbar(): JToolBar {
         return JToolBar().apply {
             isFloatable = false
-            add(ToolbarActions.createFileOpenButton(this@InstaGeneWindow, doc))
+            openButton = ToolbarActions.createFileOpenButton(this@InstaGeneWindow, doc)
+            add(openButton)
             add(ToolbarActions.createFileSaveButton(this@InstaGeneWindow, doc))
             addSeparator()
             add(ToolbarActions.createUndoButton(doc))
