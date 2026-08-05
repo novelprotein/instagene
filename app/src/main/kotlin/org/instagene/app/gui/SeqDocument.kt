@@ -40,7 +40,6 @@ class SeqDocument(initial: Seq, file: File? = null) {
     val selectionStart: Int get() = minOf(caret, anchor)
     val selectionEnd: Int get() = maxOf(caret, anchor)
     val hasSelection: Boolean get() = caret != anchor
-    val selectionLength: Int get() = selectionEnd - selectionStart
     val selectedBases: String get() = seq.sub(selectionStart, selectionEnd)
 
     var mappedEnzymes: List<Enzyme> = emptyList()
@@ -48,8 +47,6 @@ class SeqDocument(initial: Seq, file: File? = null) {
 
     var cutSites: List<CutSite> = emptyList()
         private set
-
-    val title: String get() = (if (isDirty) "*" else "") + seq.name
 
     private val listeners = ArrayList<Listener>()
     private val undoStack = ArrayDeque<Pair<String, Seq>>()
@@ -99,8 +96,8 @@ class SeqDocument(initial: Seq, file: File? = null) {
         notify(Reason.SEQUENCE)
     }
 
-    val undoLabel: String? get() = undoStack.lastOrNull()?.first
-    val redoLabel: String? get() = redoStack.lastOrNull()?.first
+    //val undoLabel: String? get() = undoStack.lastOrNull()?.first
+    //val redoLabel: String? get() = redoStack.lastOrNull()?.first
 
     fun undo() {
         val (label, previous) = undoStack.removeLastOrNull() ?: return
@@ -149,6 +146,18 @@ class SeqDocument(initial: Seq, file: File? = null) {
         mappedEnzymes = enzymes
         refreshCutSites()
         notify(Reason.ENZYMES)
+    }
+
+    fun addEnzyme(enzyme: Enzyme) {
+        setMappedEnzymes(mappedEnzymes + enzyme)
+    }
+
+    fun clearEnzymes() {
+        setMappedEnzymes(emptyList())
+    }
+
+    fun replaceSequence(seq: Seq) {
+        reset(seq, file)
     }
 
     private fun refreshCutSites() {
