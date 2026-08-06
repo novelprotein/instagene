@@ -1,0 +1,101 @@
+package org.instagene.core
+
+import org.instagene.core.io.SeqIO
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class DigestTest {
+
+    @Test
+    fun ecoRiCutOnKnownSite() {
+        val seq = Seq(bases = "NNNGAATTCNNN")
+        val eco = Enzymes.require("EcoRI")
+        val sites = Digest.cutSites(seq, eco)
+        assertEquals(1, sites.size)
+        val site = sites.single()
+        assertEquals(3, site.recognitionStart)
+        assertEquals(4, site.topCut) // 3 + 1
+        assertEquals(8, site.bottomCut) // 3 + 5
+        assertEquals(Strand.FORWARD, site.strand)
+        val frags = Digest.digest(seq, listOf(eco))
+        val overhangs = frags.flatMap { listOf(it.leftEnd.overhang, it.rightEnd.overhang) }.filter { it.isNotEmpty() }
+        assertTrue(overhangs.any { it.equals("AATT", ignoreCase = true) })
+    }
+
+    @Test
+    fun emptyOrShortSequenceYieldsNoCuts() {
+        val eco = Enzymes.require("EcoRI")
+        assertTrue(Digest.cutSites(Seq(bases = ""), eco).isEmpty())
+        assertTrue(Digest.cutSites(Seq(bases = "GAATT"), eco).isEmpty())
+    }
+
+    @Test
+    fun circularSiteSpanningOrigin() {
+        val seq = Seq(bases = "AATTCXXXG", topology = Topology.CIRCULAR)
+        val sites = Digest.cutSites(seq, Enzymes.require("EcoRI"))
+        assertEquals(1, sites.size)
+        assertEquals(8, sites.single().recognitionStart)
+    }
+
+    @Test
+    fun linearDoubleDigestFragmentCount() {
+        val seq = SeqIO.Samples.PUC19_MCS
+        val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HinDIII"))
+        val sites = Digest.cutSites(seq, enzymes)
+        val frags = Digest.digest(seq, enzymes)
+        assertEquals(sites.size + 1, frags.size)
+        assertEquals(seq.bases, frags.joinToString("") { it.bases })
+    }
+
+    @Test
+    fun circularSingleCutOneFragment() {
+        val seq = Seq(bases = "NNNGAATTCNNN", topology = Topology.CIRCULAR)
+        val frags = Digest.digest(seq, listOf(Enzymes.require("EcoRI")))
+        assertEquals(1, frags.size)
+        assertEquals(seq.length, frags.single().length)
+    }
+
+    @Test
+    fun noEnzymeYieldsSingleBluntFragment() {
+        val feat = Feature("marker", start = 1, end = 4)
+        val seq = Seq(bases = "ACGTAC", features = listOf(feat))
+        val frags = Digest.digest(seq, emptyList())
+        assertEquals(1, frags.size)
+        assertTrue(frags.single().leftEnd.isBlunt)
+        assertTrue(frags.single().rightEnd.isBlunt)
+        assertEquals(seq.bases, frags.single().bases)
+        assertEquals(1, frags.single().features.size)
+    }
+
+    @Test
+    fun stickyEndCompatibility() {
+        val a = StickyEnd(EndType.FIVE_PRIME_OVERHANG, "AATT", "EcoRI")
+        val b = StickyEnd(EndType.FIVE_PRIME_OVERHANG, "aatt", "EcoRI")
+        val c = StickyEnd(EndType.FIVE_PRIME_OVERHANG, "GATC", "BamHI")
+        assertTrue(a.isCompatibleWith(b))
+        assertFalse(a.isCompatibleWith(c))
+        assertTrue(StickyEnd.BLUNT.isCompatibleWith(StickyEnd.BLUNT))
+    }
+
+    @Test
+    fun enzymesCuttingAndCutCountsOnMcs() {
+        val seq = SeqIO.Samples.PUC19_MCS
+        val unique = Digest.enzymesCutting(seq, times = 1)
+        assertTrue(unique.any { it.name == "EcoRI" })
+        assertTrue(unique.any { it.name == "BamHI" })
+        val counts = Digest.cutCounts(seq, listOf(Enzymes.require("EcoRI"), Enzymes.require("NotI")))
+        assertEquals(1, counts[Enzymes.require("EcoRI")])
+        assertEquals(0, counts[Enzymes.require("NotI")])
+    }
+
+    @Test
+    fun fragmentToSeqIsLinear() {
+        val f = Fragment("ACGT", StickyEnd.BLUNT, StickyEnd.BLUNT, sourceName = "x", start = 10)
+        val seq = f.toSeq()
+        assertEquals(Topology.LINEAR, seq.topology)
+        assertEquals("ACGT", seq.bases)
+        assertTrue(seq.name.contains("11"))
+    }
+}

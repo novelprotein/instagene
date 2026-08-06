@@ -249,3 +249,5 @@ app/
 - [ ] Export to various formats (GFF, JSON, etc.)
 - [ ] Theme support (dark mode)
 - [ ] Tabbed multi-file editing
+- [ ] Hiding elements when not needed
+- 
