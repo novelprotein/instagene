@@ -1,5 +1,5 @@
 # instagene
-vibe coded gene editing cli and gui tool, which does not work, ran out of tokens and might never be done
+Tool created to read, edit, and save gene files.
 
 
 ## Project Status
