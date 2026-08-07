@@ -8,14 +8,14 @@ class PaletteTest {
 
     @Test
     fun baseColorKnownAndUnknown() {
-        assertEquals(Color(0x2E, 0x8B, 0x57), Palette.baseColor('A'))
-        assertEquals(Color(0x2E, 0x8B, 0x57), Palette.baseColor('a'))
-        assertEquals(Color(0x1E, 0x6F, 0xBA), Palette.baseColor('C'))
-        assertEquals(Color(0xC8, 0x7A, 0x0E), Palette.baseColor('G'))
-        assertEquals(Color(0xC0, 0x39, 0x2B), Palette.baseColor('T'))
-        assertEquals(Color(0xB0, 0x3A, 0x8B), Palette.baseColor('U'))
-        assertEquals(Color(0x8A, 0x8A, 0x8A), Palette.baseColor('N'))
-        assertEquals(Palette.MUTED, Palette.baseColor('X'))
+        assertEquals(Palette.baseColor('A'), Color(0x2E, 0x8B, 0x57))
+        assertEquals(Palette.baseColor('a'), Color(0x2E, 0x8B, 0x57))
+        assertEquals(Palette.baseColor('C'), Color(0x1E, 0x6F, 0xBA))
+        assertEquals(Palette.baseColor('G'), Color(0xC8, 0x7A, 0x0E))
+        assertEquals(Palette.baseColor('T'), Color(0xC0, 0x39, 0x2B))
+        assertEquals(Palette.baseColor('U'), Color(0xB0, 0x3A, 0x8B))
+        assertEquals(Palette.baseColor('N'), Color(0x8A, 0x8A, 0x8A))
+        assertEquals(Palette.baseColor('X'), Palette.MUTED)
     }
 
     @Test

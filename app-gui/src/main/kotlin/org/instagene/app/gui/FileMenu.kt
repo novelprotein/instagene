@@ -11,6 +11,7 @@ import javax.swing.JMenuItem
 import javax.swing.JOptionPane
 import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
+import kotlin.system.exitProcess
 
 class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
 
@@ -66,7 +67,7 @@ class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
         return JMenuItem("Exit", KeyEvent.VK_X).apply {
             addActionListener {
                 if (confirmDiscardChanges(frame, doc)) {
-                    System.exit(0)
+                    exitProcess(0)
                 }
             }
         }
@@ -127,20 +128,7 @@ class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
     fun saveFile() {
         val file = doc.file
         if (file != null) {
-            val seq = doc.seq
-            Thread {
-                try {
-                    SeqIO.write(file, seq)
-                    SwingUtilities.invokeLater {
-                        doc.markSaved(file)
-                        updateTitle()
-                    }
-                } catch (e: Exception) {
-                    SwingUtilities.invokeLater {
-                        JOptionPane.showMessageDialog(frame, "Error saving file: ${e.message}", "Error", JOptionPane.ERROR_MESSAGE)
-                    }
-                }
-            }.start()
+            writeToFile(file)
         } else {
             saveFileAs()
         }
@@ -160,21 +148,26 @@ class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
             if (file.exists() && JOptionPane.showConfirmDialog(frame, "File exists. Overwrite?") != JOptionPane.YES_OPTION) {
                 return
             }
-            val seq = doc.seq
-            Thread {
-                try {
-                    SeqIO.write(file, seq)
-                    SwingUtilities.invokeLater {
-                        doc.markSaved(file)
-                        updateTitle()
-                    }
-                } catch (e: Exception) {
-                    SwingUtilities.invokeLater {
-                        JOptionPane.showMessageDialog(frame, "Error saving file: ${e.message}", "Error", JOptionPane.ERROR_MESSAGE)
-                    }
-                }
-            }.start()
+            writeToFile(file)
         }
+    }
+
+    /** Writes the sequence to [file] on a background thread, then marks it saved on the EDT. */
+    private fun writeToFile(file: File) {
+        val seq = doc.seq
+        Thread {
+            try {
+                SeqIO.write(file, seq)
+                SwingUtilities.invokeLater {
+                    doc.markSaved(file)
+                    updateTitle()
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    JOptionPane.showMessageDialog(frame, "Error saving file: ${e.message}", "Error", JOptionPane.ERROR_MESSAGE)
+                }
+            }
+        }.start()
     }
 
     private fun updateTitle() {

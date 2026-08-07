@@ -281,7 +281,7 @@ object SeqOps {
 
     data class Primer(val name: String, val bases: String, val tm: Double, val gc: Double) {
         override fun toString(): String =
-            "$name  ${bases}  (${bases.length} nt, Tm ${(tm * 10).roundToInt() / 10.0} C, GC ${(gc * 10).roundToInt() / 10.0}%)"
+            "$name  $bases  (${bases.length} nt, Tm ${(tm * 10).roundToInt() / 10.0} C, GC ${(gc * 10).roundToInt() / 10.0}%)"
     }
 
     /**

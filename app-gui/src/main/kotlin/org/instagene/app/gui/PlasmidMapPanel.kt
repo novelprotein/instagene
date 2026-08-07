@@ -22,8 +22,12 @@ import javax.swing.JPanel
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.log10
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -126,7 +130,7 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
         // ------------------------------------------------------------- circular
 
         /** Greedy interval packing so overlapping features get their own ring. */
-        private fun assignRings() {
+        private fun assignLayers() {
             ringOf.clear()
             val ends = ArrayList<Int>()
             for (f in doc.seq.features.sortedBy { it.start }) {
@@ -142,9 +146,10 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
             ringCount = ends.size
         }
 
+
         private fun paintCircular(g2: Graphics2D) {
             val seq = doc.seq
-            assignRings()
+            assignLayers()
 
             val available = min(width, height) / 2
             val ringBand = ringCount * 15 + 24
@@ -261,26 +266,11 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
 
         // --------------------------------------------------------------- linear
 
-        /** Greedy interval packing for the linear view's feature lanes. */
-        private fun assignLanes() {
-            laneOf.clear()
-            val ends = ArrayList<Int>()
-            for (f in doc.seq.features.sortedBy { it.start }) {
-                var lane = ends.indexOfFirst { it <= f.start }
-                if (lane < 0) {
-                    lane = ends.size
-                    ends += f.end
-                } else {
-                    ends[lane] = f.end
-                }
-                laneOf[f] = lane
-            }
-            laneCount = ends.size
-        }
+
 
         private fun paintLinear(g2: Graphics2D) {
             val seq = doc.seq
-            assignLanes()
+            assignLayers()
 
             val left = 40
             val right = width - 40
@@ -358,8 +348,8 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
 
         private fun tickStep(length: Int): Int {
             val rough = length / 8.0
-            val magnitude = Math.pow(10.0, Math.floor(Math.log10(rough.coerceAtLeast(1.0))))
-            val step = (Math.ceil(rough / magnitude) * magnitude).toInt()
+            val magnitude = 10.0.pow(floor(log10(rough.coerceAtLeast(1.0))))
+            val step = (ceil(rough / magnitude) * magnitude).toInt()
             return step.coerceAtLeast(1)
         }
 

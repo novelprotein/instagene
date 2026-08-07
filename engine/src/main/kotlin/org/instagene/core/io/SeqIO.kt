@@ -37,8 +37,8 @@ object SeqIO {
 
     /**
      * Reads a file without buffering the whole thing in memory. The format is
-     * sniffed from the first non-blank line: GenBank stays on its text parser,
-     * while FASTA and bare sequence files stream line by line.
+     * found from the first non-blank line: GenBank stays on its text parser,
+     * while FASTA loops bare sequence files line by line via stream.
      */
     fun read(file: File): Seq {
         val firstLine = firstNonBlankLine(file)

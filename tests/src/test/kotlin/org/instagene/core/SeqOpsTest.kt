@@ -118,11 +118,11 @@ class SeqOpsTest {
     @Test
     fun designPrimersReversePrimerNeverReachesUpstreamOfAmpliconStart() {
         // A short amplicon whose start is not at 0: the reverse primer must anneal
-        // inside `[start, end)`, never extend before `start`.
+        // inside `[start, end]`, never extend before `start`.
         val seq = Seq(name = "short", bases = "CGTACCCCCCCCCCCCCCCCCCGTAC")
         val (_, rev) = SeqOps.designPrimers(seq, 3, 12, targetTm = 60.0)
         assertTrue(rev.bases.length in 9..12)
-        // rev.bases is the reverse-complement of bases `start..start+len`, so its
+        // rev.bases is the reverse-complement of bases `start.start+len`, so its
         // forward-strand coordinates must stay >= start.
         val revLen = rev.bases.length
         assertTrue(revLen <= 12 - 3)

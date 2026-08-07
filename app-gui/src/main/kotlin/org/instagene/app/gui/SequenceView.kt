@@ -267,7 +267,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         var lastLabelEnd = -1
         for (site in doc.cutSites.sortedBy { it.topCut }) {
             val pos = site.topCut
-            if (pos < from || pos >= to) continue
+            if (pos !in from..<to) continue
             val x = xOf(pos - from) - charWidth / 2
             g2.color = Palette.CUT_MARK
             g2.drawLine(x, top + 2, x, top + markHeight)

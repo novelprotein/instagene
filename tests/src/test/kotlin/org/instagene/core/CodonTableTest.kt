@@ -35,8 +35,8 @@ class CodonTableTest {
 
     @Test
     fun byIdLookup() {
-        assertEquals(CodonTable.STANDARD, CodonTable.byId(1))
-        assertEquals(CodonTable.BACTERIAL, CodonTable.byId(11))
+        assertEquals(CodonTable.byId(1), CodonTable.STANDARD)
+        assertEquals(CodonTable.byId(11), CodonTable.BACTERIAL)
         assertFailsWith<IllegalArgumentException> { CodonTable.byId(99) }
     }
 }

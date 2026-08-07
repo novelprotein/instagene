@@ -17,7 +17,7 @@ enum class Strand(val sign: Int, val symbol: String) {
  * An annotated region, in half-open 0-based coordinates: `[start, end)`.
  *
  * Features never wrap the origin; a region that would wrap is stored as two
- * features sharing a name (which is how GenBank `join()` records round-trip).
+ * features sharing a name (which is how GenBank `join()` records wrap around).
  */
 @Serializable
 data class Feature(
@@ -89,7 +89,7 @@ data class Seq(
     fun insertAt(at: Int, insert: String): Seq {
         require(at in 0..length) { "Insert position $at is outside 0..$length" }
         val added = insert.length
-        val moved = features.mapNotNull { f ->
+        val moved = features.map { f ->
             when {
                 f.end <= at -> f                                              // entirely upstream
                 f.start >= at -> f.copy(start = f.start + added, end = f.end + added)

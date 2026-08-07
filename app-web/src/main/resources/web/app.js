@@ -1,3 +1,5 @@
+// noinspection SpellCheckingInspection
+
 "use strict";
 
 const state = { seq: null, savedSeq: null };

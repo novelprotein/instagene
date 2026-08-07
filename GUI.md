@@ -119,22 +119,22 @@ The command-line platform is a separate app:
 
 ### Keyboard Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
-| New | Ctrl+N |
-| Open | Ctrl+O |
-| Save | Ctrl+S |
-| Save As | Ctrl+Shift+S |
-| Undo | Ctrl+Z |
-| Redo | Ctrl+Y |
-| Select All | Ctrl+A |
-| Copy | Ctrl+C |
-| Paste | Ctrl+V |
-| Cut | Ctrl+X |
-| Find | Ctrl+F |
-| Zoom In | Ctrl++ |
-| Zoom Out | Ctrl+- |
-| Reset Zoom | Ctrl+0 |
+| Action     | Shortcut     |
+|------------|--------------|
+| New        | Ctrl+N       |
+| Open       | Ctrl+O       |
+| Save       | Ctrl+S       |
+| Save As    | Ctrl+Shift+S |
+| Undo       | Ctrl+Z       |
+| Redo       | Ctrl+Y       |
+| Select All | Ctrl+A       |
+| Copy       | Ctrl+C       |
+| Paste      | Ctrl+V       |
+| Cut        | Ctrl+X       |
+| Find       | Ctrl+F       |
+| Zoom In    | Ctrl++       |
+| Zoom Out   | Ctrl+-       |
+| Reset Zoom | Ctrl+0       |
 
 ### Editing Features
 
