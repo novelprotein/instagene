@@ -17,8 +17,14 @@ import javax.swing.JTextField
  * Sequence properties and statistics: name, kind, topology, length, GC, Tm,
  * molecular weight, description and feature count. The name field is editable
  * (undoable); everything else is derived from the document.
+ *
+ * When no file is loaded the File row offers an "Open File..." button, wired to
+ * [onOpen] by the caller (usually the same chooser flow as the File menu).
  */
-class InfoPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
+class InfoPanel(
+    private val doc: SeqDocument,
+    private val onOpen: () -> Unit = {},
+) : JPanel(BorderLayout(0, 6)) {
 
     val nameField = JTextField(28)
     private val nameApply = JButton("Apply name")
@@ -33,12 +39,14 @@ class InfoPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
     val mwLabel = JLabel("-")
     val featuresLabel = JLabel("-")
     val fileLabel = JLabel("-")
+    val openFileButton = JButton("Open File...")
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
         nameApply.addActionListener { rename() }
         descriptionApply.addActionListener { setDescription() }
+        openFileButton.addActionListener { onOpen() }
 
         val properties = JPanel(GridBagLayout()).apply {
             border = BorderFactory.createTitledBorder("Properties")
@@ -59,7 +67,10 @@ class InfoPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
             labelRow("Kind", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(kindLabel) })
             labelRow("Topology", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(topologyLabel) })
             labelRow("Length", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(lengthLabel) })
-            labelRow("File", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(fileLabel) })
+            labelRow("File", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+                add(fileLabel)
+                add(openFileButton)
+            })
         }
 
         val statistics = JPanel(GridBagLayout()).apply {
@@ -93,7 +104,10 @@ class InfoPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
         topologyLabel.text = seq.topology.name.lowercase()
         val unit = if (seq.kind == SeqKind.PROTEIN) "aa" else "bp"
         lengthLabel.text = "${seq.length} $unit"
-        fileLabel.text = doc.file?.absolutePath ?: "(unsaved)"
+        val hasFile = doc.file != null
+        fileLabel.text = doc.file?.absolutePath ?: ""
+        fileLabel.isVisible = hasFile
+        openFileButton.isVisible = !hasFile
         gcLabel.text = "%.1f %%".format(SeqOps.gcContent(seq))
         tmLabel.text = if (seq.kind == SeqKind.PROTEIN) {
             "n/a (protein)"

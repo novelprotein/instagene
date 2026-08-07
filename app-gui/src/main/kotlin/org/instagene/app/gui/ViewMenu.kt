@@ -12,7 +12,7 @@ class ViewMenu(
     private val sequenceView: SequenceView,
 ) {
 
-    private val complementItem = JCheckBoxMenuItem("Show Complement Strand", false)
+    private val complementItem = JCheckBoxMenuItem("Show Complement Strand", true)
     private val translationItem = JCheckBoxMenuItem("Show Translation", false)
 
     init {

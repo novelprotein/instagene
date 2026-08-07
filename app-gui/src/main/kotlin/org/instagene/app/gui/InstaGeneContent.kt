@@ -48,7 +48,7 @@ class InstaGeneContent(
         }
         featuresPanel = FeaturesPanel(doc) { start, end -> sequenceView.revealRange(start, end) }
         primersPanel = PrimersPanel(doc)
-        infoPanel = InfoPanel(doc)
+        infoPanel = InfoPanel(doc) { FileMenu(owner, doc).openFile() }
 
         menuBar = createMenuBar(owner)
         statusBar = StatusBar(doc, sequenceView)
@@ -85,12 +85,12 @@ class InstaGeneContent(
         }
 
         toolTabs.apply {
+            addTab("Info", infoPanel)
+            addTab("Map", plasmidMapPanel)
+            addTab("Sequence", editorScroll)
             addTab("Enzyme", digestPanel)
             addTab("Features", featuresPanel)
             addTab("Primers", primersPanel)
-            addTab("Sequence", editorScroll)
-            addTab("Map", plasmidMapPanel)
-            addTab("Info", infoPanel)
         }
 
         return JPanel(BorderLayout()).apply {

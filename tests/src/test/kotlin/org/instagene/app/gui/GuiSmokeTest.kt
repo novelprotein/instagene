@@ -7,6 +7,7 @@ import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
 import java.awt.GraphicsEnvironment
 import java.awt.image.BufferedImage
+import java.io.File
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JScrollPane
@@ -255,7 +256,7 @@ class GuiSmokeTest {
         onEdt {
             val content = InstaGeneContent(null)
             val titles = (0 until content.toolTabs.tabCount).map { content.toolTabs.getTitleAt(it) }
-            assertEquals(listOf("Enzyme", "Features", "Primers", "Sequence", "Map", "Info"), titles)
+            assertEquals(listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers"), titles)
 
             val sequenceIndex = titles.indexOf("Sequence")
             val sequenceTab = content.toolTabs.getComponentAt(sequenceIndex)
@@ -328,6 +329,27 @@ class GuiSmokeTest {
 
             doc.mutate("desc") { it.copy(description = "new") }
             assertEquals("new", panel.descriptionField.text)
+        }
+    }
+
+    @Test
+    fun infoPanelOffersOpenButtonUntilAFileIsLoaded() {
+        onEdt {
+            var opened = 0
+            val doc = SeqDocument(Seq(bases = "ACGT"))
+            val panel = InfoPanel(doc) { opened++ }
+
+            // No file yet: the Open File button is the File-row affordance.
+            assertTrue(panel.openFileButton.isVisible)
+            assertFalse(panel.fileLabel.isVisible)
+            panel.openFileButton.doClick()
+            assertEquals(1, opened)
+
+            // Once a file is present, the path shows and the button disappears.
+            doc.file = File("/tmp/example.fasta")
+            assertFalse(panel.openFileButton.isVisible)
+            assertTrue(panel.fileLabel.isVisible)
+            assertEquals("/tmp/example.fasta", panel.fileLabel.text)
         }
     }
 
