@@ -85,18 +85,18 @@ A complete Swing-based graphical user interface for the InstaGene sequence edito
 ### Running the GUI
 
 ```bash
-# No arguments or 'gui' launches the GUI
-./gradlew run
+# Launches the desktop GUI (or use `./gradlew run` from the project root)
+./gradlew :app-gui:runGui
 
 # Or with a file to open
-./gradlew run gui /path/to/sequence.fasta
+./gradlew :app-gui:runGui --args="/path/to/sequence.fasta"
 ```
 
 ### CLI Mode
 
-All other arguments are passed to the CLI:
+The command-line platform is a separate app:
 ```bash
-./gradlew run digest -e BamHI -e EcoRI sequence.fasta
+./gradlew :app-cli:runCli --args="digest --enzymes BamHI,EcoRI sequence.fasta"
 ```
 
 ### Keyboard Shortcuts
@@ -205,8 +205,17 @@ The architecture supports future enhancements:
 # Full build
 ./gradlew build
 
-# Run application
+# Run a single front-end (defaults to GUI; -Pplatform=cli|gui|web)
 ./gradlew run
+
+# Run the desktop GUI directly
+./gradlew :app-gui:runGui
+
+# Run the CLI directly
+./gradlew :app-cli:runCli
+
+# Run the web front-end directly
+./gradlew :app-web:runWeb
 
 # Tests
 ./gradlew test
@@ -217,26 +226,72 @@ The architecture supports future enhancements:
 
 ## Project Structure
 
+Each platform front-end is its own standalone application; they share only the
+engine, and the web server opens only when the web app is run explicitly.
+
 ```
-app/
+engine/
+└── src/main/kotlin/org/instagene/core/     # Core sequence engine (no UI deps)
+
+app-cli/
 ├── build.gradle.kts
-└── src/main/kotlin/org/instagene/app/
-    ├── Main.kt                 # Entry point
-    ├── cli/                    # CLI module
-    └── gui/                    # GUI components
-        ├── InstaGeneWindow.kt
-        ├── SequenceView.kt
-        ├── DigestPanel.kt
-        ├── PlasmidMapPanel.kt
-        ├── SeqDocument.kt
-        ├── Palette.kt
-        ├── StatusBar.kt
-        ├── FileMenu.kt
-        ├── EditMenu.kt
-        ├── ViewMenu.kt
-        ├── ToolsMenu.kt
-        └── ToolbarActions.kt
+└── src/main/kotlin/org/instagene/app/cli/
+    ├── CliMain.kt              # Command-line entry point
+    ├── Cli.kt
+    └── Args.kt
+
+app-gui/
+├── build.gradle.kts
+└── src/main/kotlin/org/instagene/app/gui/
+    ├── GuiMain.kt              # Desktop entry point
+    ├── InstaGeneWindow.kt
+    ├── SequenceView.kt
+    ├── DigestPanel.kt
+    ├── PlasmidMapPanel.kt
+    ├── SeqDocument.kt
+    ├── Palette.kt
+    ├── StatusBar.kt
+    ├── FileMenu.kt
+    ├── EditMenu.kt
+    ├── ViewMenu.kt
+    ├── ToolsMenu.kt
+    └── ToolbarActions.kt
+
+app-web/
+├── build.gradle.kts
+├── src/main/kotlin/org/instagene/app/web/
+│   ├── WebMain.kt              # Web entry point
+│   └── WebServer.kt            # HTTP server + JSON API over the engine
+└── src/main/resources/web/
+    ├── index.html              # HTML5 front-end
+    ├── style.css
+    └── app.js
 ```
+
+## Web Front-End
+
+The HTML5 front-end (`app-web`) is an embedded HTTP server built on the JDK
+`HttpServer` — no extra dependencies. It serves the browser UI and exposes the
+engine over a small JSON API (`/api/samples`, `/api/open`, `/api/op`).
+
+```bash
+# Serves http://localhost:8080
+./gradlew :app-web:runWeb
+
+# Or via the root picker
+./gradlew run -Pplatform=web
+
+# Or with an explicit port
+./gradlew :app-web:runWeb --args="--port 9000"
+```
+
+The web server opens only when the web platform is run explicitly, and at most
+once per process.
+
+The UI can open bundled samples, a local FASTA/GenBank file, or pasted text,
+then transform (revcomp, complement, transcribe, translate, …) and analyze
+(info, GC, Tm, ORFs, digest, find) the sequence. The whole stack runs on the
+engine module — the same code the CLI and desktop GUI use.
 
 ## Future Enhancements
 

@@ -1,0 +1,99 @@
+:root {
+  --bg: #1e1f22;
+  --panel: #2b2d30;
+  --input: #161719;
+  --border: #3c3f43;
+  --text: #d7d7d7;
+  --muted: #9a9ea3;
+  --accent: #4a7dff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+h1 { margin: 0; font-size: 20px; }
+h2 { margin: 0 0 8px; font-size: 15px; color: var(--muted); }
+
+.tag { color: var(--muted); font-size: 12px; }
+
+section { padding: 14px 20px; border-bottom: 1px solid var(--border); }
+
+.open { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+select, textarea {
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px;
+  font-family: inherit;
+}
+
+textarea { width: 100%; margin-top: 8px; font-family: monospace; }
+
+input[type="file"] { display: none; }
+
+button {
+  background: #3a3d42;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover { background: var(--accent); color: #fff; }
+
+.meta { margin-bottom: 8px; font-size: 14px; }
+.meta em { color: var(--muted); }
+
+#sequence {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+#features { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+#features li { margin: 2px 0; }
+
+fieldset { border: 1px solid var(--border); border-radius: 4px; margin: 0 0 10px; }
+legend { color: var(--muted); }
+.tools button { margin: 2px 4px 2px 0; }
+
+#output {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  font-family: Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 13px;
+  min-height: 80px;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 35vh;
+}
+
+.status { margin-left: 10px; color: var(--accent); font-size: 13px; }

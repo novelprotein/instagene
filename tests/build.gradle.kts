@@ -3,8 +3,10 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":utils"))
-    implementation(project(":app"))
+    implementation(project(":engine"))
+    implementation(project(":app-cli"))
+    implementation(project(":app-gui"))
+    implementation(project(":app-web"))
 
     testImplementation(kotlin("test"))
     testImplementation(libs.junitJupiter)

@@ -18,7 +18,8 @@ Tool created to read, edit, and save gene files.
 - [x] Basic CLI
 
 ### In Progress
-- [ ] Graphical User Interface (GUI)
+- [x] HTML5 GUI
+- [x] Graphical User Interface (GUI)
 - [ ] Harden IO
 - [ ] Editing Workflow
 - [ ] Make Cli production ready
@@ -29,7 +30,6 @@ Tool created to read, edit, and save gene files.
 
 ### Planned
 - [ ] Plugin system
-- [ ] HTML5 GUI
 - [ ] Cross-platform installers
 - [ ] Performance optimization
 - [ ] Improved documentation
@@ -38,7 +38,10 @@ Tool created to read, edit, and save gene files.
 This project uses [Gradle](https://gradle.org/). To build and run the application, use the *Gradle* tool window by
 clicking the Gradle icon in the right-hand toolbar, or run it directly from the terminal:
 
-* Run `./gradlew run` to build and run the application.
+* Run `./gradlew run` to run a single front-end (defaults to the desktop GUI; pick another with `-Pplatform=cli|gui|web`).
+* Run `./gradlew :app-cli:runCli [--args="..."]` to run the command-line front-end directly.
+* Run `./gradlew :app-gui:runGui [--args="..."]` to run the Swing desktop front-end directly.
+* Run `./gradlew :app-web:runWeb --args="--port 8080"` to run the HTML5 web front-end directly.
 * Run `./gradlew build` to only build the application.
 * Run `./gradlew check` to run all checks, including tests.
 * Run `./gradlew clean` to clean all build outputs.
@@ -49,8 +52,22 @@ Note the usage of the Gradle Wrapper (`./gradlew`). This is the suggested way to
 
 [Learn more about Gradle tasks](https://docs.gradle.org/current/userguide/command_line_interface.html#common_tasks).
 
-This project follows the suggested multi-module setup and consists of the `app` and `utils` subprojects. The shared
-build logic was extracted to a convention plugin located in `buildSrc`.
+This project has the core engine sepeated from the modules which access features from it. This separates the computation tasks from the human interface. 
+Each platform front-end is its own standalone application that shares
+the engine:
+
+* `engine` — the reusable core library (`org.instagene.core`): sequence model, IO, digest, assembly, etc.
+* `app-cli` — command-line platform (`./gradlew :app-cli:runCli`).
+* `app-gui` — desktop platform, Swing (`./gradlew :app-gui:runGui`).
+* `app-web` — web platform: embedded HTTP server + browser UI (`./gradlew :app-web:runWeb`).
+* `tests` — integration tests across all modules.
+
+The root `run` task picks exactly one front-end via `-Pplatform=cli|gui|web` (default `gui`),
+so `./gradlew run` never launches all three at once. The web server opens **only** when the web
+platform is run explicitly (`:app-web:runWeb`); the desktop and CLI apps never start it. Each
+front-end launches exactly once per process.
+
+The shared build logic was extracted to a convention plugin located in `buildSrc`.
 
 This project uses a version catalog (see `gradle/libs.versions.toml`) to declare and version dependencies and both a
 build cache and a configuration cache (see `gradle.properties`).

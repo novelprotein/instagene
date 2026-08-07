@@ -16,11 +16,14 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-// Include the `app`, `utils`, and `tests` subprojects in the build.
+// Include the `engine` core library and the per-platform front-ends, plus the
+// `tests` subproject, in the build.
 // If there are changes in only one of the projects, Gradle will rebuild only the one that has changed.
 // Learn more about structuring projects with Gradle - https://docs.gradle.org/8.7/userguide/multi_project_builds.html
-include(":app")
-include(":utils")
+include(":engine")
+include(":app-cli")
+include(":app-gui")
+include(":app-web")
 include(":tests")
 
 rootProject.name = "instagene"

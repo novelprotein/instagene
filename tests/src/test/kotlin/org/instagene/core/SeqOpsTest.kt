@@ -25,7 +25,7 @@ class SeqOpsTest {
         val seq = Seq(bases = "ATGGCCTAATAG") // M A * *
         assertEquals("MA**", SeqOps.translateBases(seq.bases))
         assertEquals("MA", SeqOps.translateBases(seq.bases, stopAtFirstStop = true))
-        assertEquals("A*", SeqOps.translateBases(seq.bases, frame = 1).take(2))
+        assertEquals("WP", SeqOps.translateBases(seq.bases, frame = 1).take(2)) // frame 1: TGG CCT AAT -> W P N
         assertFailsWith<IllegalArgumentException> { SeqOps.translate(seq, frame = 3) }
         // Trailing partial codon ignored
         assertEquals("M", SeqOps.translateBases("ATGAA"))
@@ -44,8 +44,7 @@ class SeqOpsTest {
     fun meltingTempWallaceAndSalt() {
         assertEquals(0.0, SeqOps.meltingTemp(""))
         // Wallace: 2*AT + 4*GC for short oligos
-        assertEquals(20.0, SeqOps.meltingTemp("AAAAACCCCC")) // 5 AT + 5 GC = 10+20=30? Wait 5A + 5C = 2*5+4*5=30
-        assertEquals(30.0, SeqOps.meltingTemp("AAAAACCCCC"))
+        assertEquals(30.0, SeqOps.meltingTemp("AAAAACCCCC")) // 5 A + 5 C = 2*5 + 4*5 = 30
         val long = "ACGTACGTACGTAC" // 14 nt -> salt formula
         val tmDefault = SeqOps.meltingTemp(long)
         val tmHighSalt = SeqOps.meltingTemp(long, saltMolar = 0.5)

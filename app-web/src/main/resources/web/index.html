@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>InstaGene Web</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>InstaGene</h1>
+    <span class="tag">HTML5 front-end</span>
+  </header>
+
+  <section class="open">
+    <select id="sample"></select>
+    <button id="loadSample">Load sample</button>
+    <input type="file" id="file" accept=".fa,.fasta,.fna,.gb,.gbk,.genbank,.ape,.seq,.txt">
+    <button id="loadFile">Open file</button>
+    <textarea id="paste" rows="3" placeholder="or paste FASTA / GenBank / bare bases here…"></textarea>
+    <button id="loadText">Paste</button>
+  </section>
+
+  <section id="editor">
+    <div id="meta" class="meta"></div>
+    <pre id="sequence"></pre>
+    <ul id="features"></ul>
+  </section>
+
+  <section class="tools">
+    <fieldset>
+      <legend>Transform</legend>
+      <button data-op="revcomp">Reverse complement</button>
+      <button data-op="complement">Complement</button>
+      <button data-op="transcribe">Transcribe</button>
+      <button data-op="backtranscribe">Back-transcribe</button>
+      <button data-op="translate">Translate (frame 1)</button>
+      <button data-op="rotate">Rotate origin…</button>
+    </fieldset>
+    <fieldset>
+      <legend>Analyze</legend>
+      <button data-op="info">Info</button>
+      <button data-op="gc">GC %</button>
+      <button data-op="tm">Tm</button>
+      <button data-op="orf">ORFs</button>
+      <button data-op="digest">Digest…</button>
+      <button data-op="find">Find…</button>
+    </fieldset>
+  </section>
+
+  <section class="results">
+    <h2>Results</h2>
+    <pre id="output"></pre>
+    <button id="copy">Copy FASTA</button>
+    <span id="status" class="status"></span>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

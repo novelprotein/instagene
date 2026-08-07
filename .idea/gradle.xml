@@ -19,10 +19,12 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/app-cli" />
+            <option value="$PROJECT_DIR$/app-gui" />
+            <option value="$PROJECT_DIR$/app-web" />
             <option value="$PROJECT_DIR$/buildSrc" />
+            <option value="$PROJECT_DIR$/engine" />
             <option value="$PROJECT_DIR$/tests" />
-            <option value="$PROJECT_DIR$/utils" />
           </set>
         </option>
         <option name="myGradleHome" value="" />

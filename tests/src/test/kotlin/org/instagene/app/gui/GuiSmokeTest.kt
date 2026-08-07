@@ -4,7 +4,6 @@ import org.instagene.core.Seq
 import org.instagene.core.io.SeqIO
 import java.awt.GraphicsEnvironment
 import java.awt.image.BufferedImage
-import javax.swing.JFrame
 import javax.swing.JMenu
 import javax.swing.SwingUtilities
 import kotlin.test.Test
@@ -85,7 +84,6 @@ class GuiSmokeTest {
     @Test
     fun statusBarAndMenusConstruct() {
         onEdt {
-            val frame = JFrame("test")
             val doc = SeqDocument(SeqIO.Samples.GFP_CDS)
             val view = SequenceView(doc)
             val digest = DigestPanel(doc, {}, { _, _ -> })
@@ -93,11 +91,11 @@ class GuiSmokeTest {
             val status = StatusBar(view)
             assertNotNull(status)
 
-            val fileMenu: JMenu = FileMenu(frame, doc).create()
+            val fileMenu: JMenu = FileMenu(null, doc).create()
             assertEquals("File", fileMenu.text)
             assertTrue(fileMenu.itemCount > 0)
 
-            val editMenu = EditMenu(frame, doc, view).create()
+            val editMenu = EditMenu(null, doc, view).create()
             assertEquals("Edit", editMenu.text)
 
             val viewMenu = ViewMenu(view).create()
@@ -116,28 +114,21 @@ class GuiSmokeTest {
             selectAll.doClick()
             assertTrue(doc.hasSelection)
             assertEquals(doc.seq.length, doc.selectionEnd)
-
-            frame.dispose()
         }
     }
 
     @Test
-    fun mainWindowConstructsInHeadlessMode() {
-        // Construction must not require a real display when java.awt.headless=true.
-        assertTrue(GraphicsEnvironment.isHeadless() || true)
+    fun mainContentConstructsInHeadlessMode() {
+        // The editor UI must be constructible without a real display (java.awt.headless=true).
+        assertTrue(GraphicsEnvironment.isHeadless())
         onEdt {
-            val window = InstaGeneWindow(null)
-            try {
-                window.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
-                assertEquals("InstaGene - Sequence Editor", window.title)
-                assertTrue(window.size.width > 0 || window.preferredSize.width >= 0)
-                assertNotNull(window.jMenuBar)
-                // Pack/layout then paint root pane off-screen
-                window.pack()
-                paintComponent(window.contentPane, 1200, 800)
-            } finally {
-                window.dispose()
-            }
+            val content = InstaGeneContent(null)
+            assertNotNull(content.menuBar)
+            assertTrue(content.componentCount > 0)
+            // Pack/layout then paint the whole editor off-screen
+            content.setSize(1200, 800)
+            content.doLayout()
+            paintComponent(content, 1200, 800)
         }
     }
 
