@@ -292,6 +292,19 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
             g2.stroke = BasicStroke(8f)
             g2.drawLine(left, axisY, right, axisY)
 
+            // Current selection, highlighted as a band just above the backbone.
+            if (doc.hasSelection) {
+                val s = doc.selectionStart
+                val e = doc.selectionEnd
+                if (e > s) {
+                    val x1 = left + (s.toDouble() / seq.length * span).roundToInt()
+                    val x2 = left + (e.toDouble() / seq.length * span).roundToInt()
+                    g2.color = Palette.translucent(Palette.SELECTION, 0x66)
+                    g2.stroke = BasicStroke(5f)
+                    g2.drawLine(x1, axisY - 8, maxOf(x1 + 2, x2), axisY - 8)
+                }
+            }
+
             g2.stroke = BasicStroke(1f)
             g2.font = subtitleFont
             val tickStep = tickStep(seq.length)
