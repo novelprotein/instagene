@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.core.Seq
 import java.awt.BorderLayout
 import javax.swing.JFrame
 
@@ -22,5 +23,11 @@ class InstaGeneWindow(openPath: String? = null) : JFrame("InstaGene - Sequence E
         content = InstaGeneContent(openPath, this)
         jMenuBar = content.menuBar
         contentPane.add(content, BorderLayout.CENTER)
+    }
+
+    /** Convenience for opening a fragment (or any [Seq]) directly in its own window. */
+    constructor(initial: Seq) : this(null) {
+        content.doc.loadSequence(initial)
+        title = "InstaGene - ${initial.name}"
     }
 }

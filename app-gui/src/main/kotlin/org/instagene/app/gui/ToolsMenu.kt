@@ -1,6 +1,9 @@
 package org.instagene.app.gui
 
+import org.instagene.core.Enzyme
 import org.instagene.core.Enzymes
+import org.instagene.core.SeqKind
+import org.instagene.core.Topology
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
@@ -8,38 +11,66 @@ import javax.swing.JOptionPane
 
 class ToolsMenu(private val doc: SeqDocument, private val digestPanel: DigestPanel) {
 
+    private val makeCircularItem = JMenuItem("Make Circular")
+    private val makeLinearItem = JMenuItem("Make Linear")
+    private val addEnzymeItem = JMenuItem("Add Enzyme...")
+    private val clearEnzymesItem = JMenuItem("Clear All Enzymes")
+    private val commonEnzymesMenu = createCommonEnzymesMenu()
+
+    init {
+        doc.addListener { _, reason ->
+            if (reason == SeqDocument.Reason.SEQUENCE) syncEnabled()
+        }
+        syncEnabled()
+    }
+
+    /** Digestion and topology only apply to nucleotide sequences; follow the sample type. */
+    private fun syncEnabled() {
+        val seq = doc.seq
+        val dna = seq.kind == SeqKind.DNA
+        val nucleotide = seq.kind != SeqKind.PROTEIN
+        addEnzymeItem.isEnabled = dna
+        clearEnzymesItem.isEnabled = dna
+        commonEnzymesMenu.isEnabled = dna
+        makeCircularItem.isEnabled = nucleotide && !seq.isCircular
+        makeLinearItem.isEnabled = nucleotide && seq.isCircular
+    }
+
     fun create(): JMenu {
         return JMenu("Tools").apply {
             mnemonic = KeyEvent.VK_T
 
-            add(createAddEnzymeItem())
-            add(createClearEnzymesItem())
+            add(makeCircularItem.apply {
+                addActionListener {
+                    doc.mutate("make circular") { it.withTopology(Topology.CIRCULAR) }
+                }
+            })
+            add(makeLinearItem.apply {
+                addActionListener {
+                    doc.mutate("make linear") { it.withTopology(Topology.LINEAR) }
+                }
+            })
             addSeparator()
-            add(createCommonEnzymesMenu())
-            addSeparator()
-            add(createAboutItem())
-        }
-    }
-
-    private fun createAddEnzymeItem(): JMenuItem {
-        return JMenuItem("Add Enzyme...").apply {
-            addActionListener {
-                val enzymeName = JOptionPane.showInputDialog(null, "Enzyme name:", "BamHI")
-                if (enzymeName != null && enzymeName.isNotEmpty()) {
-                    val enzyme = Enzymes.ALL.firstOrNull { it.name.equals(enzymeName, ignoreCase = true) }
-                    if (enzyme != null) {
-                        doc.addEnzyme(enzyme)
-                    } else {
-                        JOptionPane.showMessageDialog(null, "Enzyme '$enzymeName' not found.", "Not Found", JOptionPane.WARNING_MESSAGE)
+            add(addEnzymeItem.apply {
+                addActionListener {
+                    val enzymeName = JOptionPane.showInputDialog(null, "Enzyme name:", "BamHI")
+                    if (enzymeName != null && enzymeName.isNotEmpty()) {
+                        val enzyme = Enzymes.ALL.firstOrNull { it.name.equals(enzymeName, ignoreCase = true) }
+                        if (enzyme != null) {
+                            digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + enzyme)
+                        } else {
+                            JOptionPane.showMessageDialog(null, "Enzyme '$enzymeName' not found.", "Not Found", JOptionPane.WARNING_MESSAGE)
+                        }
                     }
                 }
-            }
-        }
-    }
-
-    private fun createClearEnzymesItem(): JMenuItem {
-        return JMenuItem("Clear All Enzymes").apply {
-            addActionListener { doc.clearEnzymes() }
+            })
+            add(clearEnzymesItem.apply {
+                addActionListener { digestPanel.selectEnzymes(emptyList()) }
+            })
+            addSeparator()
+            add(commonEnzymesMenu)
+            addSeparator()
+            add(createAboutItem())
         }
     }
 
@@ -50,7 +81,7 @@ class ToolsMenu(private val doc: SeqDocument, private val digestPanel: DigestPan
                 add(JMenu("$letter").apply {
                     for (enzyme in enzymes.take(10)) {
                         add(JMenuItem(enzyme.name).apply {
-                            addActionListener { doc.addEnzyme(enzyme) }
+                            addActionListener { add(enzyme) }
                         })
                     }
                     if (enzymes.size > 10) {
@@ -59,6 +90,10 @@ class ToolsMenu(private val doc: SeqDocument, private val digestPanel: DigestPan
                 })
             }
         }
+    }
+
+    private fun add(enzyme: Enzyme) {
+        digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + enzyme)
     }
 
     private fun createAboutItem(): JMenuItem {

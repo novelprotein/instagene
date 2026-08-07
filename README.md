@@ -24,8 +24,7 @@ Tool created to read, edit, and save gene files.
 - [ ] Editing Workflow
 - [ ] Make Cli production ready
 - [ ] Package and release
-- [ ] Test suite
-- [ ] Full application build
+- [x] Test suite
 - [ ] Library integration (using the engine as a reusable library)
 
 ### Planned

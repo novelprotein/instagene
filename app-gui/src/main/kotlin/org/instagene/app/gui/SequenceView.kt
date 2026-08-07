@@ -131,7 +131,13 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         featureLanes = ends.size
     }
 
-    private fun trackCount(): Int = 1 + (if (showComplement) 1 else 0) + (if (showTranslation) 1 else 0)
+    /** The complement track only makes sense for nucleotide sequences. */
+    private fun complementTrack(): Boolean = showComplement && doc.seq.kind != SeqKind.PROTEIN
+
+    /** Translation likewise needs codons; a protein sequence has none. */
+    private fun translationTrack(): Boolean = showTranslation && doc.seq.kind != SeqKind.PROTEIN
+
+    private fun trackCount(): Int = 1 + (if (complementTrack()) 1 else 0) + (if (translationTrack()) 1 else 0)
 
     private fun rowHeight(): Int =
         markHeight + lineHeight * trackCount() + featureLanes * laneHeight + rowGap
@@ -207,7 +213,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         }
 
         var trackY = baseY
-        if (showComplement) {
+        if (complementTrack()) {
             trackY += lineHeight
             g2.color = Palette.MUTED
             for (i in from until to) {
@@ -215,7 +221,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
                 g2.drawString(c.uppercaseChar().toString(), xOf(i - from), trackY)
             }
         }
-        if (showTranslation && seq.kind != SeqKind.PROTEIN) {
+        if (translationTrack()) {
             trackY += lineHeight
             paintTranslation(g2, from, to, trackY)
         }

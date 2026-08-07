@@ -5,6 +5,7 @@ import org.instagene.core.Enzyme
 import org.instagene.core.Enzymes
 import org.instagene.core.Fragment
 import org.instagene.core.Seq
+import org.instagene.core.SeqKind
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -43,6 +44,7 @@ class DigestPanel(
     private val cuttersOnly = JCheckBox("Only enzymes that cut", true)
     private val uniqueOnly = JCheckBox("Only unique cutters", false)
     private val summary = JLabel(" ")
+    private val extractButton = JButton("Open fragment as new sequence")
 
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
@@ -115,14 +117,8 @@ class DigestPanel(
     }
 
     private fun buildFragmentButtons(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
-        add(JButton("Open fragment as new sequence").apply {
-            addActionListener {
-                val row = fragmentTable.selectedRow
-                if (row in fragments.indices) {
-                    val f = fragments[row]
-                    onExtractFragment(f.toSeq("${doc.seq.name}_frag${row + 1}"))
-                }
-            }
+        add(extractButton.apply {
+            addActionListener { extractFragment(fragmentTable.selectedRow) }
         })
         add(Box.createHorizontalStrut(4))
     }
@@ -130,6 +126,21 @@ class DigestPanel(
     /** Recomputes cut counts for the current sequence and repopulates the tables. */
     fun refresh() {
         val seq = doc.seq
+        val dnaOnly = seq.kind == SeqKind.DNA
+        setInteractive(dnaOnly)
+        if (!dnaOnly) {
+            if (checked.isNotEmpty()) {
+                checked.clear()
+                doc.setMappedEnzymes(emptyList())
+            }
+            visibleEnzymes = emptyList()
+            fragments = emptyList()
+            enzymeModel.fireTableDataChanged()
+            fragmentModel.fireTableDataChanged()
+            summary.text = "Restriction digestion applies to double-stranded DNA" +
+                (if (seq.kind == SeqKind.PROTEIN) " (this is a protein sequence)." else ".")
+            return
+        }
         val counts = Digest.cutCounts(seq)
         val needle = filterField.text.trim().lowercase()
         visibleEnzymes = Enzymes.ALL.filter { enzyme ->
@@ -144,6 +155,36 @@ class DigestPanel(
         applySelection()
     }
 
+    private fun setInteractive(enabled: Boolean) {
+        filterField.isEnabled = enabled
+        cuttersOnly.isEnabled = enabled
+        uniqueOnly.isEnabled = enabled
+        enzymeTable.isEnabled = enabled
+        fragmentTable.isEnabled = enabled
+        extractButton.isEnabled = enabled
+    }
+
+    /** Exposed for tests: whether digestion is available for the current sample. */
+    fun isDigestEnabled(): Boolean = enzymeTable.isEnabled
+
+    /** The enzymes currently ticked in the table, in order. */
+    fun selectedEnzymes(): List<Enzyme> = checked.toList()
+
+    /** Maps [enzymes] through the panel, keeping tables and the document in sync. */
+    fun selectEnzymes(enzymes: List<Enzyme>) {
+        if (doc.seq.kind != SeqKind.DNA) return
+        checked.clear()
+        checked += enzymes
+        applySelection()
+    }
+
+    /** Hands the fragment at [row] to [onExtractFragment] as a standalone sequence. */
+    fun extractFragment(row: Int) {
+        if (row !in fragments.indices) return
+        val f = fragments[row]
+        onExtractFragment(f.toSeq("${doc.seq.name}_frag${row + 1}"))
+    }
+
     private fun applySelection() {
         val active = checked.toList()
         doc.setMappedEnzymes(active)
@@ -152,8 +193,11 @@ class DigestPanel(
         enzymeModel.fireTableDataChanged()
         summary.text = when {
             active.isEmpty() -> "Tick enzymes to map their sites."
-            else -> "${active.joinToString(", ") { it.name }}  ->  ${doc.cutSites.size} site(s), " +
-                "${fragments.size} fragment(s)"
+            else -> {
+                val total = fragments.sumOf { it.length }
+                "${active.joinToString(", ") { it.name }}  ->  ${doc.cutSites.size} site(s), " +
+                    "${fragments.size} fragment(s), total $total bp"
+            }
         }
     }
 
@@ -166,10 +210,19 @@ class DigestPanel(
     }
 
     private fun revealSelectedFragment() {
-        val row = fragmentTable.selectedRow
+        revealFragment(fragmentTable.selectedRow)
+    }
+
+    /** Reveals the fragment at [row], handling origin-wrapping ones. */
+    fun revealFragment(row: Int) {
         if (row !in fragments.indices) return
         val f = fragments[row]
-        onReveal(f.start, (f.start + f.length).coerceAtMost(doc.seq.length))
+        val wraps = doc.seq.isCircular && f.start + f.length > doc.seq.length
+        if (wraps) {
+            onReveal(0, doc.seq.length)
+        } else {
+            onReveal(f.start, f.start + f.length)
+        }
     }
 
     // ------------------------------------------------------------ table models
@@ -215,10 +268,11 @@ class DigestPanel(
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
             val f = fragments[rowIndex]
+            val wraps = doc.seq.isCircular && f.start + f.length > doc.seq.length
             return when (columnIndex) {
                 0 -> rowIndex + 1
                 1 -> "${f.length} bp"
-                2 -> f.start + 1
+                2 -> if (wraps) "${f.start + 1} (wraps)" else f.start + 1
                 3 -> f.leftEnd.toString()
                 else -> f.rightEnd.toString()
             }

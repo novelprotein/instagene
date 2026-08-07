@@ -1,40 +1,53 @@
 package org.instagene.app.gui
 
+import org.instagene.core.SeqKind
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.KeyStroke
 
-class ViewMenu(private val sequenceView: SequenceView) {
+class ViewMenu(
+    private val doc: SeqDocument,
+    private val sequenceView: SequenceView,
+) {
+
+    private val complementItem = JMenuItem("Show Complement Strand")
+    private val translationItem = JMenuItem("Show Translation")
+
+    init {
+        doc.addListener { _, reason ->
+            if (reason == SeqDocument.Reason.SEQUENCE) updateEnabled()
+        }
+        updateEnabled()
+    }
+
+    /** Complement and translation tracks only exist for DNA/RNA sequences. */
+    private fun updateEnabled() {
+        val nucleotide = doc.seq.kind != SeqKind.PROTEIN
+        complementItem.isEnabled = nucleotide
+        translationItem.isEnabled = nucleotide
+    }
 
     fun create(): JMenu {
         return JMenu("View").apply {
             mnemonic = KeyEvent.VK_V
 
-            add(createShowComplementItem())
-            add(createShowTranslationItem())
+            add(complementItem.apply {
+                addActionListener {
+                    sequenceView.showComplement = !sequenceView.showComplement
+                    text = if (sequenceView.showComplement) "Hide Complement Strand" else "Show Complement Strand"
+                }
+            })
+            add(translationItem.apply {
+                addActionListener {
+                    sequenceView.showTranslation = !sequenceView.showTranslation
+                    text = if (sequenceView.showTranslation) "Hide Translation" else "Show Translation"
+                }
+            })
             addSeparator()
             add(createZoomInItem())
             add(createZoomOutItem())
             add(createResetZoomItem())
-        }
-    }
-
-    private fun createShowComplementItem(): JMenuItem {
-        return JMenuItem("Show Complement Strand").apply {
-            addActionListener {
-                sequenceView.showComplement = !sequenceView.showComplement
-                text = if (sequenceView.showComplement) "Hide Complement Strand" else "Show Complement Strand"
-            }
-        }
-    }
-
-    private fun createShowTranslationItem(): JMenuItem {
-        return JMenuItem("Show Translation").apply {
-            addActionListener {
-                sequenceView.showTranslation = !sequenceView.showTranslation
-                text = if (sequenceView.showTranslation) "Hide Translation" else "Show Translation"
-            }
         }
     }
 

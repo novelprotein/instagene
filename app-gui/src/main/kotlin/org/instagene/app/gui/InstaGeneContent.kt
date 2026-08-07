@@ -3,13 +3,13 @@ package org.instagene.app.gui
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
+import java.awt.GraphicsEnvironment
 import java.io.File
 import javax.swing.AbstractButton
 import javax.swing.JFrame
 import javax.swing.JMenuBar
 import javax.swing.JPanel
 import javax.swing.JScrollPane
-import javax.swing.JSplitPane
 import javax.swing.JTabbedPane
 import javax.swing.JToolBar
 
@@ -28,6 +28,10 @@ class InstaGeneContent(
     val sequenceView: SequenceView
     val digestPanel: DigestPanel
     val plasmidMapPanel: PlasmidMapPanel
+    val featuresPanel: FeaturesPanel
+    val primersPanel: PrimersPanel
+    val infoPanel: InfoPanel
+    val toolTabs = JTabbedPane()
     val menuBar: JMenuBar
     val statusBar: StatusBar
     private lateinit var openButton: AbstractButton
@@ -41,10 +45,13 @@ class InstaGeneContent(
         doc = SeqDocument(initialSeq, if (openPath != null) File(openPath) else null)
 
         sequenceView = SequenceView(doc)
-        digestPanel = DigestPanel(doc, { /* onExtractFragment */ }, { start, end -> sequenceView.revealRange(start, end) })
+        digestPanel = DigestPanel(doc, { seq -> openFragmentWindow(seq) }, { start, end -> sequenceView.revealRange(start, end) })
         plasmidMapPanel = PlasmidMapPanel(doc).apply {
             onSelect = { start, end -> sequenceView.revealRange(start, end) }
         }
+        featuresPanel = FeaturesPanel(doc) { start, end -> sequenceView.revealRange(start, end) }
+        primersPanel = PrimersPanel(doc)
+        infoPanel = InfoPanel(doc)
 
         menuBar = createMenuBar(owner)
         statusBar = StatusBar(sequenceView)
@@ -61,6 +68,17 @@ class InstaGeneContent(
         updateOpenButtonVisibility()
     }
 
+    /** Opens the extracted fragment as a fresh editor window. */
+    private fun openFragmentWindow(fragment: Seq) {
+        if (GraphicsEnvironment.isHeadless()) {
+            // No display in headless contexts (tests/CI): open it in the current document.
+            doc.replaceSequence(fragment)
+            return
+        }
+        val window = InstaGeneWindow(fragment)
+        window.isVisible = true
+    }
+
     private fun updateOpenButtonVisibility() {
         openButton.isVisible = doc.file == null
     }
@@ -69,7 +87,7 @@ class InstaGeneContent(
         return JMenuBar().apply {
             add(FileMenu(owner, doc).create())
             add(EditMenu(owner, doc, sequenceView).create())
-            add(ViewMenu(sequenceView).create())
+            add(ViewMenu(doc, sequenceView).create())
             add(ToolsMenu(doc, digestPanel).create())
         }
     }
@@ -93,26 +111,24 @@ class InstaGeneContent(
     }
 
     private fun createMainContent(): JPanel {
-        val mainPanel = JPanel(BorderLayout())
-
-        // Top: Sequence editor
-        val editorScroll = JScrollPane(sequenceView)
-        editorScroll.horizontalScrollBar.unitIncrement = 10
-        editorScroll.verticalScrollBar.unitIncrement = 17
-
-        // Bottom: Tool panels in tabs
-        val toolTabs = JTabbedPane().apply {
-            addTab("Digestion", digestPanel)
-            addTab("Plasmid Map", plasmidMapPanel)
+        // The main sequence editor lives on the Sequence tab, so it is only
+        // visible while that tab is selected.
+        val editorScroll = JScrollPane(sequenceView).apply {
+            horizontalScrollBar.unitIncrement = 10
+            verticalScrollBar.unitIncrement = 17
         }
 
-        // Split pane between editor and tools
-        val split = JSplitPane(JSplitPane.VERTICAL_SPLIT, editorScroll, toolTabs).apply {
-            dividerLocation = 600
-            isOneTouchExpandable = true
+        toolTabs.apply {
+            addTab("Enzyme", digestPanel)
+            addTab("Features", featuresPanel)
+            addTab("Primers", primersPanel)
+            addTab("Sequence", editorScroll)
+            addTab("Map", plasmidMapPanel)
+            addTab("Info", infoPanel)
         }
 
-        mainPanel.add(split, BorderLayout.CENTER)
-        return mainPanel
+        return JPanel(BorderLayout()).apply {
+            add(toolTabs, BorderLayout.CENTER)
+        }
     }
 }

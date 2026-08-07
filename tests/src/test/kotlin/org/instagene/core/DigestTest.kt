@@ -58,6 +58,17 @@ class DigestTest {
     }
 
     @Test
+    fun circularDoubleDigestFragmentsReassemble() {
+        val seq = Seq(bases = "GAATTCCGGATCCGGAATTCG", topology = Topology.CIRCULAR)
+        val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("BamHI"))
+        val frags = Digest.digest(seq, enzymes)
+        assertEquals(3, frags.size)
+        assertEquals(seq.length, frags.sumOf { it.length })
+        val reassembled = frags.joinToString("") { it.bases }
+        assertTrue((reassembled + reassembled).contains(seq.bases))
+    }
+
+    @Test
     fun noEnzymeYieldsSingleBluntFragment() {
         val feat = Feature("marker", start = 1, end = 4)
         val seq = Seq(bases = "ACGTAC", features = listOf(feat))

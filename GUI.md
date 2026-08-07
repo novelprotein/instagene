@@ -10,7 +10,7 @@ A complete Swing-based graphical user interface for the InstaGene sequence edito
 
 **Main Window** (`InstaGeneWindow.kt`)
 - Central application window with menu bar, toolbar, and split pane layout
-- Integrates sequence editor, digestion panel, and plasmid map in tabbed interface
+- Integrates sequence editor and the tool tabs (Enzyme, Features, Primers, Sequence, Map, Info)
 - Manages window state and file handling
 
 **Document Model** (`SeqDocument.kt`)
@@ -30,13 +30,31 @@ A complete Swing-based graphical user interface for the InstaGene sequence edito
   - Full keyboard/mouse support
   - Scrollable viewport with size-adaptive layout
 
-**Restriction Digestion Panel** (`DigestPanel.kt`)
+**Restriction Digestion Panel** (`DigestPanel.kt`) — the **Enzyme** tab
 - Interactive enzyme selection and filtering
 - Real-time digest fragment calculation
 - Table display of fragments with size calculations
 - Fragment extraction callbacks
 
-**Plasmid Map Panel** (`PlasmidMapPanel.kt`)
+**Features Panel** (`FeaturesPanel.kt`) — the **Features** tab
+- Table of annotated features with strand and coordinates
+- Click a feature to jump to it in the editor
+- Add a feature from the current selection (undoable), delete selected features
+
+**Primers Panel** (`PrimersPanel.kt`) — the **Primers** tab
+- PCR primer design for the selected amplicon (From/To follow the editor selection)
+- Adjustable target melting temperature
+- Forward/reverse pair table with Tm and GC%, copy as FASTA
+
+**Sequence Panel** — the **Sequence** tab
+- The main sequence editor lives on this tab, so it is visible only while the tab is selected
+- Read-only text views of the molecule are available through the editor's complement/translation tracks
+
+**Info Panel** (`InfoPanel.kt`) — the **Info** tab
+- Editable name and description (undoable)
+- Kind, topology, length, file, GC, Tm, molecular weight and feature count
+
+**Plasmid Map Panel** (`PlasmidMapPanel.kt`) — the **Map** tab
 - Circular restriction map visualization
 - Feature and cut site rendering
 - Selection callbacks for coordinated highlighting
@@ -248,6 +266,9 @@ app-gui/
     ├── SequenceView.kt
     ├── DigestPanel.kt
     ├── PlasmidMapPanel.kt
+    ├── FeaturesPanel.kt
+    ├── PrimersPanel.kt
+    ├── InfoPanel.kt
     ├── SeqDocument.kt
     ├── Palette.kt
     ├── StatusBar.kt
