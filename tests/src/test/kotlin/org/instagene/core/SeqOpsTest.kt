@@ -37,7 +37,7 @@ class SeqOpsTest {
         assertEquals(50.0, SeqOps.gcContent("ATGC"))
         assertEquals(100.0, SeqOps.gcContent("SS"))
         assertEquals(0.0, SeqOps.gcContent("NN"))
-        assertEquals(mapOf('A' to 2, 'T' to 1), SeqOps.baseCounts("aAt"))
+        assertEquals(SeqOps.baseCounts("aAt"), mapOf('A' to 2, 'T' to 1))
     }
 
     @Test
@@ -89,7 +89,7 @@ class SeqOpsTest {
 
     @Test
     fun findCircularWrap() {
-        val seq = Seq(bases = "TTCAAAG", topology = Topology.CIRCULAR) // wraps: AAG + TTC = AAGTTC? 
+        val seq = Seq(bases = "TTCAAAG", topology = Topology.CIRCULAR) // wraps: AAG + TTC = AAGTTC?
         // Site GAATTC wrapping: last bases + first. Use EcoRI spanning origin: ...G | AATTC...
         val wrap = Seq(bases = "AATTCXXXG", topology = Topology.CIRCULAR)
         val hits = SeqOps.find(wrap, "GAATTC")

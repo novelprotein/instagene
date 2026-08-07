@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#
+# InstaGene pre-commit hook: an automatic test gate.
+#
+# Runs the full test suite (which compiles every module) before a commit so
+# broken code cannot be committed. Also blocks trailing-whitespace errors.
+#
+# Install with:  ./scripts/install-hooks.sh   (or: git config core.hooksPath .githooks)
+# Bypass once with:  git commit --no-verify
+set -eu
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Recording a merge/revert/cherry-pick resolution: tests already ran on the
+# committed histories, so do not re-run the whole suite here.
+if [ -f "$ROOT/.git/MERGE_HEAD" ] || [ -f "$ROOT/.git/CHERRY_PICK_HEAD" ] || [ -f "$ROOT/.git/REVERT_HEAD" ]; then
+    exit 0
+fi
+
+echo "== InstaGene: running the full test suite before commit =="
+if ! ./gradlew test --console=plain; then
+    echo
+    echo "Commit blocked: the test suite failed."
+    echo "Fix the failures, then commit again (or bypass with: git commit --no-verify)."
+    exit 1
+fi
+
+if ! git diff --cached --check; then
+    echo
+    echo "Commit blocked: staged changes contain whitespace errors:"
+    git diff --cached --check || true
+    exit 1
+fi
+
+echo "== Commit OK: tests pass, no whitespace errors =="

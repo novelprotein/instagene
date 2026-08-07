@@ -52,7 +52,38 @@ Note the usage of the Gradle Wrapper (`./gradlew`). This is the suggested way to
 
 [Learn more about Gradle tasks](https://docs.gradle.org/current/userguide/command_line_interface.html#common_tasks).
 
-This project has the core engine sepeated from the modules which access features from it. This separates the computation tasks from the human interface. 
+### Automated testing (CI)
+
+Every push and pull request to `master` is checked automatically by the GitHub
+Actions workflow in `.github/workflows/ci.yml`: it builds **all** modules
+(`engine`, `app-cli`, `app-gui`, `app-web`, `tests`) and runs the **entire test
+suite** (including the headless Swing smoke tests) with `./gradlew build` on JDK
+26. Test reports are uploaded as a build artifact whenever a run finishes.
+
+Run the same gate locally at any time:
+
+* `./gradlew build` — compiles every module and runs every check and test.
+
+### Git rules (local hooks)
+
+The repository ships git hooks under `.githooks/` that run automatically on every
+commit, so broken code or sloppy messages cannot slip through:
+
+* `pre-commit` — runs `./gradlew test` (the full suite across all modules) and
+  rejects trailing-whitespace errors in the staged diff.
+* `commit-msg` — requires a non-empty, descriptive subject (placeholders such as
+  `wip`/`fix`/`stuff` are rejected; generated `Merge`/`Revert` lines pass).
+
+Install them once (they stay in version control, nothing is copied into
+`.git/hooks`):
+
+```bash
+./scripts/install-hooks.sh
+```
+
+Skip the gates for a single commit with `git commit --no-verify`.
+
+This project has the core engine sepeated from the modules which access features from it. This separates the computation tasks from the human interface.
 Each platform front-end is its own standalone application that shares
 the engine:
 

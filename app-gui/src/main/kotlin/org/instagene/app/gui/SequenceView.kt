@@ -368,7 +368,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         return doc.seq.features.firstOrNull { laneOf[it] == lane && index in it.start until it.end }
     }
 
-    override fun getToolTipText(event: MouseEvent): String? {
+    override fun getToolTipText(event: MouseEvent): String {
         val index = indexAt(event.x, event.y)
         val parts = ArrayList<String>()
         parts += "position ${index + 1}"

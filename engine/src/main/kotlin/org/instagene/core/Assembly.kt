@@ -234,7 +234,7 @@ object Assembly {
 
     /** Longest suffix of [a] that is also a prefix of [b], at least [minOverlap] long. */
     fun findOverlap(a: String, b: String, minOverlap: Int): Int? {
-        val max = minOf(a.length, b.length) - if (a === b) 1 else 0
+        val max = minOf(a.length, b.length) - if (a == b) 1 else 0
         for (len in max downTo minOverlap) {
             if (len <= 0) break
             if (a.regionMatches(a.length - len, b, 0, len, ignoreCase = true)) return len

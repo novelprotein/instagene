@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# InstaGene commit-msg hook: enforces a minimal, useful commit message.
+#
+# The subject must be non-empty and descriptive. Automated/placeholder
+# subjects ("wip", "fix", "stuff", ...) and merge/revert lines are allowed
+# through by convention where Git generates them itself.
+set -eu
+
+MSG_FILE="$1"
+SUBJECT="$(sed -n '1p' "$MSG_FILE")"
+
+case "$SUBJECT" in
+    Merge\ *|Revert\ *|fixup!\ *|squash!\ *) exit 0 ;;
+esac
+
+if [ -z "${SUBJECT// /}" ]; then
+    echo "Commit blocked: empty commit message. Provide a short summary of the change." >&2
+    exit 1
+fi
+
+if [ "${#SUBJECT}" -lt 8 ]; then
+    echo "Commit blocked: subject too short (${#SUBJECT} chars). Describe the change in a few words." >&2
+    exit 1
+fi
+
+if echo "$SUBJECT" | grep -Eqi '^(wip|fix|done|stuff|update|misc|tweaks?)$'; then
+    echo "Commit blocked: '$SUBJECT' is a placeholder. Use a short descriptive summary." >&2
+    exit 1
+fi
+
+exit 0

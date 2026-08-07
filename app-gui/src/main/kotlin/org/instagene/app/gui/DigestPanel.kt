@@ -184,7 +184,7 @@ class DigestPanel(
         override fun getColumnName(column: Int): String = columns[column]
 
         override fun getColumnClass(columnIndex: Int): Class<*> =
-            if (columnIndex == 0) java.lang.Boolean::class.java else String::class.java
+            if (columnIndex == 0) Boolean::class.java else String::class.java
 
         override fun isCellEditable(rowIndex: Int, columnIndex: Int): Boolean = columnIndex == 0
 

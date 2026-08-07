@@ -71,14 +71,14 @@ object SeqIO {
 
     /** Bundled example constructs, so the GUI and CLI have something to open immediately. */
     object Samples {
-        val PUC19_MCS: Seq = SeqIO.parse(
+        val PUC19_MCS: Seq = parse(
             """
             >pUC19_MCS_region polylinker of pUC19 (lacZalpha), linear
             GAATTCGAGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGGCATGCAAGCTT
             """.trimIndent()
         ).copy(name = "pUC19_MCS")
 
-        val GFP_CDS: Seq = SeqIO.parse(
+        val GFP_CDS: Seq = parse(
             """
             >GFP_CDS synthetic GFP-like open reading frame flanked by EcoRI and HinDIII
             GAATTCATGAGTAAAGGAGAAGAACTTTTCACTGGAGTTGTCCCAATTCTTGTTGAATTAGATGGTGATG
