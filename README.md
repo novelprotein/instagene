@@ -20,11 +20,11 @@ Tool created to read, edit, and save gene files.
 ### In Progress
 - [x] HTML5 GUI
 - [x] Graphical User Interface (GUI)
+- [x] Test suite
 - [ ] Harden IO
 - [ ] Editing Workflow
 - [ ] Make Cli production ready
 - [ ] Package and release
-- [x] Test suite
 - [ ] Library integration (using the engine as a reusable library)
 
 ### Planned

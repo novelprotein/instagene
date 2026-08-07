@@ -191,8 +191,8 @@ class GuiSmokeTest {
             digest.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
             digest.revealFragment(0)
             assertNotNull(revealed)
-            assertEquals(0, revealed!!.first)
-            assertEquals(seq.length, revealed!!.second)
+            assertEquals(0, revealed.first)
+            assertEquals(seq.length, revealed.second)
         }
     }
 
@@ -247,8 +247,8 @@ class GuiSmokeTest {
             digest.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
             digest.extractFragment(0)
             assertNotNull(extracted)
-            assertEquals(seq.length, extracted!!.length)
-            assertEquals(Topology.LINEAR, extracted!!.topology)
+            assertEquals(seq.length, extracted.length)
+            assertEquals(Topology.LINEAR, extracted.topology)
         }
     }
 
@@ -302,7 +302,7 @@ class GuiSmokeTest {
             panel.designAmplicon(0, 24)
             val primers = panel.lastPrimers()
             assertNotNull(primers)
-            assertTrue(primers!!.first.bases.isNotEmpty())
+            assertTrue(primers.first.bases.isNotEmpty())
             assertTrue(primers.second.bases.isNotEmpty())
             assertNotEquals(primers.first.name, primers.second.name)
             assertTrue(primers.first.gc in 0.0..100.0)

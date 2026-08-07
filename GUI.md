@@ -326,4 +326,3 @@ engine module — the same code the CLI and desktop GUI use.
 - [ ] Theme support (dark mode)
 - [ ] Tabbed multi-file editing
 - [ ] Hiding elements when not needed
-- 
