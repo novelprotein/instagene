@@ -1,9 +1,10 @@
 package org.instagene.core.io
 
-import org.instagene.core.Alphabet
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
+import java.io.Reader
+import java.io.StringReader
 
 /** FASTA reading and writing. */
 object Fasta {
@@ -11,11 +12,19 @@ object Fasta {
     const val LINE_WIDTH = 60
 
     /** Parses every record in [text]. Bare sequence text with no header is accepted. */
-    fun parseAll(text: String, defaultName: String = "sequence"): List<Seq> {
+    fun parseAll(text: String, defaultName: String = "sequence"): List<Seq> =
+        parseAllFrom(StringReader(text), defaultName)
+
+    /**
+     * Parses every record from [reader], line by line, so large files are never
+     * buffered whole. Each line is cleaned and upper-cased in a single pass into
+     * the shared builder, keeping peak memory near one copy of the sequence.
+     */
+    fun parseAllFrom(reader: Reader, defaultName: String = "sequence", capacityHint: Int = 1 shl 16): List<Seq> {
         val out = ArrayList<Seq>()
         var name: String? = null
         var description = ""
-        val bases = StringBuilder()
+        val bases = StringBuilder(capacityHint)
 
         fun flush() {
             if (name == null && bases.isEmpty()) return
@@ -24,16 +33,19 @@ object Fasta {
             description = ""
         }
 
-        for (rawLine in text.lineSequence()) {
+        reader.forEachLine { rawLine ->
             val line = rawLine.trim()
-            if (line.isEmpty()) continue
+            if (line.isEmpty()) return@forEachLine
             if (line.startsWith(">") || line.startsWith(";")) {
                 flush()
                 val header = line.substring(1).trim()
                 name = header.substringBefore(' ').ifEmpty { defaultName }
                 description = header.substringAfter(' ', "").trim()
             } else {
-                bases.append(Alphabet.clean(line))
+                for (c in line) {
+                    if (c.isWhitespace() || c.isDigit()) continue
+                    bases.append(c.uppercaseChar())
+                }
             }
         }
         flush()
@@ -46,12 +58,11 @@ object Fasta {
             ?: throw IllegalArgumentException("No sequence found in FASTA input")
 
     private fun build(name: String, description: String, bases: String): Seq {
-        val upper = bases.uppercase()
-        val kind = detectKind(upper)
+        val kind = detectKind(bases)
         // "circular" anywhere in the description is the de-facto convention for plasmid FASTA.
         val topology =
             if (description.contains("circular", ignoreCase = true)) Topology.CIRCULAR else Topology.LINEAR
-        return Seq(name, upper, kind, topology, emptyList(), description)
+        return Seq(name, bases, kind, topology, emptyList(), description)
     }
 
     fun detectKind(bases: String): SeqKind {

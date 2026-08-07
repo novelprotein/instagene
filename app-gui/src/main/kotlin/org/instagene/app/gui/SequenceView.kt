@@ -208,7 +208,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
                 g2.drawLine(x - charWidth / 2, top + markHeight, x - charWidth / 2, top + markHeight + lineHeight * trackCount())
             }
             val base = seq.bases[i]
-            g2.color = Palette.baseColor(base)
+            g2.color = Palette.charColor(base, seq.kind)
             g2.drawString(base.uppercaseChar().toString(), x, baseY)
         }
 
@@ -439,13 +439,21 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
     private fun handleKeyTyped(e: KeyEvent) {
         if (e.isControlDown || e.isMetaDown || e.isAltDown) return
         val c = e.keyChar.uppercaseChar()
-        if (!Alphabet.isNucleotide(c) || c == '-') return
+        val valid = if (doc.seq.kind == SeqKind.PROTEIN) {
+            Alphabet.isAminoAcid(c) && c != '-' && c != '*'
+        } else {
+            Alphabet.isNucleotide(c) && c != '-'
+        }
+        if (!valid) return
         insertBases(c.toString())
         e.consume()
     }
 
     fun insertBases(text: String) {
-        val clean = Alphabet.clean(text).uppercase().filter { Alphabet.isNucleotide(it) }
+        val clean = when (doc.seq.kind) {
+            SeqKind.PROTEIN -> Alphabet.clean(text).uppercase().filter { Alphabet.isAminoAcid(it) && it != '-' && it != '*' }
+            else -> Alphabet.clean(text).uppercase().filter { Alphabet.isNucleotide(it) }
+        }
         if (clean.isEmpty()) return
         val start = doc.selectionStart
         if (doc.hasSelection) {
@@ -482,12 +490,17 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         val unit = if (seq.kind == SeqKind.PROTEIN) "aa" else "bp"
         return buildString {
             append("${seq.length} $unit  ${seq.kind.name.lowercase()}  ${seq.topology.name.lowercase()}")
-            append("   GC ${"%.1f".format(SeqOps.gcContent(seq))}%")
+            if (seq.kind != SeqKind.PROTEIN) {
+                append("   GC ${"%.1f".format(SeqOps.gcContent(seq))}%")
+            }
             if (doc.hasSelection) {
                 val sel = doc.selectedBases
                 append("   |  selection ${doc.selectionStart + 1}..${doc.selectionEnd}")
-                append(" (${sel.length} $unit, GC ${"%.1f".format(SeqOps.gcContent(sel))}%")
-                if (sel.length in 1..60) append(", Tm ${"%.1f".format(SeqOps.meltingTemp(sel))} C")
+                append(" (${sel.length} $unit")
+                if (seq.kind != SeqKind.PROTEIN) {
+                    append(", GC ${"%.1f".format(SeqOps.gcContent(sel))}%")
+                    if (sel.length in 1..60) append(", Tm ${"%.1f".format(SeqOps.meltingTemp(sel))} C")
+                }
                 append(")")
             } else {
                 append("   |  caret ${doc.caret + 1}")

@@ -11,7 +11,7 @@ import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import org.instagene.core.io.SeqIO
-import java.io.File
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -26,7 +26,7 @@ object WebServer {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     @Serializable
-    data class OpenRequest(val path: String? = null, val sample: String? = null, val text: String? = null)
+    data class OpenRequest(val sample: String? = null, val text: String? = null)
 
     @Serializable
     data class OpRequest(val op: String, val seq: Seq, val args: Map<String, String> = emptyMap())
@@ -43,7 +43,8 @@ object WebServer {
      * Starts the server; a port of 0 binds an ephemeral port (used by tests).
      *
      * The web front-end opens only through this explicit call, and at most once
-     * per JVM — a second call while a server is running is rejected.
+     * per JVM — a second call while a server is running is rejected. The server
+     * binds the loopback interface, so it is reachable only from this machine.
      */
     fun start(port: Int = 8080): HttpServer {
         synchronized(this) {
@@ -51,7 +52,7 @@ object WebServer {
                 throw IllegalStateException("Web front-end already running on port ${it.address.port}")
             }
             val pool = Executors.newFixedThreadPool(4)
-            val server = HttpServer.create(InetSocketAddress(port), 0)
+            val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0)
             server.executor = pool
             server.createContext("/api/", ::handleApi)
             server.createContext("/", ::handleStatic)
@@ -78,11 +79,21 @@ object WebServer {
                 "/api/samples" -> if (exchange.requestMethod == "GET") {
                     respondJson(exchange, 200, json.encodeToString(SeqIO.Samples.ALL.map { it.name }))
                 } else {
-                    respondJson(exchange, 405, """{"error":"Method not allowed"}""")
+                    methodNotAllowed(exchange)
                 }
 
-                "/api/open" -> handleOpen(exchange)
-                "/api/op" -> handleOp(exchange)
+                "/api/open" -> if (exchange.requestMethod == "POST") {
+                    handleOpen(exchange)
+                } else {
+                    methodNotAllowed(exchange)
+                }
+
+                "/api/op" -> if (exchange.requestMethod == "POST") {
+                    handleOp(exchange)
+                } else {
+                    methodNotAllowed(exchange)
+                }
+
                 else -> respondJson(exchange, 404, """{"error":"Not found"}""")
             }
         } catch (e: Exception) {
@@ -90,16 +101,22 @@ object WebServer {
         }
     }
 
+    private fun methodNotAllowed(exchange: HttpExchange) {
+        exchange.responseHeaders.add("Allow", "POST")
+        respondJson(exchange, 405, """{"error":"Method not allowed"}""")
+    }
+
     private fun handleOpen(exchange: HttpExchange) {
-        val req = json.decodeFromString<OpenRequest>(readBody(exchange))
+        val req = try {
+            json.decodeFromString<OpenRequest>(readBody(exchange))
+        } catch (e: Exception) {
+            respondJson(exchange, 400, """{"error":"Bad request: ${e.message}"}""")
+            return
+        }
+        // Only bundled samples and pasted text are accepted: the server must not
+        // hand out arbitrary files from this machine.
         val seq = when {
             !req.text.isNullOrBlank() -> SeqIO.parse(req.text, "pasted")
-            !req.path.isNullOrBlank() -> {
-                val file = File(req.path)
-                if (!file.exists()) throw IllegalArgumentException("No such file: ${req.path}")
-                SeqIO.read(file)
-            }
-
             else -> SeqIO.Samples.ALL.firstOrNull { it.name.equals(req.sample, ignoreCase = true) }
                 ?: SeqIO.Samples.PUC19_MCS
         }
@@ -107,7 +124,12 @@ object WebServer {
     }
 
     private fun handleOp(exchange: HttpExchange) {
-        val req = json.decodeFromString<OpRequest>(readBody(exchange))
+        val req = try {
+            json.decodeFromString<OpRequest>(readBody(exchange))
+        } catch (e: Exception) {
+            respondJson(exchange, 400, """{"error":"Bad request: ${e.message}"}""")
+            return
+        }
         val result = try {
             runOp(req)
         } catch (e: Exception) {

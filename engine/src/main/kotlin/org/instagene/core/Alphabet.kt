@@ -14,6 +14,9 @@ object Alphabet {
     /** Every character accepted in a nucleotide sequence, including gaps. */
     const val NUCLEOTIDES = "ACGTURYSWKMBDHVN-"
 
+    /** Standard amino acids plus the common ambiguities B/Z/J, X and the stop codon. */
+    const val AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWYBZX*-"
+
     private val DNA_COMPLEMENT = mapOf(
         'A' to 'T', 'C' to 'G', 'G' to 'C', 'T' to 'A', 'U' to 'A',
         'R' to 'Y', 'Y' to 'R', 'S' to 'S', 'W' to 'W', 'K' to 'M', 'M' to 'K',
@@ -30,6 +33,8 @@ object Alphabet {
     )
 
     fun isNucleotide(c: Char): Boolean = NUCLEOTIDES.indexOf(c.uppercaseChar()) >= 0
+
+    fun isAminoAcid(c: Char): Boolean = AMINO_ACIDS.indexOf(c.uppercaseChar()) >= 0
 
     fun complement(c: Char, kind: SeqKind): Char {
         val upper = c.uppercaseChar()
@@ -50,6 +55,9 @@ object Alphabet {
         val baseSet = if (baseChar == 'N') "" else EXPANSION[baseChar] ?: return false
         return baseSet.any { it in codeSet }
     }
+
+    /** The concrete bases [symbol] stands for (uppercase), or null when unknown. */
+    fun expansion(symbol: Char): String? = EXPANSION[symbol.uppercaseChar()]
 
     /** Strips whitespace, digits and FASTA-style noise, leaving sequence characters. */
     fun clean(raw: String): String = raw.filter { !it.isWhitespace() && !it.isDigit() }

@@ -35,9 +35,43 @@ object SeqIO {
         else -> listOf(rawSequence(text, defaultName))
     }
 
-    fun read(file: File): Seq = parse(file.readText(), file.nameWithoutExtension)
+    /**
+     * Reads a file without buffering the whole thing in memory. The format is
+     * sniffed from the first non-blank line: GenBank stays on its text parser,
+     * while FASTA and bare sequence files stream line by line.
+     */
+    fun read(file: File): Seq {
+        val firstLine = firstNonBlankLine(file)
+        return if (firstLine.startsWith("LOCUS")) {
+            GenBank.parse(file.readText(), file.nameWithoutExtension)
+        } else {
+            file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
+                .firstOrNull() ?: throw IllegalArgumentException("No sequence found in ${file.name}")
+        }
+    }
 
-    fun readAll(file: File): List<Seq> = parseAll(file.readText(), file.nameWithoutExtension)
+    fun readAll(file: File): List<Seq> {
+        val firstLine = firstNonBlankLine(file)
+        return if (firstLine.startsWith("LOCUS")) {
+            splitGenBankRecords(file.readText()).map { GenBank.parse(it, file.nameWithoutExtension) }
+        } else {
+            file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
+        }
+    }
+
+    /** The first line of [file], or an empty string when the file is blank. */
+    private fun firstNonBlankLine(file: File): String {
+        file.bufferedReader().use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (line.isNotBlank()) return line
+            }
+        }
+        return ""
+    }
+
+    private fun capacityHintFor(file: File): Int =
+        file.length().toInt().coerceIn(64, Int.MAX_VALUE)
 
     fun write(seq: Seq, format: SeqFormat): String = when (format) {
         SeqFormat.FASTA -> Fasta.write(seq)

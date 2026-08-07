@@ -23,7 +23,32 @@ object Palette {
         'N' to Color(0x8A, 0x8A, 0x8A),
     )
 
+    /**
+     * Amino-acid colours grouped by side-chain chemistry, so a protein editor
+     * gets the same kind of at-a-glance signal the nucleotide one does.
+     */
+    private val AMINO_COLORS = mapOf(
+        'A' to Color(0x8A, 0x8F, 0x3C), 'V' to Color(0x8A, 0x8F, 0x3C), 'I' to Color(0x8A, 0x8F, 0x3C),
+        'L' to Color(0x8A, 0x8F, 0x3C), 'M' to Color(0x8A, 0x8F, 0x3C),
+        'F' to Color(0x6B, 0x7F, 0xC4), 'W' to Color(0x6B, 0x7F, 0xC4), 'Y' to Color(0x6B, 0x7F, 0xC4),
+        'S' to Color(0x3F, 0xA9, 0x6B), 'T' to Color(0x3F, 0xA9, 0x6B), 'N' to Color(0x3F, 0xA9, 0x6B),
+        'Q' to Color(0x3F, 0xA9, 0x6B), 'C' to Color(0x2A, 0xA1, 0xA8),
+        'K' to Color(0xC0, 0x39, 0x2B), 'R' to Color(0xC0, 0x39, 0x2B), 'H' to Color(0xD5, 0x53, 0x53),
+        'D' to Color(0xB0, 0x5C, 0xC4), 'E' to Color(0xB0, 0x5C, 0xC4),
+        'G' to Color(0xCC, 0x5F, 0x91), 'P' to Color(0xE0, 0x8A, 0x2E),
+        'B' to Color(0x77, 0x7A, 0x7D), 'Z' to Color(0x77, 0x7A, 0x7D),
+        'J' to Color(0x77, 0x7A, 0x7D), 'X' to Color(0x8A, 0x8A, 0x8A),
+        '*' to Color(0xC0, 0x39, 0x2B), '-' to Color(0x99, 0x9C, 0xA0),
+    )
+
     fun baseColor(c: Char): Color = BASE_COLORS[c.uppercaseChar()] ?: MUTED
+
+    /** Colour for an amino acid, falling back to the muted nucleotide grey. */
+    fun aminoColor(c: Char): Color = AMINO_COLORS[c.uppercaseChar()] ?: MUTED
+
+    /** Colour for a sequence character, chosen by [kind]. */
+    fun charColor(c: Char, kind: org.instagene.core.SeqKind): Color =
+        if (kind == org.instagene.core.SeqKind.PROTEIN) aminoColor(c) else baseColor(c)
 
     /** Distinct, readable fills for feature arcs and bars. */
     private val FEATURE_COLORS = listOf(

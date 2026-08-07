@@ -3,6 +3,7 @@ package org.instagene.app.gui
 import com.formdev.flatlaf.FlatDarkLaf
 import com.formdev.flatlaf.FlatLightLaf
 import java.awt.GraphicsEnvironment
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import kotlin.system.exitProcess
@@ -17,7 +18,7 @@ fun main(argv: Array<String>) {
     launch(argv.firstOrNull { !it.startsWith("-") })
 }
 
-private var launched = false
+private val launched = AtomicBoolean(false)
 
 /**
  * Opens the editor window on the Swing event thread.
@@ -26,10 +27,7 @@ private var launched = false
  * one JVM (e.g. from a double-click plus an IDE launch) is ignored.
  */
 fun launch(openPath: String?) {
-    synchronized(Any()) {
-        if (launched) return
-        launched = true
-    }
+    if (!launched.compareAndSet(false, true)) return
     SwingUtilities.invokeLater {
         setupTheme()
         InstaGeneWindow(openPath).isVisible = true

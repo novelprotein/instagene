@@ -16,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -96,7 +97,7 @@ class GuiSmokeTest {
             val view = SequenceView(doc)
             val digest = DigestPanel(doc, {}, { _, _ -> })
 
-            val status = StatusBar(view)
+            val status = StatusBar(doc, view)
             assertNotNull(status)
 
             val fileMenu: JMenu = FileMenu(null, doc).create()
@@ -112,16 +113,13 @@ class GuiSmokeTest {
             val toolsMenu = ToolsMenu(doc, digest).create()
             assertEquals("Tools", toolsMenu.text)
 
-            val undo = ToolbarActions.createUndoButton(doc)
-            val redo = ToolbarActions.createRedoButton(doc)
-            val selectAll = ToolbarActions.createSelectAllButton(doc)
-            assertNotNull(undo)
-            assertNotNull(redo)
-            assertNotNull(selectAll)
-
-            selectAll.doClick()
+            // The actions live in the menus now (no toolbar); clicking an item
+            // still drives the model.
+            menuItem(editMenu, "Select All").doClick()
             assertTrue(doc.hasSelection)
             assertEquals(doc.seq.length, doc.selectionEnd)
+            assertTrue(menuItem(editMenu, "Undo").isEnabled)
+            assertTrue(menuItem(editMenu, "Copy").isEnabled)
         }
     }
 
@@ -330,6 +328,33 @@ class GuiSmokeTest {
 
             doc.mutate("desc") { it.copy(description = "new") }
             assertEquals("new", panel.descriptionField.text)
+        }
+    }
+
+    @Test
+    fun primersPanelClearsStaleResultOnSequenceChange() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
+            val panel = PrimersPanel(doc)
+            panel.designAmplicon(0, 24)
+            assertNotNull(panel.lastPrimers())
+
+            // Editing the sequence invalidates the designed pair.
+            doc.mutate("edit") { it.insertAt(0, "G") }
+            assertNull(panel.lastPrimers())
+        }
+    }
+
+    @Test
+    fun primersPanelKeepsManuallyTypedRangeAcrossSelectionMoves() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
+            val panel = PrimersPanel(doc)
+
+            panel.typeRangeForTest(1, 10)
+            doc.select(15, 20)
+            // A manual range is user intent; selection moves must not clobber it.
+            assertEquals("1" to "10", panel.rangeFields())
         }
     }
 

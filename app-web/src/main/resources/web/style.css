@@ -61,6 +61,7 @@ button:hover { background: var(--accent); color: #fff; }
 
 .meta { margin-bottom: 8px; font-size: 14px; }
 .meta em { color: var(--muted); }
+.dirty { color: #ffb020; font-weight: 600; }
 
 #sequence {
   white-space: pre-wrap;

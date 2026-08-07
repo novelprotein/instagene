@@ -6,8 +6,11 @@ import javax.swing.JPanel
 
 /**
  * Status bar showing current sequence statistics and editing state.
+ *
+ * The text is recomputed on document changes rather than on a timer, so it is
+ * always current and costs nothing while idle.
  */
-class StatusBar(private val sequenceView: SequenceView) : JPanel(BorderLayout()) {
+class StatusBar(doc: SeqDocument, sequenceView: SequenceView) : JPanel(BorderLayout()) {
 
     private val statusLabel = JLabel("Ready")
 
@@ -16,10 +19,9 @@ class StatusBar(private val sequenceView: SequenceView) : JPanel(BorderLayout())
         background = java.awt.Color(240, 240, 240)
         border = javax.swing.BorderFactory.createEtchedBorder()
 
-        // Update status periodically
-        val timer = javax.swing.Timer(100) {
+        doc.addListener { _, _ ->
             statusLabel.text = sequenceView.statusText()
         }
-        timer.start()
+        statusLabel.text = sequenceView.statusText()
     }
 }

@@ -38,6 +38,9 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
 
     private var result: Pair<SeqOps.Primer, SeqOps.Primer>? = null
 
+    /** Set once the user types a From/To themselves; selection moves then stop clobbering it. */
+    private var rangeEdited = false
+
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
@@ -51,9 +54,16 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
         designButton.addActionListener { design() }
         copyButton.addActionListener { copyAsFasta() }
 
+        fromField.document.addDocumentListener(editListener())
+        toField.document.addDocumentListener(editListener())
+
         doc.addListener { _, reason ->
             when (reason) {
-                SeqDocument.Reason.SEQUENCE -> refresh()
+                SeqDocument.Reason.SEQUENCE -> {
+                    // The amplicon may have moved or changed; stale primers are misleading.
+                    result = null
+                    refresh()
+                }
                 SeqDocument.Reason.SELECTION -> {
                     fillFromSelection()
                     refresh()
@@ -64,6 +74,20 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
         fillFromSelection()
         refresh()
     }
+
+    private fun editListener() = object : javax.swing.event.DocumentListener {
+        override fun insertUpdate(e: javax.swing.event.DocumentEvent) = markEdited()
+        override fun removeUpdate(e: javax.swing.event.DocumentEvent) = markEdited()
+        override fun changedUpdate(e: javax.swing.event.DocumentEvent) = markEdited()
+    }
+
+    private fun markEdited() {
+        if (suppressEditTracking) return
+        rangeEdited = true
+    }
+
+    /** Set during programmatic field writes so they are not taken for manual edits. */
+    private var suppressEditTracking = false
 
     private fun buildControls(): JPanel = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -83,9 +107,15 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
     }
 
     private fun fillFromSelection() {
+        if (rangeEdited) return
         if (doc.hasSelection && doc.selectionEnd > doc.selectionStart) {
-            fromField.text = (doc.selectionStart + 1).toString()
-            toField.text = doc.selectionEnd.toString()
+            suppressEditTracking = true
+            try {
+                fromField.text = (doc.selectionStart + 1).toString()
+                toField.text = doc.selectionEnd.toString()
+            } finally {
+                suppressEditTracking = false
+            }
         }
     }
 
@@ -155,6 +185,15 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
 
     /** Exposed for tests: the last designed pair, or null. */
     fun lastPrimers(): Pair<SeqOps.Primer, SeqOps.Primer>? = result
+
+    /** Exposed for tests: sets From/To as if typed by the user (no primer design). */
+    fun typeRangeForTest(from: Int, to: Int) {
+        fromField.text = from.toString()
+        toField.text = to.toString()
+    }
+
+    /** Exposed for tests: the current From/To field text. */
+    fun rangeFields(): Pair<String, String> = fromField.text to toField.text
 
     private inner class PrimerTableModel : AbstractTableModel() {
         private val columns = arrayOf("Name", "Sequence", "Length", "Tm", "GC%")

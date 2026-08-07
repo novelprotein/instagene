@@ -2,6 +2,7 @@ package org.instagene.app.gui
 
 import org.instagene.core.SeqKind
 import java.awt.event.KeyEvent
+import javax.swing.JCheckBoxMenuItem
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.KeyStroke
@@ -11,8 +12,8 @@ class ViewMenu(
     private val sequenceView: SequenceView,
 ) {
 
-    private val complementItem = JMenuItem("Show Complement Strand")
-    private val translationItem = JMenuItem("Show Translation")
+    private val complementItem = JCheckBoxMenuItem("Show Complement Strand", false)
+    private val translationItem = JCheckBoxMenuItem("Show Translation", false)
 
     init {
         doc.addListener { _, reason ->
@@ -34,14 +35,12 @@ class ViewMenu(
 
             add(complementItem.apply {
                 addActionListener {
-                    sequenceView.showComplement = !sequenceView.showComplement
-                    text = if (sequenceView.showComplement) "Hide Complement Strand" else "Show Complement Strand"
+                    sequenceView.showComplement = isSelected
                 }
             })
             add(translationItem.apply {
                 addActionListener {
-                    sequenceView.showTranslation = !sequenceView.showTranslation
-                    text = if (sequenceView.showTranslation) "Hide Translation" else "Show Translation"
+                    sequenceView.showTranslation = isSelected
                 }
             })
             addSeparator()

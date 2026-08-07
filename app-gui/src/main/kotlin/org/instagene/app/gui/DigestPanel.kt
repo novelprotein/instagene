@@ -21,6 +21,7 @@ import javax.swing.JSplitPane
 import javax.swing.JTable
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
+import javax.swing.SwingUtilities
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.table.AbstractTableModel
@@ -48,6 +49,15 @@ class DigestPanel(
 
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
+
+    /** Per-enzyme cut counts for the current sequence; null until the async scan lands. */
+    private var countsCache: Map<Enzyme, Int>? = null
+
+    /** True while the cached counts do not match [SeqDocument.seq] (a recompute is in flight). */
+    private var countsStale = false
+
+    /** Bumped on every recompute so stale background results are discarded. */
+    private var countsVersion = 0
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
@@ -123,7 +133,13 @@ class DigestPanel(
         add(Box.createHorizontalStrut(4))
     }
 
-    /** Recomputes cut counts for the current sequence and repopulates the tables. */
+    /**
+     * Recomputes cut counts for the current sequence and repopulates the tables.
+     *
+     * The counts scan can be expensive for large sequences (every enzyme in the
+     * pool over the whole genome), so it runs on a background thread and the
+     * table only refills when the result lands. The EDT never waits on it.
+     */
     fun refresh() {
         val seq = doc.seq
         val dnaOnly = seq.kind == SeqKind.DNA
@@ -133,6 +149,9 @@ class DigestPanel(
                 checked.clear()
                 doc.setMappedEnzymes(emptyList())
             }
+            countsVersion++ // invalidate any in-flight scan
+            countsCache = null
+            countsStale = false
             visibleEnzymes = emptyList()
             fragments = emptyList()
             enzymeModel.fireTableDataChanged()
@@ -141,7 +160,15 @@ class DigestPanel(
                 (if (seq.kind == SeqKind.PROTEIN) " (this is a protein sequence)." else ".")
             return
         }
-        val counts = Digest.cutCounts(seq)
+        countsStale = true
+        rebuildEnzymeTable()
+        scheduleCutCounts(seq)
+        applySelection()
+    }
+
+    /** Repopulates the enzyme rows from the cached counts (possibly stale). */
+    private fun rebuildEnzymeTable() {
+        val counts = countsCache.orEmpty()
         val needle = filterField.text.trim().lowercase()
         visibleEnzymes = Enzymes.ALL.filter { enzyme ->
             val n = counts[enzyme] ?: 0
@@ -152,7 +179,20 @@ class DigestPanel(
         }
         enzymeModel.counts = counts
         enzymeModel.fireTableDataChanged()
-        applySelection()
+    }
+
+    /** Scans [seq] on a background thread; stale results for an older sequence are dropped. */
+    private fun scheduleCutCounts(seq: Seq) {
+        val version = ++countsVersion
+        Thread {
+            val counts = Digest.cutCounts(seq)
+            SwingUtilities.invokeLater {
+                if (version != countsVersion) return@invokeLater
+                countsCache = counts
+                countsStale = false
+                rebuildEnzymeTable()
+            }
+        }.apply { isDaemon = true; name = "DigestCutCounts" }.start()
     }
 
     private fun setInteractive(enabled: Boolean) {
@@ -166,6 +206,9 @@ class DigestPanel(
 
     /** Exposed for tests: whether digestion is available for the current sample. */
     fun isDigestEnabled(): Boolean = enzymeTable.isEnabled
+
+    /** Exposed for tests: the cut counts for the current sequence, or null while stale/unknown. */
+    fun computedCutCounts(): Map<Enzyme, Int>? = if (countsStale) null else countsCache
 
     /** The enzymes currently ticked in the table, in order. */
     fun selectedEnzymes(): List<Enzyme> = checked.toList()

@@ -73,41 +73,92 @@ object Digest {
         val out = ArrayList<CutSite>()
         val len = seq.length
         if (len == 0) return out
+        val bases = seq.bases
         val site = enzyme.site.uppercase()
         val siteLen = site.length
         // A linear molecule can only be cut where the whole site fits; a circular
         // one is scanned all the way round the origin.
         val limit = if (seq.isCircular) len else len - siteLen + 1
+        if (limit <= 0) return out
         val rcSite = site.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
+        // Only positions whose first base can begin a match are examined at all.
+        val firstBitmap = firstBaseBitmap(site.first())
+        val rcBitmap = if (enzyme.isPalindromic) firstBitmap else firstBaseBitmap(rcSite.first())
 
-        for (i in 0 until limit.coerceAtLeast(0)) {
-            val window = seq.sub(i, i + siteLen)
-            if (window.length < siteLen) continue
-            if (site.indices.all { Alphabet.matches(site[it], window[it]) }) {
-                out += CutSite(
-                    enzyme = enzyme,
-                    recognitionStart = i,
-                    topCut = normalize(i + enzyme.topCut, len, seq.isCircular),
-                    bottomCut = normalize(i + enzyme.bottomCut, len, seq.isCircular),
-                    strand = Strand.FORWARD,
-                )
-            } else if (!enzyme.isPalindromic &&
-                rcSite.indices.all { Alphabet.matches(rcSite[it], window[it]) }
-            ) {
-                out += CutSite(
-                    enzyme = enzyme,
-                    recognitionStart = i,
-                    topCut = normalize(i + siteLen - enzyme.bottomCut, len, seq.isCircular),
-                    bottomCut = normalize(i + siteLen - enzyme.topCut, len, seq.isCircular),
-                    strand = Strand.REVERSE,
-                )
+        if (seq.isCircular) {
+            for (i in 0 until len) {
+                val base = bases[i]
+                if (!bitmapsHit(firstBitmap, base)) continue
+                if (matchesAtCircular(bases, len, i, site)) {
+                    out += CutSite(
+                        enzyme = enzyme,
+                        recognitionStart = i,
+                        topCut = normalize(i + enzyme.topCut, len),
+                        bottomCut = normalize(i + enzyme.bottomCut, len),
+                        strand = Strand.FORWARD,
+                    )
+                } else if (!enzyme.isPalindromic &&
+                    bitmapsHit(rcBitmap, base) &&
+                    matchesAtCircular(bases, len, i, rcSite)
+                ) {
+                    out += CutSite(
+                        enzyme = enzyme,
+                        recognitionStart = i,
+                        topCut = normalize(i + siteLen - enzyme.bottomCut, len),
+                        bottomCut = normalize(i + siteLen - enzyme.topCut, len),
+                        strand = Strand.REVERSE,
+                    )
+                }
+            }
+        } else {
+            for (i in 0 until limit) {
+                val base = bases[i]
+                if (!bitmapsHit(firstBitmap, base)) continue
+                if (matchesAt(bases, i, site)) {
+                    out += CutSite(enzyme, i, i + enzyme.topCut, i + enzyme.bottomCut, Strand.FORWARD)
+                } else if (!enzyme.isPalindromic &&
+                    bitmapsHit(rcBitmap, base) &&
+                    matchesAt(bases, i, rcSite)
+                ) {
+                    out += CutSite(enzyme, i, i + siteLen - enzyme.bottomCut, i + siteLen - enzyme.topCut, Strand.REVERSE)
+                }
             }
         }
         return out.sortedBy { it.topCut }
     }
 
-    private fun normalize(pos: Int, len: Int, circular: Boolean): Int =
-        if (circular) Math.floorMod(pos, len) else pos.coerceIn(0, len)
+    /** True when [base] is an ASCII base whose first-symbol bitmap bit is set. */
+    private fun bitmapsHit(bitmap: BooleanArray, base: Char): Boolean {
+        val code = base.code
+        return code < 256 && bitmap[code]
+    }
+
+    private fun matchesAt(bases: String, start: Int, site: String): Boolean {
+        for (j in site.indices) {
+            if (!Alphabet.matches(site[j], bases[start + j])) return false
+        }
+        return true
+    }
+
+    private fun matchesAtCircular(bases: String, len: Int, start: Int, site: String): Boolean {
+        for (j in site.indices) {
+            if (!Alphabet.matches(site[j], bases[Math.floorMod(start + j, len)])) return false
+        }
+        return true
+    }
+
+    /** Positions (ASCII, upper and lower case) whose base can begin a match for [symbol]. */
+    private fun firstBaseBitmap(symbol: Char): BooleanArray {
+        val bitmap = BooleanArray(256)
+        val expansion = Alphabet.expansion(symbol) ?: return bitmap
+        for (c in expansion) {
+            bitmap[c.code] = true
+            bitmap[c.lowercaseChar().code] = true
+        }
+        return bitmap
+    }
+
+    private fun normalize(pos: Int, len: Int): Int = Math.floorMod(pos, len)
 
     /**
      * Digests [seq] with [enzymes].

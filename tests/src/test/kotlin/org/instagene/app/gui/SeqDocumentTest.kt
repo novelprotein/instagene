@@ -73,6 +73,29 @@ class SeqDocumentTest {
     }
 
     @Test
+    fun dirtyTracksSavedStateAcrossUndoRedo() {
+        val doc = SeqDocument(Seq(bases = "AAAA"))
+        assertFalse(doc.isDirty)
+
+        doc.mutate("insert") { it.insertAt(0, "TT") }
+        assertTrue(doc.isDirty)
+
+        // Undoing back to the saved state clears the dirty flag.
+        doc.undo()
+        assertFalse(doc.isDirty)
+        doc.redo()
+        assertTrue(doc.isDirty)
+
+        // Marking saved after a change resets the baseline.
+        doc.markSaved(File("/tmp/saved.fa"))
+        assertFalse(doc.isDirty)
+        doc.undo()
+        assertTrue(doc.isDirty)
+        doc.redo()
+        assertFalse(doc.isDirty)
+    }
+
+    @Test
     fun resetClearsHistory() {
         val doc = SeqDocument(Seq(bases = "AAAA"))
         doc.mutate("x") { it.insertAt(0, "T") }

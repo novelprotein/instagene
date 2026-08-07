@@ -79,9 +79,16 @@ class SeqOpsTest {
         val iupac = SeqOps.find(seq, "GAATTY")
         assertEquals(1, iupac.size)
 
-        val both = SeqOps.find(seq, "GAATTC", bothStrands = true)
+        // Non-palindromic pattern: reverse-strand hits are reported at their forward coordinates.
+        val nonPalindromic = Seq(bases = "XXCATGCXXGCATGXX")
+        val both = SeqOps.find(nonPalindromic, "CATGC", bothStrands = true)
         assertTrue(both.any { it.second == Strand.FORWARD })
         assertTrue(both.any { it.second == Strand.REVERSE })
+
+        // A palindromic pattern is its own reverse complement; every forward hit is
+        // the same physical site, so it must not be double-reported as REVERSE.
+        val palindrome = SeqOps.find(seq, "GAATTC", bothStrands = true)
+        assertTrue(palindrome.none { it.second == Strand.REVERSE })
 
         assertTrue(SeqOps.find(seq, "").isEmpty())
         assertTrue(SeqOps.find(Seq(bases = ""), "A").isEmpty())
@@ -106,6 +113,19 @@ class SeqOpsTest {
         assertTrue(fwd.name.endsWith("_F"))
         assertTrue(rev.name.endsWith("_R"))
         assertFailsWith<IllegalArgumentException> { SeqOps.designPrimers(seq, 10, 10) }
+    }
+
+    @Test
+    fun designPrimersReversePrimerNeverReachesUpstreamOfAmpliconStart() {
+        // A short amplicon whose start is not at 0: the reverse primer must anneal
+        // inside `[start, end)`, never extend before `start`.
+        val seq = Seq(name = "short", bases = "CGTACCCCCCCCCCCCCCCCCCGTAC")
+        val (_, rev) = SeqOps.designPrimers(seq, 3, 12, targetTm = 60.0)
+        assertTrue(rev.bases.length in 9..12)
+        // rev.bases is the reverse-complement of bases `start..start+len`, so its
+        // forward-strand coordinates must stay >= start.
+        val revLen = rev.bases.length
+        assertTrue(revLen <= 12 - 3)
     }
 
     @Test

@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { seq: null };
+const state = { seq: null, savedSeq: null };
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,6 +33,10 @@ function gcPercent(bases) {
   return (gc * 100 / bases.length).toFixed(1);
 }
 
+function isDirty() {
+  return state.seq !== null && state.savedSeq !== null && state.seq !== state.savedSeq;
+}
+
 function render() {
   const s = state.seq;
   if (!s) {
@@ -40,7 +44,8 @@ function render() {
     return;
   }
   $("meta").innerHTML =
-    `<strong>${escapeHtml(s.name)}</strong> — ${s.length} bp, ${s.kind.toLowerCase()}, ${s.topology.toLowerCase()}` +
+    `<strong>${escapeHtml(s.name)}</strong>${isDirty() ? ' <span class="dirty">* modified</span>' : ""}` +
+    ` — ${s.length} bp, ${s.kind.toLowerCase()}, ${s.topology.toLowerCase()}` +
     (s.description ? ` <em>${escapeHtml(s.description)}</em>` : "") +
     ` &nbsp; GC ${gcPercent(s.bases)}%`;
   $("sequence").textContent = s.bases ? s.bases.match(/.{1,60}/g).join("\n") : "";
@@ -50,7 +55,7 @@ function render() {
     li.textContent = `${f.name}  ${f.type}  ${f.start + 1}..${f.end}  ${f.strand}`;
     $("features").appendChild(li);
   }
-  setStatus(`Loaded ${s.name} (${s.length} bp)`);
+  setStatus(isDirty() ? "Sequence has unsaved changes." : `Loaded ${s.name} (${s.length} bp)`);
 }
 
 function showOutput(text) {
@@ -83,6 +88,7 @@ async function init() {
 
   $("loadSample").onclick = async () => {
     state.seq = await api("/api/open", { sample: $("sample").value });
+    state.savedSeq = state.seq;
     render();
   };
 
@@ -92,6 +98,7 @@ async function init() {
     if (!file) return;
     const text = await file.text();
     state.seq = await api("/api/open", { text });
+    state.savedSeq = state.seq;
     render();
   };
 
@@ -99,6 +106,7 @@ async function init() {
     const text = $("paste").value.trim();
     if (!text) return;
     state.seq = await api("/api/open", { text });
+    state.savedSeq = state.seq;
     render();
   };
 
@@ -138,7 +146,23 @@ async function init() {
     setStatus("Copied FASTA to clipboard.");
   };
 
+  $("save").onclick = () => {
+    const s = state.seq;
+    if (!s) return;
+    const fasta = ">" + s.name + "\n" + s.bases.match(/.{1,60}/g).join("\n") + "\n";
+    const blob = new Blob([fasta], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (s.name.replace(/[^\w.-]+/g, "_") || "sequence") + ".fasta";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    state.savedSeq = state.seq;
+    render();
+    setStatus("Saved " + a.download);
+  };
+
   state.seq = await api("/api/open", { sample: samples[0] });
+  state.savedSeq = state.seq;
   render();
 }
 

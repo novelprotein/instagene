@@ -29,6 +29,9 @@ class SeqDocument(initial: Seq, file: File? = null) {
     var isDirty: Boolean = false
         private set
 
+    /** The sequence as of the last save/load: the baseline `isDirty` is compared against. */
+    private var savedSeq: Seq = initial
+
     /** Caret position, in `0..length`. */
     var caret: Int = 0
         private set
@@ -85,7 +88,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
         while (undoStack.size > historyLimit) undoStack.removeFirst()
         redoStack.clear()
         seq = next
-        isDirty = true
+        refreshDirty()
         clampSelection()
         refreshCutSites()
         notify(Reason.SEQUENCE)
@@ -96,6 +99,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
         undoStack.clear()
         redoStack.clear()
         seq = next
+        savedSeq = next
         file = newFile
         isDirty = dirty
         caret = 0
@@ -106,6 +110,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
 
     fun markSaved(savedTo: File) {
         file = savedTo
+        savedSeq = seq
         isDirty = false
         notify(Reason.SEQUENCE)
     }
@@ -117,7 +122,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
         val (label, previous) = undoStack.removeLastOrNull() ?: return
         redoStack.addLast(label to seq)
         seq = previous
-        isDirty = true
+        refreshDirty()
         clampSelection()
         refreshCutSites()
         notify(Reason.SEQUENCE)
@@ -127,10 +132,15 @@ class SeqDocument(initial: Seq, file: File? = null) {
         val (label, next) = redoStack.removeLastOrNull() ?: return
         undoStack.addLast(label to seq)
         seq = next
-        isDirty = true
+        refreshDirty()
         clampSelection()
         refreshCutSites()
         notify(Reason.SEQUENCE)
+    }
+
+    /** Dirty means "differs from the last saved or loaded state", not "edited at all". */
+    private fun refreshDirty() {
+        isDirty = seq != savedSeq
     }
 
     // -------------------------------------------------------------- selection

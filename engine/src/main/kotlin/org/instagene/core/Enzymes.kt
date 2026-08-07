@@ -102,7 +102,15 @@ object Enzymes {
 
     private val byName = ALL.associateBy { it.name.lowercase() }
 
-    fun find(name: String): Enzyme? = byName[name.trim().lowercase()]
+    /** Alternate spellings that resolve to a canonical entry, e.g. `HindIII` for `HinDIII`. */
+    private val aliases = mapOf(
+        "hindiii" to "hindiii",
+    )
+
+    fun find(name: String): Enzyme? {
+        val key = name.trim().lowercase()
+        return byName[key] ?: aliases[key]?.let { byName[it] }
+    }
 
     fun require(name: String): Enzyme =
         find(name) ?: throw IllegalArgumentException(

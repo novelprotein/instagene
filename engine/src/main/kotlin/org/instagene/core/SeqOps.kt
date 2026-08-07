@@ -75,7 +75,11 @@ object SeqOps {
     /** GC content as a percentage; degenerate S counts as GC, N does not. */
     fun gcContent(bases: String): Double {
         if (bases.isEmpty()) return 0.0
-        val gc = bases.count { it.uppercaseChar() in "GCS" }
+        var gc = 0
+        for (c in bases) {
+            val u = c.uppercaseChar()
+            if (u == 'G' || u == 'C' || u == 'S') gc++
+        }
         return gc * 100.0 / bases.length
     }
 
@@ -89,13 +93,19 @@ object SeqOps {
      *
      * Uses the Wallace rule below 14 nt and the salt-adjusted GC formula above it —
      * both are the rules of thumb primer design actually uses at the bench.
+     * RNA uracil counts as thymine, so the formula works for RNA oligos too.
      */
     fun meltingTemp(bases: String, saltMolar: Double = 0.05): Double {
-        val clean = bases.uppercase().filter { it in "ACGT" }
-        val n = clean.length
+        var n = 0
+        var at = 0
+        var gc = 0
+        for (c in bases) {
+            when (c.uppercaseChar()) {
+                'A', 'T', 'U' -> { n++; at++ }
+                'C', 'G' -> { n++; gc++ }
+            }
+        }
         if (n == 0) return 0.0
-        val at = clean.count { it == 'A' || it == 'T' }
-        val gc = n - at
         return if (n < 14) {
             2.0 * at + 4.0 * gc
         } else {
@@ -103,14 +113,47 @@ object SeqOps {
         }
     }
 
-    fun molecularWeightDaltons(seq: Seq): Double {
-        val weights = when (seq.kind) {
-            SeqKind.RNA -> mapOf('A' to 329.2, 'U' to 306.2, 'C' to 305.2, 'G' to 345.2)
-            else -> mapOf('A' to 313.2, 'T' to 304.2, 'C' to 289.2, 'G' to 329.2)
+    /** Average residue masses (Da) for the standard amino acids. */
+    private val AMINO_WEIGHTS = mapOf(
+        'A' to 71.08, 'C' to 103.15, 'D' to 115.09, 'E' to 129.12, 'F' to 147.18,
+        'G' to 57.05, 'H' to 137.14, 'I' to 113.16, 'K' to 128.17, 'L' to 113.16,
+        'M' to 131.19, 'N' to 114.10, 'P' to 97.12, 'Q' to 128.13, 'R' to 156.19,
+        'S' to 87.08, 'T' to 101.11, 'V' to 99.13, 'W' to 186.21, 'Y' to 163.18,
+    )
+
+    /** Case-insensitive residue-mass lookup indexed by ASCII char code, so a 70 Mbp scan avoids map churn. */
+    private val AMINO_WEIGHT_TABLE = weightTable(AMINO_WEIGHTS)
+    private val DNA_WEIGHT_TABLE = weightTable(mapOf('A' to 313.2, 'T' to 304.2, 'C' to 289.2, 'G' to 329.2))
+    private val RNA_WEIGHT_TABLE = weightTable(mapOf('A' to 329.2, 'U' to 306.2, 'C' to 305.2, 'G' to 345.2))
+
+    private fun weightTable(weights: Map<Char, Double>): DoubleArray =
+        DoubleArray(256).apply {
+            for ((c, w) in weights) {
+                this[c.code] = w
+                this[c.lowercaseChar().code] = w
+            }
         }
-        val sum = seq.bases.uppercase().sumOf { weights[it] ?: 0.0 }
-        // Linear single strands carry a free 5' phosphate correction.
-        return if (sum == 0.0) 0.0 else sum - 61.96
+
+    fun molecularWeightDaltons(seq: Seq): Double = when (seq.kind) {
+        SeqKind.PROTEIN -> {
+            var residues = 0.0
+            for (c in seq.bases) if (c.code < 256) residues += AMINO_WEIGHT_TABLE[c.code]
+            if (residues == 0.0) 0.0 else residues + 18.02 // + water
+        }
+
+        SeqKind.RNA -> {
+            var sum = 0.0
+            for (c in seq.bases) if (c.code < 256) sum += RNA_WEIGHT_TABLE[c.code]
+            // Linear single strands carry a free 5' phosphate correction.
+            if (sum == 0.0) 0.0 else sum - 61.96
+        }
+
+        else -> {
+            var sum = 0.0
+            for (c in seq.bases) if (c.code < 256) sum += DNA_WEIGHT_TABLE[c.code]
+            // Linear single strands carry a free 5' phosphate correction.
+            if (sum == 0.0) 0.0 else sum - 61.96
+        }
     }
 
     fun codonUsage(bases: String, frame: Int = 0): Map<String, Int> {
@@ -195,7 +238,10 @@ object SeqOps {
         // Reverse-strand hits are reported against forward coordinates.
         val forwardStart = if (strand == Strand.FORWARD) start else len - end
         val normStart = if (circular) Math.floorMod(forwardStart, len) else forwardStart.coerceAtLeast(0)
-        return Orf(normStart, normStart + (end - start), strand, frame, protein)
+        // A circular ORF can never span more than the whole molecule; the doubled
+        // search string otherwise lets a stop past the origin inflate the end past `len`.
+        val length = if (circular) (end - start).coerceAtMost(len) else end - start
+        return Orf(normStart, normStart + length, strand, frame, protein)
     }
 
     // ---------------------------------------------------------------- searching
@@ -216,11 +262,15 @@ object SeqOps {
         }
         if (bothStrands) {
             val rcPattern = p.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
-            for (i in 0 until scanLimit.coerceAtLeast(0)) {
-                val window = seq.sub(i, i + p.length)
-                if (window.length < p.length) continue
-                if (p.indices.all { Alphabet.matches(rcPattern[it], window[it]) }) {
-                    hits += i to Strand.REVERSE
+            // A palindromic pattern would be found again on the reverse strand at the
+            // very same positions; skip it to avoid double-reporting each hit.
+            if (rcPattern != p) {
+                for (i in 0 until scanLimit.coerceAtLeast(0)) {
+                    val window = seq.sub(i, i + p.length)
+                    if (window.length < p.length) continue
+                    if (p.indices.all { Alphabet.matches(rcPattern[it], window[it]) }) {
+                        hits += i to Strand.REVERSE
+                    }
                 }
             }
         }
@@ -246,8 +296,10 @@ object SeqOps {
         lengthRange: IntRange = 18..30,
     ): Pair<Primer, Primer> {
         require(end > start) { "Amplicon end must follow its start" }
+        // The reverse primer anneals within the last `lengthRange.last` bases of the
+        // amplicon; never reach back before `start` (that would prime upstream of it).
         val fwd = bestPrimer("${seq.name}_F", seq.sub(start, end.coerceAtMost(start + lengthRange.last)), targetTm, lengthRange)
-        val revTemplate = seq.subSeq(maxOf(0, end - lengthRange.last), end).reverseComplement()
+        val revTemplate = seq.subSeq(maxOf(start, end - lengthRange.last), end).reverseComplement()
         val rev = bestPrimer("${seq.name}_R", revTemplate.bases, targetTm, lengthRange)
         return fwd to rev
     }

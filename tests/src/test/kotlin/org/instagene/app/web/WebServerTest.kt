@@ -5,6 +5,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class WebServerTest {
@@ -25,6 +26,64 @@ class WebServerTest {
                 .build(),
             HttpResponse.BodyHandlers.ofString(),
         ).body()
+
+    private fun statusOf(request: HttpRequest): Int =
+        client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()
+
+    @Test
+    fun rejectsBadRequestsAndWrongMethods() {
+        val server = WebServer.start(0)
+        try {
+            val base = "http://localhost:${server.address.port}"
+
+            // Malformed JSON on both POST endpoints is a 400, not a 500.
+            assertEquals(400, statusOf(HttpRequest.newBuilder(URI("$base/api/open"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{not json")).build()))
+            assertEquals(400, statusOf(HttpRequest.newBuilder(URI("$base/api/op"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{not json")).build()))
+
+            // GET is not allowed where POST is required (and vice versa).
+            assertEquals(405, statusOf(HttpRequest.newBuilder(URI("$base/api/open")).GET().build()))
+            assertEquals(405, statusOf(HttpRequest.newBuilder(URI("$base/api/op")).GET().build()))
+            assertEquals(405, statusOf(HttpRequest.newBuilder(URI("$base/api/samples"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{}")).build()))
+        } finally {
+            WebServer.stop()
+        }
+    }
+
+    @Test
+    fun openIgnoresArbitraryPathAndNeverReadsFiles() {
+        val server = WebServer.start(0)
+        try {
+            val base = "http://localhost:${server.address.port}"
+            // The old `path` option (arbitrary file read) is gone: the request is
+            // accepted but falls back to the sample, and no file is returned.
+            val resp = post("$base/api/open", """{"path":"/etc/hostname","sample":"PUC19_MCS"}""")
+            assertTrue(resp.contains("\"bases\""))
+            assertTrue(!resp.contains("localhost") || resp.contains("\"name\":\"pUC19_MCS\""))
+
+            // Missing sample (no sample, no text) still resolves to the default sample.
+            val empty = post("$base/api/open", """{}""")
+            assertTrue(empty.contains("\"bases\""))
+        } finally {
+            WebServer.stop()
+        }
+    }
+
+    @Test
+    fun bindsLoopbackOnly() {
+        val server = WebServer.start(0)
+        try {
+            val address = server.address.address
+            assertTrue(address.isLoopbackAddress, "Expected loopback bind, got ${address.hostAddress}")
+        } finally {
+            WebServer.stop()
+        }
+    }
 
     @Test
     fun servesIndexAndSamples() {

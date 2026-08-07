@@ -5,13 +5,11 @@ import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
 import java.awt.GraphicsEnvironment
 import java.io.File
-import javax.swing.AbstractButton
 import javax.swing.JFrame
 import javax.swing.JMenuBar
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTabbedPane
-import javax.swing.JToolBar
 
 /**
  * The entire editor UI, built as a plain [JPanel] so it can be constructed and
@@ -34,7 +32,6 @@ class InstaGeneContent(
     val toolTabs = JTabbedPane()
     val menuBar: JMenuBar
     val statusBar: StatusBar
-    private lateinit var openButton: AbstractButton
 
     init {
         val initialSeq = if (openPath != null && File(openPath).exists()) {
@@ -54,18 +51,9 @@ class InstaGeneContent(
         infoPanel = InfoPanel(doc)
 
         menuBar = createMenuBar(owner)
-        statusBar = StatusBar(sequenceView)
-        add(createToolbar(owner), BorderLayout.NORTH)
+        statusBar = StatusBar(doc, sequenceView)
         add(createMainContent(), BorderLayout.CENTER)
         add(statusBar, BorderLayout.SOUTH)
-
-        // Listen for file changes to update open button visibility
-        doc.addListener { _, reason ->
-            if (reason == SeqDocument.Reason.SEQUENCE) {
-                updateOpenButtonVisibility()
-            }
-        }
-        updateOpenButtonVisibility()
     }
 
     /** Opens the extracted fragment as a fresh editor window. */
@@ -79,34 +67,12 @@ class InstaGeneContent(
         window.isVisible = true
     }
 
-    private fun updateOpenButtonVisibility() {
-        openButton.isVisible = doc.file == null
-    }
-
     private fun createMenuBar(owner: JFrame?): JMenuBar {
         return JMenuBar().apply {
             add(FileMenu(owner, doc).create())
             add(EditMenu(owner, doc, sequenceView).create())
             add(ViewMenu(doc, sequenceView).create())
             add(ToolsMenu(doc, digestPanel).create())
-        }
-    }
-
-    private fun createToolbar(owner: JFrame?): JToolBar {
-        return JToolBar().apply {
-            isFloatable = false
-            openButton = ToolbarActions.createFileOpenButton(owner, doc)
-            add(openButton)
-            add(ToolbarActions.createFileSaveButton(owner, doc))
-            addSeparator()
-            add(ToolbarActions.createUndoButton(doc))
-            add(ToolbarActions.createRedoButton(doc))
-            addSeparator()
-            add(ToolbarActions.createSelectAllButton(doc))
-            add(ToolbarActions.createCopyButton(sequenceView))
-            add(ToolbarActions.createPasteButton(sequenceView))
-            addSeparator()
-            add(ToolbarActions.createFontSizeControls(sequenceView))
         }
     }
 
