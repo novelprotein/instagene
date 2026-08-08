@@ -19,12 +19,22 @@ object Fasta {
      * Parses every record from [reader], line by line, so large files are never
      * buffered whole. Each line is cleaned and upper-cased in a single pass into
      * the shared builder, keeping peak memory near one copy of the sequence.
+     *
+     * When [stopAfterFirstRecord] is true the reader is left exactly after the
+     * first record's last line, so a multi-contig genome file only ever buffers
+     * one contig instead of every record in the file.
      */
-    fun parseAllFrom(reader: Reader, defaultName: String = "sequence", capacityHint: Int = 1 shl 16): List<Seq> {
+    fun parseAllFrom(
+        reader: Reader,
+        defaultName: String = "sequence",
+        capacityHint: Int = 1 shl 16,
+        stopAfterFirstRecord: Boolean = false,
+    ): List<Seq> {
         val out = ArrayList<Seq>()
         var name: String? = null
         var description = ""
         val bases = StringBuilder(capacityHint)
+        var stoppedEarly = false
 
         fun flush() {
             if (name == null && bases.isEmpty()) return
@@ -33,22 +43,29 @@ object Fasta {
             description = ""
         }
 
-        reader.forEachLine { rawLine ->
-            val line = rawLine.trim()
-            if (line.isEmpty()) return@forEachLine
-            if (line.startsWith(">") || line.startsWith(";")) {
-                flush()
-                val header = line.substring(1).trim()
-                name = header.substringBefore(' ').ifEmpty { defaultName }
-                description = header.substringAfter(' ', "").trim()
-            } else {
-                for (c in line) {
-                    if (c.isWhitespace() || c.isDigit()) continue
-                    bases.append(c.uppercaseChar())
+        reader.useLines { lines ->
+            for (rawLine in lines) {
+                val line = rawLine.trim()
+                if (line.isEmpty()) continue
+                if (line.startsWith(">") || line.startsWith(";")) {
+                    if (stopAfterFirstRecord && (name != null || bases.isNotEmpty())) {
+                        flush()
+                        stoppedEarly = true
+                        return@useLines
+                    }
+                    flush()
+                    val header = line.substring(1).trim()
+                    name = header.substringBefore(' ').ifEmpty { defaultName }
+                    description = header.substringAfter(' ', "").trim()
+                } else {
+                    for (c in line) {
+                        if (c.isWhitespace() || c.isDigit()) continue
+                        bases.append(c.uppercaseChar())
+                    }
                 }
             }
         }
-        flush()
+        if (!stoppedEarly) flush()
         return out
     }
 

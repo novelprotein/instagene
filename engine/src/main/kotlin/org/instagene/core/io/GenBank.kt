@@ -6,6 +6,8 @@ import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 import org.instagene.core.Topology
+import java.io.Reader
+import java.io.StringReader
 
 /**
  * A pragmatic GenBank flat-file reader/writer.
@@ -24,7 +26,15 @@ object GenBank {
 
     // ------------------------------------------------------------------ reading
 
-    fun parse(text: String, defaultName: String = "sequence"): Seq {
+    fun parse(text: String, defaultName: String = "sequence"): Seq =
+        parseFrom(StringReader(text), defaultName)
+
+    /**
+     * Parses one GenBank record from [reader], line by line, so a large genome
+     * flat file is never buffered whole. The record's sequence is accumulated
+     * in a single builder; the LOCUS/FEATURES headers stay cheap.
+     */
+    fun parseFrom(reader: Reader, defaultName: String = "sequence"): Seq {
         var name = defaultName
         var description = ""
         var topology = Topology.LINEAR
@@ -42,7 +52,7 @@ object GenBank {
             pendingLocation = null
             val strand = if (loc.contains("complement")) Strand.REVERSE else Strand.FORWARD
             val label = qualifiers["label"] ?: qualifiers["gene"] ?: qualifiers["product"]
-                ?: qualifiers["note"] ?: pendingType
+            ?: qualifiers["note"] ?: pendingType
             for ((start, end) in parseLocations(loc)) {
                 features += Feature(
                     name = label,
@@ -56,67 +66,69 @@ object GenBank {
             qualifiers.clear()
         }
 
-        for (raw in text.lines()) {
-            val line = raw.trimEnd()
-            if (line.isBlank()) continue
-            when {
-                line.startsWith("LOCUS") -> {
-                    section = "LOCUS"
-                    val parts = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
-                    if (parts.size > 1) name = parts[1]
-                    if (line.contains("circular", ignoreCase = true)) topology = Topology.CIRCULAR
-                    if (Regex("\\bRNA\\b").containsMatchIn(line)) kind = SeqKind.RNA
-                }
+        reader.useLines { lines ->
+            for (raw in lines) {
+                val line = raw.trimEnd()
+                if (line.isBlank()) continue
+                when {
+                    line.startsWith("LOCUS") -> {
+                        section = "LOCUS"
+                        val parts = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
+                        if (parts.size > 1) name = parts[1]
+                        if (line.contains("circular", ignoreCase = true)) topology = Topology.CIRCULAR
+                        if (Regex("\\bRNA\\b").containsMatchIn(line)) kind = SeqKind.RNA
+                    }
 
-                line.startsWith("DEFINITION") -> {
-                    section = "DEFINITION"
-                    description = line.removePrefix("DEFINITION").trim()
-                }
+                    line.startsWith("DEFINITION") -> {
+                        section = "DEFINITION"
+                        description = line.removePrefix("DEFINITION").trim()
+                    }
 
-                line.startsWith("FEATURES") -> {
-                    section = "FEATURES"
-                }
+                    line.startsWith("FEATURES") -> {
+                        section = "FEATURES"
+                    }
 
-                line.startsWith("ORIGIN") -> {
-                    flushFeature()
-                    section = "ORIGIN"
-                }
+                    line.startsWith("ORIGIN") -> {
+                        flushFeature()
+                        section = "ORIGIN"
+                    }
 
-                line.startsWith("//") -> {
-                    flushFeature()
-                    section = ""
-                }
+                    line.startsWith("//") -> {
+                        flushFeature()
+                        section = ""
+                    }
 
-                section == "ORIGIN" -> bases.append(Alphabet.clean(line))
+                    section == "ORIGIN" -> bases.append(Alphabet.clean(line))
 
-                section == "FEATURES" -> {
-                    val trimmed = line.trim()
-                    val isQualifier = trimmed.startsWith("/")
-                    val isNewFeature = line.length > 21 && line[5] != ' ' && !isQualifier
-                    when {
-                        isNewFeature -> {
-                            flushFeature()
-                            pendingType = line.substring(5, 21).trim()
-                            pendingLocation = line.substring(21).trim()
-                        }
+                    section == "FEATURES" -> {
+                        val trimmed = line.trim()
+                        val isQualifier = trimmed.startsWith("/")
+                        val isNewFeature = line.length > 21 && line[5] != ' ' && !isQualifier
+                        when {
+                            isNewFeature -> {
+                                flushFeature()
+                                pendingType = line.substring(5, 21).trim()
+                                pendingLocation = line.substring(21).trim()
+                            }
 
-                        isQualifier -> {
-                            val body = trimmed.removePrefix("/")
-                            val key = body.substringBefore('=')
-                            val value = body.substringAfter('=', "").trim().trim('"')
-                            qualifiers[key] = value
-                        }
+                            isQualifier -> {
+                                val body = trimmed.removePrefix("/")
+                                val key = body.substringBefore('=')
+                                val value = body.substringAfter('=', "").trim().trim('"')
+                                qualifiers[key] = value
+                            }
 
-                        qualifiers.isEmpty() -> {
-                            // Continuation of a location that wrapped onto the next line.
-                            val current = pendingLocation
-                            if (current != null) pendingLocation = current + trimmed
+                            qualifiers.isEmpty() -> {
+                                // Continuation of a location that wrapped onto the next line.
+                                val current = pendingLocation
+                                if (current != null) pendingLocation = current + trimmed
+                            }
                         }
                     }
-                }
 
-                section == "DEFINITION" && line.startsWith(" ") ->
-                    description += " " + line.trim()
+                    section == "DEFINITION" && line.startsWith(" ") ->
+                        description += " " + line.trim()
+                }
             }
         }
 

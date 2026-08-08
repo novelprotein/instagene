@@ -172,6 +172,17 @@ class SeqDocument(initial: Seq, file: File? = null) {
         notify(Reason.ENZYMES)
     }
 
+    /**
+     * Maps [enzymes] and applies a caller-computed set of [sites] directly,
+     * skipping the synchronous whole-sequence rescan. Lets the digest panel
+     * compute cut sites off the event thread for very large sequences.
+     */
+    fun applyMappedEnzymes(enzymes: List<Enzyme>, sites: List<CutSite>) {
+        mappedEnzymes = enzymes
+        cutSites = sites
+        notify(Reason.ENZYMES)
+    }
+
     fun addEnzyme(enzyme: Enzyme) {
         setMappedEnzymes(mappedEnzymes + enzyme)
     }

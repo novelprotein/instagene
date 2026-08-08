@@ -71,60 +71,92 @@ object Digest {
 
     fun cutSites(seq: Seq, enzyme: Enzyme): List<CutSite> {
         val out = ArrayList<CutSite>()
+        scanSites(seq, enzyme) { i, forward, topCut, bottomCut ->
+            out += if (seq.isCircular) {
+                CutSite(
+                    enzyme = enzyme,
+                    recognitionStart = i,
+                    topCut = normalize(topCut, seq.length),
+                    bottomCut = normalize(bottomCut, seq.length),
+                    strand = if (forward) Strand.FORWARD else Strand.REVERSE,
+                )
+            } else {
+                CutSite(
+                    enzyme = enzyme,
+                    recognitionStart = i,
+                    topCut = topCut,
+                    bottomCut = bottomCut,
+                    strand = if (forward) Strand.FORWARD else Strand.REVERSE,
+                )
+            }
+        }
+        return out.sortedBy { it.topCut }
+    }
+
+    /**
+     * The number of times [enzyme] cuts [seq], without building any [CutSite]
+     * objects. The digest panel's summary column scans the whole catalog this way.
+     */
+    fun countSites(seq: Seq, enzyme: Enzyme): Int {
+        var count = 0
+        scanSites(seq, enzyme) { _, _, _, _ -> count++ }
+        return count
+    }
+
+    /**
+     * Walks [seq] once per strand, calling [body] for every recognition site.
+     * The topCut/bottomCut passed to [body] are plain (un-normalized) offsets
+     * for linear molecules; circular callers must normalize them against the
+     * sequence length, which is why [body] receives them alongside the site
+     * start position.
+     */
+    private inline fun scanSites(
+        seq: Seq,
+        enzyme: Enzyme,
+        body: (i: Int, forward: Boolean, topCut: Int, bottomCut: Int) -> Unit
+    ) {
         val len = seq.length
-        if (len == 0) return out
+        if (len == 0) return
         val bases = seq.bases
         val site = enzyme.site.uppercase()
         val siteLen = site.length
         // A linear molecule can only be cut where the whole site fits; a circular
         // one is scanned all the way round the origin.
         val limit = if (seq.isCircular) len else len - siteLen + 1
-        if (limit <= 0) return out
-        val rcSite = site.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
+        if (limit <= 0) return
+        // Bitmaps let the scan check every site position with a single array read,
+        // avoiding per-char map lookups, uppercasing and string searches. The
+        // palindromic flag and the reverse-complement are evaluated once up front
+        // rather than per candidate position.
+        val palindromic = enzyme.isPalindromic
+        val siteBitmaps = site.map { symbolBitmap(it) }
+        val rcBitmaps = if (palindromic) siteBitmaps else site.reversed().map { Alphabet.complement(it, SeqKind.DNA) }
+            .let { rc -> rc.map { symbolBitmap(it) } }
         // Only positions whose first base can begin a match are examined at all.
-        val firstBitmap = firstBaseBitmap(site.first())
-        val rcBitmap = if (enzyme.isPalindromic) firstBitmap else firstBaseBitmap(rcSite.first())
+        val firstBitmap = siteBitmaps[0]
+        val rcBitmap = rcBitmaps[0]
 
         if (seq.isCircular) {
             for (i in 0 until len) {
                 val base = bases[i]
                 if (!bitmapsHit(firstBitmap, base)) continue
-                if (matchesAtCircular(bases, len, i, site)) {
-                    out += CutSite(
-                        enzyme = enzyme,
-                        recognitionStart = i,
-                        topCut = normalize(i + enzyme.topCut, len),
-                        bottomCut = normalize(i + enzyme.bottomCut, len),
-                        strand = Strand.FORWARD,
-                    )
-                } else if (!enzyme.isPalindromic &&
-                    bitmapsHit(rcBitmap, base) &&
-                    matchesAtCircular(bases, len, i, rcSite)
-                ) {
-                    out += CutSite(
-                        enzyme = enzyme,
-                        recognitionStart = i,
-                        topCut = normalize(i + siteLen - enzyme.bottomCut, len),
-                        bottomCut = normalize(i + siteLen - enzyme.topCut, len),
-                        strand = Strand.REVERSE,
-                    )
+                if (matchesAtCircular(bases, len, i, siteBitmaps)) {
+                    body(i, true, i + enzyme.topCut, i + enzyme.bottomCut)
+                } else if (!palindromic && bitmapsHit(rcBitmap, base) && matchesAtCircular(bases, len, i, rcBitmaps)) {
+                    body(i, false, i + siteLen - enzyme.bottomCut, i + siteLen - enzyme.topCut)
                 }
             }
         } else {
             for (i in 0 until limit) {
                 val base = bases[i]
                 if (!bitmapsHit(firstBitmap, base)) continue
-                if (matchesAt(bases, i, site)) {
-                    out += CutSite(enzyme, i, i + enzyme.topCut, i + enzyme.bottomCut, Strand.FORWARD)
-                } else if (!enzyme.isPalindromic &&
-                    bitmapsHit(rcBitmap, base) &&
-                    matchesAt(bases, i, rcSite)
-                ) {
-                    out += CutSite(enzyme, i, i + siteLen - enzyme.bottomCut, i + siteLen - enzyme.topCut, Strand.REVERSE)
+                if (matchesAt(bases, i, siteBitmaps)) {
+                    body(i, true, i + enzyme.topCut, i + enzyme.bottomCut)
+                } else if (!palindromic && bitmapsHit(rcBitmap, base) && matchesAt(bases, i, rcBitmaps)) {
+                    body(i, false, i + siteLen - enzyme.bottomCut, i + siteLen - enzyme.topCut)
                 }
             }
         }
-        return out.sortedBy { it.topCut }
     }
 
     /** True when [base] is an ASCII base whose first-symbol bitmap bit is set. */
@@ -133,22 +165,37 @@ object Digest {
         return code < 256 && bitmap[code]
     }
 
-    private fun matchesAt(bases: String, start: Int, site: String): Boolean {
-        for (j in site.indices) {
-            if (!Alphabet.matches(site[j], bases[start + j])) return false
+    private fun matchesAt(bases: String, start: Int, bitmaps: List<BooleanArray>): Boolean {
+        for (j in bitmaps.indices) {
+            if (!bitmaps[j][bases[start + j].code]) return false
         }
         return true
     }
 
-    private fun matchesAtCircular(bases: String, len: Int, start: Int, site: String): Boolean {
-        for (j in site.indices) {
-            if (!Alphabet.matches(site[j], bases[Math.floorMod(start + j, len)])) return false
+    private fun matchesAtCircular(bases: String, len: Int, start: Int, bitmaps: List<BooleanArray>): Boolean {
+        // The common case never wraps around the origin, so index straight into
+        // the string; only the tail that crosses the end of the sequence needs a
+        // (cheap, division-free) wrap. A site longer than the sequence can wrap
+        // more than once; that degenerate case falls back to modular indexing.
+        if (start + bitmaps.size <= len) return matchesAt(bases, start, bitmaps)
+        if (bitmaps.size <= len) {
+            val straight = len - start
+            for (j in 0 until straight) {
+                if (!bitmaps[j][bases[start + j].code]) return false
+            }
+            for (j in straight until bitmaps.size) {
+                if (!bitmaps[j][bases[j - straight].code]) return false
+            }
+            return true
+        }
+        for (j in bitmaps.indices) {
+            if (!bitmaps[j][bases[Math.floorMod(start + j, len)].code]) return false
         }
         return true
     }
 
-    /** Positions (ASCII, upper and lower case) whose base can begin a match for [symbol]. */
-    private fun firstBaseBitmap(symbol: Char): BooleanArray {
+    /** Positions (ASCII, upper and lower case) whose base matches [symbol]. */
+    private fun symbolBitmap(symbol: Char): BooleanArray {
         val bitmap = BooleanArray(256)
         val expansion = Alphabet.expansion(symbol) ?: return bitmap
         for (c in expansion) {
@@ -233,9 +280,9 @@ object Digest {
 
     /** Enzymes that cut [seq] exactly [times] — the usual way to find a unique site. */
     fun enzymesCutting(seq: Seq, times: Int = 1, pool: List<Enzyme> = Enzymes.ALL): List<Enzyme> =
-        pool.filter { cutSites(seq, it).size == times }
+        pool.filter { countSites(seq, it) == times }
 
     /** Per-enzyme cut counts, for the digest panel's summary column. */
     fun cutCounts(seq: Seq, pool: List<Enzyme> = Enzymes.ALL): Map<Enzyme, Int> =
-        pool.associateWith { cutSites(seq, it).size }
+        pool.associateWith { countSites(seq, it) }
 }

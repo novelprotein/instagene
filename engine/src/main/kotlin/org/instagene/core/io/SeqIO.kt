@@ -36,17 +36,20 @@ object SeqIO {
     }
 
     /**
-     * Reads a file without buffering the whole thing in memory. The format is
-     * found from the first non-blank line: GenBank stays on its text parser,
-     * while FASTA loops bare sequence files line by line via stream.
+     * Reads a file without ever buffering the whole thing in memory. The format
+     * is found from the first non-blank line: GenBank streams through its text
+     * parser, while FASTA reads the first record line by line and stops there,
+     * so a multi-contig genome file never materialises more than one contig.
      */
     fun read(file: File): Seq {
         val firstLine = firstNonBlankLine(file)
         return if (firstLine.startsWith("LOCUS")) {
-            GenBank.parse(file.readText(), file.nameWithoutExtension)
+            file.bufferedReader().use { GenBank.parseFrom(it, file.nameWithoutExtension) }
         } else {
-            file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
-                .firstOrNull() ?: throw IllegalArgumentException("No sequence found in ${file.name}")
+            val hint = firstFastaRecordCapacityHint(file)
+            file.bufferedReader().use {
+                Fasta.parseAllFrom(it, file.nameWithoutExtension, hint, stopAfterFirstRecord = true)
+            }.firstOrNull() ?: throw IllegalArgumentException("No sequence found in ${file.name}")
         }
     }
 
@@ -57,6 +60,34 @@ object SeqIO {
         } else {
             file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
         }
+    }
+
+    /**
+     * Streams the FASTA once to count the bases in the first record, so the
+     * second pass can preallocate exactly: peak memory stays at one record and
+     * a multi-GB multi-contig file never over-allocates for contig one.
+     */
+    private fun firstFastaRecordCapacityHint(file: File): Int {
+        var count = 0L
+        var started = false
+        file.bufferedReader().use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                val trimmed = line.trim()
+                if (trimmed.isEmpty()) continue
+                if (trimmed.startsWith(">") || trimmed.startsWith(";")) {
+                    if (started) break
+                    started = true
+                    continue
+                }
+                started = true
+                for (c in trimmed) {
+                    if (c.isWhitespace() || c.isDigit()) continue
+                    count++
+                }
+            }
+        }
+        return count.coerceIn(64, Int.MAX_VALUE.toLong()).toInt()
     }
 
     /** The first line of [file], or an empty string when the file is blank. */
@@ -71,7 +102,7 @@ object SeqIO {
     }
 
     private fun capacityHintFor(file: File): Int =
-        file.length().toInt().coerceIn(64, Int.MAX_VALUE)
+        file.length().coerceAtMost(Int.MAX_VALUE.toLong()).toInt().coerceIn(64, Int.MAX_VALUE)
 
     fun write(seq: Seq, format: SeqFormat): String = when (format) {
         SeqFormat.FASTA -> Fasta.write(seq)

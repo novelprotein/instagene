@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import java.awt.BorderLayout
@@ -12,6 +13,7 @@ import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JTextField
+import javax.swing.SwingUtilities
 
 /**
  * Sequence properties and statistics: name, kind, topology, length, GC, Tm,
@@ -25,6 +27,10 @@ class InfoPanel(
     private val doc: SeqDocument,
     private val onOpen: () -> Unit = {},
 ) : JPanel(BorderLayout(0, 6)) {
+
+    /** Full-sequence scans (GC, Tm, MW) run off the EDT above this size, so a multi-GB genome load doesn't freeze the UI. */
+    private val statsAsyncThreshold = 50_000_000
+    private var statsGeneration = 0
 
     val nameField = JTextField(28)
     private val nameApply = JButton("Apply name")
@@ -108,14 +114,36 @@ class InfoPanel(
         fileLabel.text = doc.file?.absolutePath ?: ""
         fileLabel.isVisible = hasFile
         openFileButton.isVisible = !hasFile
-        gcLabel.text = "%.1f %%".format(SeqOps.gcContent(seq))
-        tmLabel.text = if (seq.kind == SeqKind.PROTEIN) {
-            "n/a (protein)"
-        } else {
-            "%.1f C".format(SeqOps.meltingTemp(seq.bases))
-        }
-        mwLabel.text = if (seq.kind == SeqKind.PROTEIN) "n/a" else "%.0f Da".format(SeqOps.molecularWeightDaltons(seq))
         featuresLabel.text = seq.features.size.toString()
+        refreshStats(seq)
+    }
+
+    /** GC/Tm/MW are O(length) scans, so big sequences compute them off the EDT. */
+    private fun refreshStats(seq: Seq) {
+        val generation = ++statsGeneration
+        if (seq.length <= statsAsyncThreshold) {
+            gcLabel.text = "%.1f %%".format(SeqOps.gcContent(seq))
+            tmLabel.text =
+                if (seq.kind == SeqKind.PROTEIN) "n/a (protein)" else "%.1f C".format(SeqOps.meltingTemp(seq.bases))
+            mwLabel.text =
+                if (seq.kind == SeqKind.PROTEIN) "n/a" else "%.0f Da".format(SeqOps.molecularWeightDaltons(seq))
+            return
+        }
+        gcLabel.text = "..."
+        tmLabel.text = "..."
+        mwLabel.text = "..."
+        Thread {
+            val gc = SeqOps.gcContent(seq)
+            val tm = if (seq.kind == SeqKind.PROTEIN) null else SeqOps.meltingTemp(seq.bases)
+            val mw = if (seq.kind == SeqKind.PROTEIN) null else SeqOps.molecularWeightDaltons(seq)
+            SwingUtilities.invokeLater {
+                if (generation == statsGeneration) {
+                    gcLabel.text = "%.1f %%".format(gc)
+                    tmLabel.text = if (tm == null) "n/a (protein)" else "%.1f C".format(tm)
+                    mwLabel.text = if (mw == null) "n/a" else "%.0f Da".format(mw)
+                }
+            }
+        }.apply { name = "InfoPanel-stats"; isDaemon = true }.start()
     }
 
     private fun constraints(x: Int, y: Int, weightX: Double = 0.0): GridBagConstraints =

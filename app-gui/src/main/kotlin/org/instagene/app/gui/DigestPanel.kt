@@ -12,6 +12,8 @@ import org.instagene.core.prefs.SavedKind
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -60,7 +62,7 @@ class DigestPanel(
     /** The full catalog (built-in + custom), used for the cut-count scan and lookups. */
     private var pool: List<Enzyme> = Enzymes.pool(prefs.value.customEnzymes)
 
-    /** The required-only working set; empty [prefs.enabledEnzymes] means the whole pool. */
+    /** The required-only working set */
     private var enabledPool: List<Enzyme> = Enzymes.enzymesFor(pool, prefs.value.enabledEnzymes)
 
     /** Per-enzyme cut counts for the current sequence; null until the async scan lands. */
@@ -71,6 +73,20 @@ class DigestPanel(
 
     /** Bumped on every recompute so stale background results are discarded. */
     private var countsVersion = 0
+
+    /** Bumped on every selection change so stale background digests are discarded. */
+    private var digestVersion = 0
+
+    /** Sequences at least this long have their site scan + digest computed off the EDT. */
+    private val asyncDigestThreshold = 1_000_000
+
+    /** Runs the per-enzyme cut-count scans in parallel; owned by this panel. */
+    private val countPool: ExecutorService =
+        Executors.newFixedThreadPool(countThreads)
+
+    companion object {
+        private val countThreads = maxOf(2, Runtime.getRuntime().availableProcessors())
+    }
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
@@ -95,7 +111,10 @@ class DigestPanel(
             JSplitPane.VERTICAL_SPLIT,
             JScrollPane(enzymeTable),
             JPanel(BorderLayout(0, 4)).apply {
-                add(JLabel("Fragments").apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) }, BorderLayout.NORTH)
+                add(
+                    JLabel("Fragments").apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
+                    BorderLayout.NORTH
+                )
                 add(JScrollPane(fragmentTable), BorderLayout.CENTER)
                 add(buildFragmentButtons(), BorderLayout.SOUTH)
             },
@@ -218,7 +237,7 @@ class DigestPanel(
             enzymeModel.fireTableDataChanged()
             fragmentModel.fireTableDataChanged()
             summary.text = "Restriction digestion applies to double-stranded DNA" +
-                (if (seq.kind == SeqKind.PROTEIN) " (this is a protein sequence)." else ".")
+                    (if (seq.kind == SeqKind.PROTEIN) " (this is a protein sequence)." else ".")
             return
         }
         countsStale = true
@@ -234,26 +253,44 @@ class DigestPanel(
         visibleEnzymes = enabledPool.filter { enzyme ->
             val n = counts[enzyme] ?: 0
             (needle.isEmpty() || enzyme.name.lowercase().contains(needle) ||
-                enzyme.site.lowercase().contains(needle)) &&
-                (!cuttersOnly.isSelected || n > 0) &&
-                (!uniqueOnly.isSelected || n == 1)
+                    enzyme.site.lowercase().contains(needle)) &&
+                    (!cuttersOnly.isSelected || n > 0) &&
+                    (!uniqueOnly.isSelected || n == 1)
         }
         enzymeModel.counts = counts
         enzymeModel.fireTableDataChanged()
     }
 
-    /** Scans [seq] on a background thread; stale results for an older sequence are dropped. */
+    /** Scans [seq] on background threads; stale results for an older sequence are dropped. */
     private fun scheduleCutCounts(seq: Seq) {
         val version = ++countsVersion
-        Thread {
-            val counts = Digest.cutCounts(seq, pool)
+        val enzymes = pool.toList()
+        if (enzymes.isEmpty()) {
             SwingUtilities.invokeLater {
                 if (version != countsVersion) return@invokeLater
-                countsCache = counts
+                countsCache = emptyMap()
                 countsStale = false
                 rebuildEnzymeTable()
             }
-        }.apply { isDaemon = true; name = "DigestCutCounts" }.start()
+            return
+        }
+        // The per-enzyme scans are independent, so they run on a shared pool and
+        // the partial maps are merged back on the event thread.
+        val perTask = (enzymes.size + countThreads - 1) / countThreads
+        val partial = java.util.concurrent.ConcurrentHashMap<Enzyme, Int>(enzymes.size)
+        for (chunk in enzymes.chunked(perTask)) {
+            countPool.submit {
+                for (enzyme in chunk) partial[enzyme] = Digest.countSites(seq, enzyme)
+            }
+        }
+        countPool.submit {
+            SwingUtilities.invokeLater {
+                if (version != countsVersion) return@invokeLater
+                countsCache = partial
+                countsStale = false
+                rebuildEnzymeTable()
+            }
+        }
     }
 
     private fun setInteractive(enabled: Boolean) {
@@ -310,19 +347,47 @@ class DigestPanel(
 
     private fun applySelection() {
         val active = checked.toList()
-        doc.setMappedEnzymes(active)
-        fragments = if (active.isEmpty()) emptyList() else Digest.digest(doc.seq, active)
+        if (active.isEmpty()) {
+            digestVersion++
+            doc.setMappedEnzymes(emptyList())
+            fragments = emptyList()
+            fragmentModel.fireTableDataChanged()
+            enzymeModel.fireTableDataChanged()
+            prefs.update { it.copy(selectedEnzymes = emptyList()) }
+            summary.text = "Tick enzymes to map their sites."
+            return
+        }
+        // Small sequences are digested synchronously (fast enough not to block,
+        // and tests rely on fragments being ready immediately); large ones are
+        // scanned and cut on a background thread so the EDT never stalls.
+        if (doc.seq.length < asyncDigestThreshold) {
+            val sites = Digest.cutSites(doc.seq, active)
+            val frags = Digest.digest(doc.seq, active)
+            doc.applyMappedEnzymes(active, sites)
+            applyDigestResult(frags, active)
+        } else {
+            val version = ++digestVersion
+            countPool.submit {
+                val sites = Digest.cutSites(doc.seq, active)
+                val frags = Digest.digest(doc.seq, active)
+                SwingUtilities.invokeLater {
+                    if (version != digestVersion) return@invokeLater
+                    doc.applyMappedEnzymes(active, sites)
+                    applyDigestResult(frags, active)
+                }
+            }
+        }
+    }
+
+    /** Applies a finished digest (fragments + summary) to the tables on the EDT. */
+    private fun applyDigestResult(frags: List<Fragment>, active: List<Enzyme>) {
+        fragments = frags
         fragmentModel.fireTableDataChanged()
         enzymeModel.fireTableDataChanged()
         prefs.update { it.copy(selectedEnzymes = active.map { enzyme -> enzyme.name }) }
-        summary.text = when {
-            active.isEmpty() -> "Tick enzymes to map their sites."
-            else -> {
-                val total = fragments.sumOf { it.length }
-                "${active.joinToString(", ") { it.name }}  ->  ${doc.cutSites.size} site(s), " +
-                    "${fragments.size} fragment(s), total $total bp"
-            }
-        }
+        val total = fragments.sumOf { it.length }
+        summary.text = "${active.joinToString(", ") { it.name }}  ->  ${doc.cutSites.size} site(s), " +
+                "${fragments.size} fragment(s), total $total bp"
     }
 
     private fun revealFirstSiteOfSelectedEnzyme() {

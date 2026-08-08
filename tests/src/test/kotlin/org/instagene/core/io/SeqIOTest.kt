@@ -68,6 +68,50 @@ class SeqIOTest {
     }
 
     @Test
+    fun readReturnsOnlyTheFirstRecordOfAMultiContigGenome() {
+        val dir = createTempDirectory("instagene-test").toFile()
+        try {
+            val genome = File(dir, "genome.fna")
+            genome.writeText(
+                (1..3).joinToString("") { i ->
+                    ">chr$i synthetic contig $i\n" + "ACGT".repeat(250) + "\n"
+                }
+            )
+            val seq = SeqIO.read(genome)
+            assertEquals("chr1", seq.name)
+            assertEquals(1000, seq.length)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun readStreamsGenBankFromFile() {
+        val dir = createTempDirectory("instagene-test").toFile()
+        try {
+            val gb = File(dir, "genome.gb")
+            gb.writeText(
+                """
+                LOCUS       chr1                1000 bp    DNA     linear
+                DEFINITION  synthetic chromosome 1
+                FEATURES             Location/Qualifiers
+                     source          1..1000
+                                     /mol_type="genomic DNA"
+                ORIGIN
+                    1 gattaca
+                //
+                """.trimIndent()
+            )
+            val seq = SeqIO.read(gb)
+            assertEquals("chr1", seq.name)
+            assertEquals(7, seq.length)
+            assertEquals("GATTACA", seq.bases)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun extensionHelpers() {
         val seq = Seq("x", "ACGT")
         assertTrue(seq.toFasta().startsWith(">x"))

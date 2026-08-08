@@ -3,6 +3,7 @@ package org.instagene.core.io
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
+import java.io.StringReader
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -68,5 +69,35 @@ class FastaTest {
     fun writeAllConcatenates() {
         val out = Fasta.writeAll(listOf(Seq("a", "AA"), Seq("b", "TT")))
         assertEquals(2, Fasta.parseAll(out).size)
+    }
+
+    @Test
+    fun stopAfterFirstRecordReturnsOnlyTheFirstRecord() {
+        val text = ">one first\nACGT\n>two\nTTAA\n>three\nCCGG"
+        val first = Fasta.parseAllFrom(StringReader(text), stopAfterFirstRecord = true)
+        assertEquals(1, first.size)
+        assertEquals("one", first[0].name)
+        assertEquals("first", first[0].description)
+        assertEquals("ACGT", first[0].bases)
+    }
+
+    @Test
+    fun stopAfterFirstRecordHandlesHeaderlessAndSemicolonFirstLines() {
+        // A headerless first record ends at the next header.
+        val bare = Fasta.parseAllFrom(StringReader("ACGT\n>two\nTTAA"), stopAfterFirstRecord = true)
+        assertEquals(1, bare.size)
+        assertEquals("ACGT", bare[0].bases)
+        // A leading ; header still counts as the first record, as in parseAll.
+        val semi = Fasta.parseAllFrom(StringReader(";plasmid circular\nATGC\n>two\nTTAA"), stopAfterFirstRecord = true)
+        assertEquals(1, semi.size)
+        assertEquals("plasmid", semi[0].name)
+        assertEquals(Topology.CIRCULAR, semi[0].topology)
+    }
+
+    @Test
+    fun stopAfterFirstRecordWithNoSecondRecordReadsTheWholeFile() {
+        val first = Fasta.parseAllFrom(StringReader(">only\nAACC"), stopAfterFirstRecord = true)
+        assertEquals(1, first.size)
+        assertEquals("AACC", first[0].bases)
     }
 }

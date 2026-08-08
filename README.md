@@ -1,15 +1,17 @@
-# instagene
+# InstaGene
 
-This project contains 5 packages,
-First it includes InstaGene-CLI, this is a tool for gaining insights based on a gene sequence, good for scripting.
-Second it includes InstaGene-GUI, this is a tool, for creating and manipulating genesequences.
-Third it includes InstaGene-WEB, this is a web tool which functions as an InstaGene-GUI lite and uses the web as an interface. It has a client and server.
-Fourth it uses
+
+This project contains 5 packages:
+- InstaGene-CLI is a tool for gaining insights from nucleic acid sequences or protein sequences, good for scripting.
+- InstaGene-GUI is a tool for creating and manipulating nucleic acid sequences or protein sequences.
+- InstaGene-WEB is a tool for functioning as an InstaGene-GUI lite and uses the web as an interface. It is a client and server.
+- InstaGene-Engine is a library which functions as the backbone for the project. It does not force the other projects as a dependency, allowing it to be used in other gene editing projects without the overhead of an entire program.
+
 
 
 ## Project Status
 
-**Current Version:** 0.1.0-alpha
+**Current Version:** 0.0.0-alpha
 
 **Status:** Work in Progress
 
@@ -31,12 +33,14 @@ Fourth it uses
 - [ ] Make Cli production ready
 - [ ] Package and release
 - [ ] Library integration (using the engine as a reusable library)
+- [ ] Move 100% of features into respective modules
 
 ### Planned
 - [ ] Plugin system
 - [ ] Cross-platform installers
 - [ ] Performance optimization
 - [ ] Improved documentation
+- [ ] Versioning system
 
 
 This project uses [Gradle](https://gradle.org/). To build and run the application, use the *Gradle* tool window by
@@ -87,7 +91,7 @@ Install them once (they stay in version control, nothing is copied into
 
 Skip the gates for a single commit with `git commit --no-verify`.
 
-This project has the core engine sepeated from the modules which access features from it. This separates the computation tasks from the human interface.
+This project has the core engine separated from the modules which access features from it. This separates the computation tasks from the human interface.
 Each platform front-end is its own standalone application that shares
 the engine:
 
@@ -99,8 +103,7 @@ the engine:
 
 The root `run` task picks exactly one front-end via `-Pplatform=cli|gui|web` (default `gui`),
 so `./gradlew run` never launches all three at once. The web server opens **only** when the web
-platform is run explicitly (`:app-web:runWeb`); the desktop and CLI apps never start it. Each
-front-end launches exactly once per process.
+platform is run explicitly (`:app-web:runWeb`); the desktop and CLI apps never start it. Each front-end launches exactly once per process.
 
 The shared build logic was extracted to a convention plugin located in `buildSrc`.
 

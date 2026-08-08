@@ -2,10 +2,12 @@ package org.instagene.app.gui
 
 import org.instagene.core.Alphabet
 import org.instagene.core.CodonTable
+import org.instagene.core.CutSite
 import org.instagene.core.Feature
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import org.instagene.core.Strand
+import java.awt.Color
 import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Font
@@ -66,6 +68,12 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
     private var basesPerLine = 60
     private var featureLanes = 0
     private val laneOf = HashMap<Feature, Int>()
+    private var runBuffer = CharArray(0)
+
+    private fun runBuffer(): CharArray {
+        if (runBuffer.size < basesPerLine) runBuffer = CharArray(basesPerLine)
+        return runBuffer
+    }
 
     private val padding = 10
     private val markHeight = 14
@@ -199,27 +207,43 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         g2.color = Palette.GUTTER
         g2.drawString("%,8d".format(from + 1), padding, baseY)
 
-        // Top strand, coloured per base, with a faint decade grid.
+        // Top strand, coloured per base, with a faint decade grid. Consecutive
+        // same-colour bases are batched into a single drawChars run so a visible
+        // row costs a handful of text calls instead of one per base. Grid lines
+        // are drawn first so the batched glyphs land on top of them, matching the
+        // original per-column paint order.
+        if (to - from >= 10) {
+            g2.color = Palette.GRID
+            var col = 10
+            while (col < to - from) {
+                val x = xOf(col)
+                g2.drawLine(x, top + markHeight, x, top + markHeight + lineHeight * trackCount())
+                col += 10
+            }
+        }
+        val buffer = runBuffer()
+        var runStart = 0
+        var runColor: Color = Palette.charColor(seq.bases[from], seq.kind)
         for (i in from until to) {
             val col = i - from
-            val x = xOf(col)
-            if (col % 10 == 0 && col > 0) {
-                g2.color = Palette.GRID
-                g2.drawLine(x, top + markHeight, x, top + markHeight + lineHeight * trackCount())
+            val color = Palette.charColor(seq.bases[i], seq.kind)
+            if (color != runColor) {
+                g2.color = runColor
+                g2.drawChars(buffer, runStart, col - runStart, xOf(runStart), baseY)
+                runColor = color
+                runStart = col
             }
-            val base = seq.bases[i]
-            g2.color = Palette.charColor(base, seq.kind)
-            g2.drawString(base.uppercaseChar().toString(), x, baseY)
+            buffer[col] = seq.bases[i].uppercaseChar()
         }
+        g2.color = runColor
+        g2.drawChars(buffer, runStart, to - from - runStart, xOf(runStart), baseY)
 
         var trackY = baseY
         if (complementTrack()) {
             trackY += lineHeight
+            for (i in from until to) buffer[i - from] = Alphabet.complement(seq.bases[i], seq.kind).uppercaseChar()
             g2.color = Palette.MUTED
-            for (i in from until to) {
-                val c = Alphabet.complement(seq.bases[i], seq.kind)
-                g2.drawString(c.uppercaseChar().toString(), xOf(i - from), trackY)
-            }
+            g2.drawChars(buffer, 0, to - from, xOf(0), trackY)
         }
         if (translationTrack()) {
             trackY += lineHeight
@@ -262,12 +286,18 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
     }
 
     private fun paintCutMarks(g2: Graphics2D, from: Int, to: Int, top: Int) {
-        if (doc.cutSites.isEmpty()) return
+        val cutSites = doc.cutSites
+        if (cutSites.isEmpty()) return
         g2.font = labelFont
+        val fm = getFontMetrics(labelFont)
         var lastLabelEnd = -1
-        for (site in doc.cutSites.sortedBy { it.topCut }) {
+        // cutSites is already sorted by topCut; jump straight to the first site
+        // in the visible window instead of scanning (and re-sorting) the whole
+        // list for every painted row.
+        var i = lowerBound(cutSites, from)
+        while (i < cutSites.size && cutSites[i].topCut < to) {
+            val site = cutSites[i]
             val pos = site.topCut
-            if (pos !in from..<to) continue
             val x = xOf(pos - from)
             g2.color = Palette.CUT_MARK
             g2.drawLine(x, top + 2, x, top + markHeight)
@@ -276,9 +306,21 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
             if (x > lastLabelEnd + 4) {
                 val label = site.enzyme.name
                 g2.drawString(label, x + 4, top + markHeight - 3)
-                lastLabelEnd = x + 4 + getFontMetrics(labelFont).stringWidth(label)
+                lastLabelEnd = x + 4 + fm.stringWidth(label)
             }
+            i++
         }
+    }
+
+    /** Index of the first site whose topCut is >= [pos], assuming topCut-sorted input. */
+    private fun lowerBound(cutSites: List<CutSite>, pos: Int): Int {
+        var lo = 0
+        var hi = cutSites.size
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (cutSites[mid].topCut < pos) lo = mid + 1 else hi = mid
+        }
+        return lo
     }
 
     private fun paintFeatures(g2: Graphics2D, from: Int, to: Int, top: Int) {
@@ -451,7 +493,9 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
 
     fun insertBases(text: String) {
         val clean = when (doc.seq.kind) {
-            SeqKind.PROTEIN -> Alphabet.clean(text).uppercase().filter { Alphabet.isAminoAcid(it) && it != '-' && it != '*' }
+            SeqKind.PROTEIN -> Alphabet.clean(text).uppercase()
+                .filter { Alphabet.isAminoAcid(it) && it != '-' && it != '*' }
+
             else -> Alphabet.clean(text).uppercase().filter { Alphabet.isNucleotide(it) }
         }
         if (clean.isEmpty()) return
