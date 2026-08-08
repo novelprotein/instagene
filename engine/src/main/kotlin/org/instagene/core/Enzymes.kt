@@ -1,5 +1,7 @@
 package org.instagene.core
 
+import kotlinx.serialization.Serializable
+
 /**
  * A type II restriction enzyme.
  *
@@ -7,6 +9,7 @@ package org.instagene.core
  * on the top and bottom strands respectively. EcoRI (`G^AATTC`) therefore has
  * `topCut = 1` and `bottomCut = 5`, giving a 4-base 5' overhang.
  */
+@Serializable
 data class Enzyme(
     val name: String,
     val site: String,
@@ -107,17 +110,65 @@ object Enzymes {
         "hindiii" to "hindiii",
     )
 
-    fun find(name: String): Enzyme? {
-        val key = name.trim().lowercase()
-        return byName[key] ?: aliases[key]?.let { byName[it] }
+    /**
+     * The working catalog: built-in [ALL] merged with the [custom] novel enzymes,
+     * deduplicated by case-insensitive name (built-ins win).
+     */
+    fun pool(custom: Collection<Enzyme> = emptyList()): List<Enzyme> {
+        if (custom.isEmpty()) return ALL
+        val seen = HashSet<String>()
+        val merged = ArrayList<Enzyme>(ALL.size + custom.size)
+        for (enzyme in ALL + custom) {
+            if (seen.add(enzyme.name.lowercase())) merged += enzyme
+        }
+        return merged
     }
 
-    fun require(name: String): Enzyme =
-        find(name) ?: throw IllegalArgumentException(
-            "Unknown enzyme '$name'. Try one of: ${ALL.joinToString(", ") { it.name }}"
+    /**
+     * The required-only working set: [pool] restricted to the enzymes named in
+     * [enabled]. An empty [enabled] list means the whole pool is active.
+     */
+    fun enzymesFor(pool: List<Enzyme>, enabled: Collection<String>): List<Enzyme> {
+        val wanted = enabled.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+        if (wanted.isEmpty()) return pool
+        return pool.filter { it.name.lowercase() in wanted }
+    }
+
+    /** The IUPAC symbols accepted in a recognition site (DNA codes only, no gap). */
+    private val SITE_CODES = Alphabet.NUCLEOTIDES.filter { it != '-' }
+
+    /**
+     * Validates a novel enzyme definition, returning an error message, or null
+     * when [name]/[site]/[topCut]/[bottomCut] form a usable restriction enzyme.
+     */
+    fun validateNew(name: String, site: String, topCut: Int, bottomCut: Int): String? {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return "Enzyme name cannot be empty."
+        if (trimmedName.any { it.isWhitespace() }) return "Enzyme name cannot contain spaces."
+        val trimmedSite = site.trim().uppercase()
+        if (trimmedSite.isEmpty()) return "Recognition site cannot be empty."
+        val bad = trimmedSite.filterNot { it in SITE_CODES }
+        if (bad.isNotEmpty()) {
+            return "Recognition site contains invalid IUPAC character(s): ${bad.toSet().sorted().joinToString(" ")}"
+        }
+        if (topCut !in 0..trimmedSite.length || bottomCut !in 0..trimmedSite.length) {
+            return "Cut positions must be between 0 and ${trimmedSite.length} (the site length)."
+        }
+        return null
+    }
+
+    fun find(name: String, custom: Collection<Enzyme> = emptyList()): Enzyme? {
+        val key = name.trim().lowercase()
+        return byName[key] ?: aliases[key]?.let { byName[it] }
+            ?: custom.firstOrNull { it.name.trim().lowercase() == key }
+    }
+
+    fun require(name: String, custom: Collection<Enzyme> = emptyList()): Enzyme =
+        find(name, custom) ?: throw IllegalArgumentException(
+            "Unknown enzyme '$name'. Try one of: ${pool(custom).joinToString(", ") { it.name }}"
         )
 
     /** Parses a comma- or space-separated enzyme list from CLI input. */
-    fun parseList(spec: String): List<Enzyme> =
-        spec.split(',', ' ', ';').map { it.trim() }.filter { it.isNotEmpty() }.map { require(it) }
+    fun parseList(spec: String, custom: Collection<Enzyme> = emptyList()): List<Enzyme> =
+        spec.split(',', ' ', ';').map { it.trim() }.filter { it.isNotEmpty() }.map { require(it, custom) }
 }

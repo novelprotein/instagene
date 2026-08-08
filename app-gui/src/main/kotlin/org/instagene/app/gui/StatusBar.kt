@@ -16,7 +16,7 @@ class StatusBar(doc: SeqDocument, sequenceView: SequenceView) : JPanel(BorderLay
 
     init {
         add(statusLabel, BorderLayout.CENTER)
-        background = java.awt.Color(240, 240, 240)
+        background = Palette.BACKGROUND
         border = javax.swing.BorderFactory.createEtchedBorder()
 
         doc.addListener { _, _ ->

@@ -2,6 +2,7 @@ package org.instagene.app.gui
 
 import com.formdev.flatlaf.FlatDarkLaf
 import com.formdev.flatlaf.FlatLightLaf
+import org.instagene.core.prefs.PrefsStore
 import java.awt.GraphicsEnvironment
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities
@@ -30,7 +31,8 @@ fun launch(openPath: String?) {
     if (!launched.compareAndSet(false, true)) return
     SwingUtilities.invokeLater {
         setupTheme()
-        InstaGeneWindow(openPath).isVisible = true
+        val prefs = Prefs(PrefsStore())
+        InstaGeneWindow(openPath, prefs).isVisible = true
     }
 }
 

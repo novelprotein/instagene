@@ -6,6 +6,9 @@ import org.instagene.core.Enzymes
 import org.instagene.core.Fragment
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
+import org.instagene.core.prefs.SavedContext
+import org.instagene.core.prefs.SavedItem
+import org.instagene.core.prefs.SavedKind
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -28,12 +31,15 @@ import javax.swing.table.AbstractTableModel
 
 /**
  * Restriction mapping: tick enzymes to map them onto the sequence, then read
- * off the fragments a digest would produce.
+ * off the fragments a digest would produce. The enzyme list comes from the
+ * prefs-backed catalog (built-in + custom), restricted to the required-only
+ * working set, and the panel state is persisted back into [prefs].
  */
 class DigestPanel(
     private val doc: SeqDocument,
     private val onExtractFragment: (Seq) -> Unit,
     private val onReveal: (Int, Int) -> Unit,
+    private val prefs: Prefs = Prefs(),
 ) : JPanel(BorderLayout(0, 6)) {
 
     private val checked = LinkedHashSet<Enzyme>()
@@ -46,9 +52,16 @@ class DigestPanel(
     private val uniqueOnly = JCheckBox("Only unique cutters", false)
     private val summary = JLabel(" ")
     private val extractButton = JButton("Open fragment as new sequence")
+    private val saveFragmentButton = JButton("Save fragment to library")
 
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
+
+    /** The full catalog (built-in + custom), used for the cut-count scan and lookups. */
+    private var pool: List<Enzyme> = Enzymes.pool(prefs.value.customEnzymes)
+
+    /** The required-only working set; empty [prefs.enabledEnzymes] means the whole pool. */
+    private var enabledPool: List<Enzyme> = Enzymes.enzymesFor(pool, prefs.value.enabledEnzymes)
 
     /** Per-enzyme cut counts for the current sequence; null until the async scan lands. */
     private var countsCache: Map<Enzyme, Int>? = null
@@ -93,17 +106,62 @@ class DigestPanel(
         add(split, BorderLayout.CENTER)
         add(summary, BorderLayout.SOUTH)
 
+        // Restore the persisted panel state before wiring the change listeners,
+        // so the initial values do not get re-recorded as edits.
+        filterField.text = prefs.value.digestFilter
+        cuttersOnly.isSelected = prefs.value.digestCuttersOnly
+        uniqueOnly.isSelected = prefs.value.digestUniqueOnly
+        // Restore the ticked set by name. Empty means "nothing ticked" (unlike
+        // enzymesFor, whose empty set means the whole pool); selecting everything
+        // by default would map the full pool onto every loaded sequence and force
+        // a whole-genome cut-site scan on the EDT during load.
+        val savedNames = prefs.value.selectedEnzymes.mapTo(HashSet()) { it.lowercase() }
+        checked += enabledPool.filter { it.name.lowercase() in savedNames }
+
         filterField.document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent) = refresh()
-            override fun removeUpdate(e: DocumentEvent) = refresh()
-            override fun changedUpdate(e: DocumentEvent) = refresh()
+            override fun insertUpdate(e: DocumentEvent) {
+                refresh()
+                prefs.update { it.copy(digestFilter = filterField.text) }
+            }
+
+            override fun removeUpdate(e: DocumentEvent) {
+                refresh()
+                prefs.update { it.copy(digestFilter = filterField.text) }
+            }
+
+            override fun changedUpdate(e: DocumentEvent) {
+                refresh()
+                prefs.update { it.copy(digestFilter = filterField.text) }
+            }
         })
-        cuttersOnly.addActionListener { refresh() }
-        uniqueOnly.addActionListener { refresh() }
+        cuttersOnly.addActionListener {
+            refresh()
+            prefs.update { it.copy(digestCuttersOnly = cuttersOnly.isSelected) }
+        }
+        uniqueOnly.addActionListener {
+            refresh()
+            prefs.update { it.copy(digestUniqueOnly = uniqueOnly.isSelected) }
+        }
+
+        prefs.addListener { onPrefsChanged() }
 
         doc.addListener { _, reason ->
             if (reason == SeqDocument.Reason.SEQUENCE) refresh()
         }
+        refresh()
+    }
+
+    /** Reacts to a changed catalog or working set (e.g. the Enzyme Manager dialog). */
+    private fun onPrefsChanged() {
+        val nextPool = Enzymes.pool(prefs.value.customEnzymes)
+        val nextEnabled = Enzymes.enzymesFor(nextPool, prefs.value.enabledEnzymes)
+        if (nextPool == pool && nextEnabled == enabledPool) return
+        pool = nextPool
+        enabledPool = nextEnabled
+        checked.removeAll { it !in enabledPool }
+        countsVersion++ // invalidate any in-flight scan against the old pool
+        countsCache = null
+        countsStale = false
         refresh()
     }
 
@@ -129,6 +187,9 @@ class DigestPanel(
     private fun buildFragmentButtons(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
         add(extractButton.apply {
             addActionListener { extractFragment(fragmentTable.selectedRow) }
+        })
+        add(saveFragmentButton.apply {
+            addActionListener { saveFragment(fragmentTable.selectedRow) }
         })
         add(Box.createHorizontalStrut(4))
     }
@@ -170,7 +231,7 @@ class DigestPanel(
     private fun rebuildEnzymeTable() {
         val counts = countsCache.orEmpty()
         val needle = filterField.text.trim().lowercase()
-        visibleEnzymes = Enzymes.ALL.filter { enzyme ->
+        visibleEnzymes = enabledPool.filter { enzyme ->
             val n = counts[enzyme] ?: 0
             (needle.isEmpty() || enzyme.name.lowercase().contains(needle) ||
                 enzyme.site.lowercase().contains(needle)) &&
@@ -185,7 +246,7 @@ class DigestPanel(
     private fun scheduleCutCounts(seq: Seq) {
         val version = ++countsVersion
         Thread {
-            val counts = Digest.cutCounts(seq)
+            val counts = Digest.cutCounts(seq, pool)
             SwingUtilities.invokeLater {
                 if (version != countsVersion) return@invokeLater
                 countsCache = counts
@@ -202,6 +263,7 @@ class DigestPanel(
         enzymeTable.isEnabled = enabled
         fragmentTable.isEnabled = enabled
         extractButton.isEnabled = enabled
+        saveFragmentButton.isEnabled = enabled
     }
 
     /** Exposed for tests: whether digestion is available for the current sample. */
@@ -210,14 +272,14 @@ class DigestPanel(
     /** Exposed for tests: the cut counts for the current sequence, or null while stale/unknown. */
     fun computedCutCounts(): Map<Enzyme, Int>? = if (countsStale) null else countsCache
 
-    /** The enzymes currently ticked in the table, in order. */
+    /** Exposed for tests: the enzymes currently ticked in the table, in order. */
     fun selectedEnzymes(): List<Enzyme> = checked.toList()
 
     /** Maps [enzymes] through the panel, keeping tables and the document in sync. */
     fun selectEnzymes(enzymes: List<Enzyme>) {
         if (doc.seq.kind != SeqKind.DNA) return
         checked.clear()
-        checked += enzymes
+        checked += enzymes.filter { it in enabledPool }
         applySelection()
     }
 
@@ -228,12 +290,31 @@ class DigestPanel(
         onExtractFragment(f.toSeq("${doc.seq.name}_frag${row + 1}"))
     }
 
+    /** Stores the fragment at [row] in the library with its source context. */
+    fun saveFragment(row: Int) {
+        if (row !in fragments.indices) return
+        val f = fragments[row]
+        val item = SavedItem(
+            kind = SavedKind.FRAGMENT,
+            name = "${doc.seq.name}_${f.start + 1}-${f.end}",
+            bases = f.bases,
+            context = SavedContext(
+                sourceName = doc.seq.name,
+                start = f.start,
+                end = f.end,
+                enzymes = checked.map { it.name },
+            ),
+        )
+        prefs.update { it.copy(library = it.library + item) }
+    }
+
     private fun applySelection() {
         val active = checked.toList()
         doc.setMappedEnzymes(active)
         fragments = if (active.isEmpty()) emptyList() else Digest.digest(doc.seq, active)
         fragmentModel.fireTableDataChanged()
         enzymeModel.fireTableDataChanged()
+        prefs.update { it.copy(selectedEnzymes = active.map { enzyme -> enzyme.name }) }
         summary.text = when {
             active.isEmpty() -> "Tick enzymes to map their sites."
             else -> {

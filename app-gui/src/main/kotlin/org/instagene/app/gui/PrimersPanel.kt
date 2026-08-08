@@ -2,6 +2,9 @@ package org.instagene.app.gui
 
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
+import org.instagene.core.prefs.SavedContext
+import org.instagene.core.prefs.SavedItem
+import org.instagene.core.prefs.SavedKind
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Toolkit
@@ -23,15 +26,20 @@ import javax.swing.table.AbstractTableModel
 /**
  * PCR primer design for the selected amplicon. From/To follow the editor
  * selection and target Tm is adjustable; the engine's [SeqOps.designPrimers]
- * picks the best forward/reverse pair.
+ * picks the best forward/reverse pair. The target Tm and a "Save primers"
+ * library action are backed by [prefs].
  */
-class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
+class PrimersPanel(
+    private val doc: SeqDocument,
+    private val prefs: Prefs = Prefs(),
+) : JPanel(BorderLayout(0, 6)) {
 
     private val fromField = JTextField(8)
     private val toField = JTextField(8)
-    private val tmSpinner = JSpinner(SpinnerNumberModel(60.0, 40.0, 75.0, 0.5))
+    private val tmSpinner = JSpinner(SpinnerNumberModel(prefs.value.primerDefaultTm.coerceIn(40.0, 75.0), 40.0, 75.0, 0.5))
     private val designButton = JButton("Design primers")
     private val copyButton = JButton("Copy as FASTA")
+    private val saveButton = JButton("Save primers to library")
     private val summary = JLabel(" ")
     private val resultsModel = PrimerTableModel()
     private val resultsTable = JTable(resultsModel)
@@ -53,6 +61,11 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
 
         designButton.addActionListener { design() }
         copyButton.addActionListener { copyAsFasta() }
+        saveButton.addActionListener { savePrimers() }
+
+        tmSpinner.addChangeListener {
+            prefs.update { it.copy(primerDefaultTm = (tmSpinner.value as Number).toDouble()) }
+        }
 
         fromField.document.addDocumentListener(editListener())
         toField.document.addDocumentListener(editListener())
@@ -102,6 +115,7 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
         })
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
             add(copyButton)
+            add(saveButton)
             add(Box.createHorizontalStrut(4))
         })
     }
@@ -147,6 +161,7 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
         tmSpinner.isEnabled = enabled
         designButton.isEnabled = enabled
         copyButton.isEnabled = enabled
+        saveButton.isEnabled = enabled
         resultsTable.isEnabled = enabled
     }
 
@@ -181,6 +196,24 @@ class PrimersPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 6)) {
         val pair = result ?: return
         val fasta = listOf(pair.first, pair.second).joinToString("\n") { ">${it.name}\n${it.bases}" }
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(fasta), null)
+    }
+
+    /** Stores the last designed pair in the library, tagged with the amplicon context. */
+    fun savePrimers() {
+        val pair = result ?: return
+        val (from, to) = toRange()
+        val tm = (tmSpinner.value as Number).toDouble()
+        val context = SavedContext(
+            sourceName = doc.seq.name,
+            start = from,
+            end = to,
+            tm = tm,
+        )
+        val items = listOf(
+            SavedItem(SavedKind.PRIMER, pair.first.name, pair.first.bases, context),
+            SavedItem(SavedKind.PRIMER, pair.second.name, pair.second.bases, context),
+        )
+        prefs.update { it.copy(library = it.library + items) }
     }
 
     /** Exposed for tests: the last designed pair, or null. */

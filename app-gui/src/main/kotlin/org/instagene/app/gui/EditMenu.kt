@@ -1,11 +1,20 @@
 package org.instagene.app.gui
 
+import org.instagene.core.prefs.SavedContext
+import org.instagene.core.prefs.SavedItem
+import org.instagene.core.prefs.SavedKind
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
+import javax.swing.JOptionPane
 import javax.swing.KeyStroke
 
-class EditMenu(private val frame: javax.swing.JFrame?, private val doc: SeqDocument, private val sequenceView: SequenceView) {
+class EditMenu(
+    private val frame: javax.swing.JFrame?,
+    private val doc: SeqDocument,
+    private val sequenceView: SequenceView,
+    private val prefs: Prefs = Prefs(),
+) {
 
     private var lastPattern: String? = null
 
@@ -25,6 +34,8 @@ class EditMenu(private val frame: javax.swing.JFrame?, private val doc: SeqDocum
             addSeparator()
             add(createFindItem())
             add(createFindNextItem())
+            addSeparator()
+            add(createSaveSelectionItem())
         }
     }
 
@@ -83,7 +94,7 @@ class EditMenu(private val frame: javax.swing.JFrame?, private val doc: SeqDocum
         return JMenuItem("Find...", KeyEvent.VK_F).apply {
             accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_F, java.awt.event.InputEvent.CTRL_DOWN_MASK)
             addActionListener {
-                val pattern = javax.swing.JOptionPane.showInputDialog(frame, "Find sequence:", lastPattern ?: "")
+                val pattern = JOptionPane.showInputDialog(frame, "Find sequence:", lastPattern ?: "")
                 if (pattern != null && pattern.isNotEmpty()) {
                     lastPattern = pattern.uppercase()
                     findNext()
@@ -97,6 +108,34 @@ class EditMenu(private val frame: javax.swing.JFrame?, private val doc: SeqDocum
             accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0)
             addActionListener { findNext() }
         }
+    }
+
+    /** Stores the current selection in the library, tagged with its source range. */
+    private fun createSaveSelectionItem(): JMenuItem {
+        return JMenuItem("Save Selection to Library...").apply {
+            addActionListener { saveSelectionToLibrary() }
+        }
+    }
+
+    private fun saveSelectionToLibrary() {
+        if (!doc.hasSelection || doc.selectionEnd <= doc.selectionStart) {
+            JOptionPane.showMessageDialog(frame, "Select a region to save first.")
+            return
+        }
+        val start = doc.selectionStart
+        val end = doc.selectionEnd
+        val item = SavedItem(
+            kind = SavedKind.FRAGMENT,
+            name = "${doc.seq.name}_${start + 1}-$end",
+            bases = doc.selectedBases,
+            context = SavedContext(
+                sourceName = doc.seq.name,
+                start = start,
+                end = end,
+                enzymes = doc.mappedEnzymes.map { it.name },
+            ),
+        )
+        prefs.update { it.copy(library = it.library + item) }
     }
 
     /**
@@ -124,7 +163,7 @@ class EditMenu(private val frame: javax.swing.JFrame?, private val doc: SeqDocum
                 return
             }
         }
-        javax.swing.JOptionPane.showMessageDialog(frame, "Pattern not found.", "Find", javax.swing.JOptionPane.INFORMATION_MESSAGE)
+        JOptionPane.showMessageDialog(frame, "Pattern not found.", "Find", JOptionPane.INFORMATION_MESSAGE)
     }
 
     /** First index of [needle] at or after [from], wrapping to the start when not found. */

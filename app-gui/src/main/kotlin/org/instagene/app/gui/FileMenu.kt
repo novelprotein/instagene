@@ -13,7 +13,18 @@ import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 import kotlin.system.exitProcess
 
-class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
+class FileMenu(
+    private val frame: JFrame?,
+    private val doc: SeqDocument,
+    private val prefs: Prefs = Prefs(),
+) {
+
+    private val recentMenu = JMenu("Open Recent")
+
+    init {
+        prefs.addListener { rebuildRecentMenu() }
+        rebuildRecentMenu()
+    }
 
     fun create(): JMenu {
         return JMenu("File").apply {
@@ -21,6 +32,7 @@ class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
 
             add(createNewItem())
             add(createOpenItem())
+            add(recentMenu)
             addSeparator()
             add(createSaveItem())
             add(createSaveAsItem())
@@ -101,6 +113,7 @@ class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
                 SwingUtilities.invokeLater {
                     doc.loadSequence(seq, file)
                     updateTitle()
+                    addRecent(file)
                 }
             } catch (_: OutOfMemoryError) {
                 SwingUtilities.invokeLater {
@@ -174,6 +187,30 @@ class FileMenu(private val frame: JFrame?, private val doc: SeqDocument) {
         val filename = doc.file?.name ?: "Untitled"
         val dirty = if (doc.isDirty) "*" else ""
         frame?.title = "InstaGene - $filename$dirty"
+    }
+
+    /** Records [file] in the recent-files list (most recent first, capped at 10). */
+    fun addRecent(file: File) {
+        val path = file.absolutePath
+        prefs.update { prefs ->
+            prefs.copy(recentFiles = (listOf(path) + prefs.recentFiles.filter { it != path }).take(10))
+        }
+    }
+
+    /** Rebuilds the Open Recent submenu from the persisted list, skipping missing files. */
+    fun rebuildRecentMenu() {
+        recentMenu.removeAll()
+        val paths = prefs.value.recentFiles.filter { File(it).exists() }
+        if (paths.isEmpty()) {
+            recentMenu.add(JMenuItem("(no recent files)").apply { isEnabled = false })
+            return
+        }
+        for (path in paths) {
+            recentMenu.add(JMenuItem(File(path).name).apply {
+                toolTipText = path
+                addActionListener { loadFromFile(File(path)) }
+            })
+        }
     }
 }
 

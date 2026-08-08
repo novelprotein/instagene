@@ -9,18 +9,24 @@ import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JOptionPane
 
-class ToolsMenu(private val doc: SeqDocument, private val digestPanel: DigestPanel) {
+class ToolsMenu(
+    private val doc: SeqDocument,
+    private val digestPanel: DigestPanel,
+    private val prefs: Prefs = Prefs(),
+) {
 
     private val makeCircularItem = JMenuItem("Make Circular")
     private val makeLinearItem = JMenuItem("Make Linear")
     private val addEnzymeItem = JMenuItem("Add Enzyme...")
     private val clearEnzymesItem = JMenuItem("Clear All Enzymes")
+    private val manageEnzymesItem = JMenuItem("Manage Enzymes...")
     private val commonEnzymesMenu = createCommonEnzymesMenu()
 
     init {
         doc.addListener { _, reason ->
             if (reason == SeqDocument.Reason.SEQUENCE) syncEnabled()
         }
+        prefs.addListener { rebuildCommonEnzymes() }
         syncEnabled()
     }
 
@@ -31,6 +37,7 @@ class ToolsMenu(private val doc: SeqDocument, private val digestPanel: DigestPan
         val nucleotide = seq.kind != SeqKind.PROTEIN
         addEnzymeItem.isEnabled = dna
         clearEnzymesItem.isEnabled = dna
+        manageEnzymesItem.isEnabled = dna
         commonEnzymesMenu.isEnabled = dna
         makeCircularItem.isEnabled = nucleotide && !seq.isCircular
         makeLinearItem.isEnabled = nucleotide && seq.isCircular
@@ -52,17 +59,10 @@ class ToolsMenu(private val doc: SeqDocument, private val digestPanel: DigestPan
             })
             addSeparator()
             add(addEnzymeItem.apply {
-                addActionListener {
-                    val enzymeName = JOptionPane.showInputDialog(null, "Enzyme name:", "BamHI")
-                    if (enzymeName != null && enzymeName.isNotEmpty()) {
-                        val enzyme = Enzymes.ALL.firstOrNull { it.name.equals(enzymeName, ignoreCase = true) }
-                        if (enzyme != null) {
-                            digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + enzyme)
-                        } else {
-                            JOptionPane.showMessageDialog(null, "Enzyme '$enzymeName' not found.", "Not Found", JOptionPane.WARNING_MESSAGE)
-                        }
-                    }
-                }
+                addActionListener { addEnzymeByDialog() }
+            })
+            add(manageEnzymesItem.apply {
+                addActionListener { EnzymeManagerDialog(prefs).isVisible = true }
             })
             add(clearEnzymesItem.apply {
                 addActionListener { digestPanel.selectEnzymes(emptyList()) }
@@ -74,21 +74,51 @@ class ToolsMenu(private val doc: SeqDocument, private val digestPanel: DigestPan
         }
     }
 
+    /** Resolves a name against the whole catalog; unknown names offer to be defined as novel enzymes. */
+    private fun addEnzymeByDialog() {
+        val enzymeName = JOptionPane.showInputDialog(null, "Enzyme name:", "BamHI")
+        if (enzymeName == null || enzymeName.isBlank()) return
+        val enzyme = Enzymes.find(enzymeName, prefs.value.customEnzymes)
+        if (enzyme != null) {
+            digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + enzyme)
+        } else {
+            val choice = JOptionPane.showConfirmDialog(
+                null,
+                "'$enzymeName' is not a known enzyme.\nDefine it as a novel enzyme?",
+                "Unknown Enzyme",
+                JOptionPane.YES_NO_OPTION,
+            )
+            if (choice == JOptionPane.YES_OPTION) {
+                EnzymeManagerDialog(prefs, initialName = enzymeName).isVisible = true
+                // After the dialog the enzyme may now exist; select it.
+                Enzymes.find(enzymeName, prefs.value.customEnzymes)?.let {
+                    digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + it)
+                }
+            }
+        }
+    }
+
     private fun createCommonEnzymesMenu(): JMenu {
         return JMenu("Common Enzymes").apply {
-            val categories = Enzymes.ALL.groupBy { it.name.first() }.toSortedMap()
-            for ((letter, enzymes) in categories) {
-                add(JMenu("$letter").apply {
-                    for (enzyme in enzymes.take(10)) {
-                        add(JMenuItem(enzyme.name).apply {
-                            addActionListener { add(enzyme) }
-                        })
-                    }
-                    if (enzymes.size > 10) {
-                        add(JMenuItem("... and ${enzymes.size - 10} more"))
-                    }
-                })
-            }
+            rebuildCommonEnzymes(this)
+        }
+    }
+
+    private fun rebuildCommonEnzymes(menu: JMenu = commonEnzymesMenu) {
+        val pool = Enzymes.pool(prefs.value.customEnzymes)
+        menu.removeAll()
+        val categories = pool.groupBy { it.name.first() }.toSortedMap()
+        for ((letter, enzymes) in categories) {
+            menu.add(JMenu("$letter").apply {
+                for (enzyme in enzymes.take(10)) {
+                    add(JMenuItem(enzyme.name).apply {
+                        addActionListener { add(enzyme) }
+                    })
+                }
+                if (enzymes.size > 10) {
+                    add(JMenuItem("... and ${enzymes.size - 10} more"))
+                }
+            })
         }
     }
 

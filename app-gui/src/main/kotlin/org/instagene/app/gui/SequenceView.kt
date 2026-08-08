@@ -100,7 +100,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         val fm = getFontMetrics(baseFont)
         charWidth = maxOf(1, fm.charWidth('A'))
         lineHeight = fm.height
-        gutterWidth = charWidth * 9
+        gutterWidth = charWidth * (maxOf(8, "%,d".format(doc.seq.length).length) + 2)
         val usable = (width.takeIf { it > 0 } ?: 900) - gutterWidth - padding * 2
         basesPerLine = ((usable / charWidth) / 10 * 10).coerceIn(10, 240)
         assignFeatureLanes()
@@ -205,7 +205,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
             val x = xOf(col)
             if (col % 10 == 0 && col > 0) {
                 g2.color = Palette.GRID
-                g2.drawLine(x - charWidth / 2, top + markHeight, x - charWidth / 2, top + markHeight + lineHeight * trackCount())
+                g2.drawLine(x, top + markHeight, x, top + markHeight + lineHeight * trackCount())
             }
             val base = seq.bases[i]
             g2.color = Palette.charColor(base, seq.kind)
@@ -254,7 +254,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         if (e <= s) return
         g2.color = Palette.SELECTION
         g2.fillRect(
-            xOf(s - from) - charWidth / 2,
+            xOf(s - from),
             top + markHeight,
             (e - s) * charWidth,
             lineHeight * trackCount(),
@@ -268,7 +268,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         for (site in doc.cutSites.sortedBy { it.topCut }) {
             val pos = site.topCut
             if (pos !in from..<to) continue
-            val x = xOf(pos - from) - charWidth / 2
+            val x = xOf(pos - from)
             g2.color = Palette.CUT_MARK
             g2.drawLine(x, top + 2, x, top + markHeight)
             g2.fillPolygon(intArrayOf(x - 3, x + 3, x), intArrayOf(top + 2, top + 2, top + 7), 3)
@@ -291,7 +291,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
             if (e <= s) return@forEachIndexed
             val lane = laneOf[f] ?: 0
             val y = top + lane * laneHeight + 1
-            val x = xOf(s - from) - charWidth / 2
+            val x = xOf(s - from)
             val w = maxOf(3, (e - s) * charWidth)
             val color = Palette.featureColor(index)
             g2.color = Palette.translucent(color, 0x66)
@@ -325,7 +325,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         val col = doc.caret % basesPerLine
         val top = yOfRow(row) + markHeight
         g2.color = Palette.CARET
-        val x = xOf(col) - charWidth / 2
+        val x = xOf(col)
         g2.drawLine(x, top, x, top + lineHeight * trackCount())
     }
 

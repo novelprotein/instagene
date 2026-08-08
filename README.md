@@ -1,5 +1,10 @@
 # instagene
-Tool created to read, edit, and save gene files.
+
+This project contains 5 packages,
+First it includes InstaGene-CLI, this is a tool for gaining insights based on a gene sequence, good for scripting.
+Second it includes InstaGene-GUI, this is a tool, for creating and manipulating genesequences.
+Third it includes InstaGene-WEB, this is a web tool which functions as an InstaGene-GUI lite and uses the web as an interface. It has a client and server.
+Fourth it uses
 
 
 ## Project Status

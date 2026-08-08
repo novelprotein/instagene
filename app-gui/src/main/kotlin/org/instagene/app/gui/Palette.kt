@@ -1,17 +1,21 @@
 package org.instagene.app.gui
 
+import com.formdev.flatlaf.FlatLaf
 import java.awt.Color
+import javax.swing.UIManager
 
 /** Shared colours, so the editor, the map and the digest table agree. */
 object Palette {
 
-    val BACKGROUND = Color(0xFC, 0xFC, 0xFA)
+    private val darkTheme = runCatching { FlatLaf.isLafDark() }.getOrDefault(false)
+
+    val BACKGROUND: Color = UIManager.getColor("Panel.background") ?: Color(0xFC, 0xFC, 0xFA)
     val GUTTER = Color(0x99, 0x9C, 0xA0)
-    val GRID = Color(0xE4, 0xE4, 0xE0)
-    val TEXT = Color(0x24, 0x26, 0x28)
-    val MUTED = Color(0x77, 0x7A, 0x7D)
+    val GRID: Color = if (darkTheme) Color(0x52, 0x56, 0x5B) else Color(0xE4, 0xE4, 0xE0)
+    val TEXT: Color = if (darkTheme) Color(0xE6, 0xE6, 0xE0) else Color(0x24, 0x26, 0x28)
+    val MUTED: Color = if (darkTheme) Color(0x8C, 0x8F, 0x93) else Color(0x77, 0x7A, 0x7D)
     val SELECTION = Color(0x33, 0x77, 0xCC, 0x44)
-    val CARET = Color(0x22, 0x44, 0x88)
+    val CARET: Color = if (darkTheme) Color(0x8A, 0xB4, 0xF8) else Color(0x22, 0x44, 0x88)
     val CUT_MARK = Color(0xC0, 0x39, 0x2B)
 
     private val BASE_COLORS = mapOf(

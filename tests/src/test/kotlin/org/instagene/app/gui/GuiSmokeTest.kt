@@ -5,6 +5,7 @@ import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
+import org.instagene.core.prefs.SavedKind
 import java.awt.GraphicsEnvironment
 import java.awt.image.BufferedImage
 import java.io.File
@@ -256,7 +257,7 @@ class GuiSmokeTest {
         onEdt {
             val content = InstaGeneContent(null)
             val titles = (0 until content.toolTabs.tabCount).map { content.toolTabs.getTitleAt(it) }
-            assertEquals(listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers"), titles)
+            assertEquals(listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers", "Library"), titles)
 
             val sequenceIndex = titles.indexOf("Sequence")
             val sequenceTab = content.toolTabs.getComponentAt(sequenceIndex)
@@ -377,6 +378,74 @@ class GuiSmokeTest {
             doc.select(15, 20)
             // A manual range is user intent; selection moves must not clobber it.
             assertEquals("1" to "10", panel.rangeFields())
+        }
+    }
+
+    @Test
+    fun primersPanelSavesPairToLibrary() {
+        onEdt {
+            val prefs = Prefs()
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT", name = "tgt"))
+            val panel = PrimersPanel(doc, prefs)
+            panel.designAmplicon(0, 24)
+            assertNotNull(panel.lastPrimers())
+
+            panel.savePrimers()
+            val library = prefs.value.library
+            assertEquals(2, library.size)
+            assertTrue(library.all { it.kind == SavedKind.PRIMER })
+            assertEquals("tgt", library[0].context.sourceName)
+            assertEquals(0, library[0].context.start)
+            assertEquals(24, library[0].context.end)
+            assertNotNull(library[0].context.tm)
+        }
+    }
+
+    @Test
+    fun libraryPanelInsertsAndJumpsToSource() {
+        onEdt {
+            val prefs = Prefs()
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGT", name = "src"))
+            val view = SequenceView(doc)
+            val panel = LibraryPanel(prefs, doc, view) { _ -> }
+            panel.addItem(
+                org.instagene.core.prefs.SavedItem(
+                    kind = SavedKind.FRAGMENT,
+                    name = "frag",
+                    bases = "TTTT",
+                    context = org.instagene.core.prefs.SavedContext("src", start = 2, end = 6),
+                )
+            )
+            assertEquals(1, panel.libraryTable.rowCount)
+
+            doc.select(0, 2)
+            panel.insertSelected(0)
+            assertEquals("TTTTGTACGTACGTACGT", doc.seq.bases)
+
+            doc.select(0, 0)
+            panel.jumpToSource(0)
+            assertEquals(2, doc.selectionStart)
+            assertEquals(6, doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun libraryPanelDeleteRemovesItem() {
+        onEdt {
+            val prefs = Prefs()
+            val doc = SeqDocument(Seq(bases = "ACGT"))
+            val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
+            panel.addItem(
+                org.instagene.core.prefs.SavedItem(
+                    kind = SavedKind.FRAGMENT,
+                    name = "frag",
+                    bases = "AAAA",
+                    context = org.instagene.core.prefs.SavedContext("src", 0, 4),
+                )
+            )
+            assertEquals(1, panel.libraryTable.rowCount)
+            panel.deleteSelected(0)
+            assertEquals(0, prefs.value.library.size)
         }
     }
 

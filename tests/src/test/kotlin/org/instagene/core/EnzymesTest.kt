@@ -61,4 +61,44 @@ class EnzymesTest {
         assertTrue(Enzymes.parseList(" , ; ").isEmpty())
         assertFailsWith<IllegalArgumentException> { Enzymes.parseList("EcoRI,Fake") }
     }
+
+    @Test
+    fun poolMergesBuiltinsWithCustomAndDeduplicatesCaseInsensitively() {
+        val custom = listOf(
+            Enzyme("MegaI", "GATCGA", 1, 5),
+            Enzyme("ecori", "GAATTC", 1, 5), // duplicate of a built-in, case-insensitively
+        )
+        val pool = Enzymes.pool(custom)
+        assertEquals(Enzymes.ALL.size + 1, pool.size) // MegaI added, ecori merged away
+        assertTrue(pool.any { it.name == "MegaI" })
+        assertEquals(1, pool.count { it.name.equals("EcoRI", ignoreCase = true) })
+        // Built-ins win the deduplication.
+        assertEquals("EcoRI", pool.first { it.name.equals("EcoRI", ignoreCase = true) }.name)
+    }
+
+    @Test
+    fun poolWithNoCustomReturnsBuiltins() {
+        assertEquals(Enzymes.ALL, Enzymes.pool(emptyList()))
+    }
+
+    @Test
+    fun enzymesForRestrictsToNamedSetOrReturnsWholePool() {
+        val pool = Enzymes.pool()
+        val subset = Enzymes.enzymesFor(pool, listOf("EcoRI", "bamhi"))
+        // Order follows the pool (alphabetical), not the requested order.
+        assertEquals(listOf("BamHI", "EcoRI"), subset.map { it.name })
+        // An empty enabled list means everything is active.
+        assertEquals(pool, Enzymes.enzymesFor(pool, emptyList()))
+        // Unknown names are ignored silently.
+        assertTrue(Enzymes.enzymesFor(pool, listOf("Ghost")).isEmpty())
+    }
+
+    @Test
+    fun validateNewAcceptsNovelEnzymesAndRejectsBadInput() {
+        assertNull(Enzymes.validateNew("MegaI", "GATCGA", 1, 5))
+        assertTrue(Enzymes.validateNew("", "GATCGA", 1, 5) != null)
+        assertTrue(Enzymes.validateNew("With Space", "GATCGA", 1, 5) != null)
+        assertTrue(Enzymes.validateNew("MegaI", "GATC", 1, 5) != null) // non-IUPAC character
+        assertTrue(Enzymes.validateNew("MegaI", "GATCGA", 8, 5) != null) // cut beyond site length
+    }
 }

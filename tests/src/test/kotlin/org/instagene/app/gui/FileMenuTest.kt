@@ -8,12 +8,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.MethodOrderer
+import org.junit.jupiter.api.Order
+import org.junit.jupiter.api.TestMethodOrder
 
 /**
  * File I/O for the desktop app: loading and saving must never block the EDT,
  * and must handle large files. Runs headless, exercising the exact same
  * background-thread path the File menu uses.
  */
+@TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class FileMenuTest {
 
     /** Writes a FASTA with [bases] of random-ish, deterministic nucleotide data. */
@@ -67,6 +71,7 @@ class FileMenuTest {
     }
 
     @Test
+    @Order(1)
     fun loadFromFileLoadsALargeFastaAsynchronously() {
         val expected = 5_000_000
         val file = largeFasta("big", expected)
@@ -87,6 +92,7 @@ class FileMenuTest {
     }
 
     @Test
+    @Order(2)
     fun loadFromFileDoesNotBlockTheCallingThread() {
         val expected = 2_000_000
         val file = largeFasta("quick", expected)
@@ -109,6 +115,7 @@ class FileMenuTest {
      * event thread, freezing the window for minutes.
      */
     @Test
+    @Order(4)
     fun hugeGenomeLoadsThroughFullPanelStackWithoutFreezingTheEdt() {
         val expected = 70_000_000
         val file = largeFasta("genome", expected)
@@ -135,6 +142,7 @@ class FileMenuTest {
      * the Cuts column fills in after the sequence appears, never blocking it.
      */
     @Test
+    @Order(3)
     fun digestCutCountsArriveAsynchronouslyForACrowdedGenome() {
         val expected = 2_000_000
         val file = largeFasta("digest", expected)

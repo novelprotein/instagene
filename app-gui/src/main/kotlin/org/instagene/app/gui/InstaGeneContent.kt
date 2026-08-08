@@ -20,6 +20,7 @@ import javax.swing.JTabbedPane
 class InstaGeneContent(
     openPath: String? = null,
     owner: JFrame? = null,
+    private val prefs: Prefs = Prefs(),
 ) : JPanel(BorderLayout()) {
 
     val doc: SeqDocument
@@ -29,6 +30,7 @@ class InstaGeneContent(
     val featuresPanel: FeaturesPanel
     val primersPanel: PrimersPanel
     val infoPanel: InfoPanel
+    val libraryPanel: LibraryPanel
     val toolTabs = JTabbedPane()
     val menuBar: JMenuBar
     val statusBar: StatusBar
@@ -42,18 +44,22 @@ class InstaGeneContent(
         doc = SeqDocument(initialSeq, if (openPath != null) File(openPath) else null)
 
         sequenceView = SequenceView(doc)
-        digestPanel = DigestPanel(doc, { seq -> openFragmentWindow(seq) }, { start, end -> sequenceView.revealRange(start, end) })
+        digestPanel = DigestPanel(doc, { seq -> openFragmentWindow(seq) }, { start, end -> sequenceView.revealRange(start, end) }, prefs)
         plasmidMapPanel = PlasmidMapPanel(doc).apply {
             onSelect = { start, end -> sequenceView.revealRange(start, end) }
         }
         featuresPanel = FeaturesPanel(doc) { start, end -> sequenceView.revealRange(start, end) }
-        primersPanel = PrimersPanel(doc)
-        infoPanel = InfoPanel(doc) { FileMenu(owner, doc).openFile() }
+        primersPanel = PrimersPanel(doc, prefs)
+        infoPanel = InfoPanel(doc) { FileMenu(owner, doc, prefs).openFile() }
+        libraryPanel = LibraryPanel(prefs, doc, sequenceView) { seq -> openFragmentWindow(seq) }
 
         menuBar = createMenuBar(owner)
         statusBar = StatusBar(doc, sequenceView)
         add(createMainContent(), BorderLayout.CENTER)
         add(statusBar, BorderLayout.SOUTH)
+
+        toolTabs.selectedIndex = prefs.value.activeTab.coerceIn(0, toolTabs.tabCount - 1)
+        toolTabs.addChangeListener { prefs.update { it.copy(activeTab = toolTabs.selectedIndex) } }
     }
 
     /** Opens the extracted fragment as a fresh editor window. */
@@ -63,16 +69,16 @@ class InstaGeneContent(
             doc.replaceSequence(fragment)
             return
         }
-        val window = InstaGeneWindow(fragment)
+        val window = InstaGeneWindow(fragment, prefs)
         window.isVisible = true
     }
 
     private fun createMenuBar(owner: JFrame?): JMenuBar {
         return JMenuBar().apply {
-            add(FileMenu(owner, doc).create())
-            add(EditMenu(owner, doc, sequenceView).create())
+            add(FileMenu(owner, doc, prefs).create())
+            add(EditMenu(owner, doc, sequenceView, prefs).create())
             add(ViewMenu(doc, sequenceView).create())
-            add(ToolsMenu(doc, digestPanel).create())
+            add(ToolsMenu(doc, digestPanel, prefs).create())
         }
     }
 
@@ -91,6 +97,7 @@ class InstaGeneContent(
             addTab("Enzyme", digestPanel)
             addTab("Features", featuresPanel)
             addTab("Primers", primersPanel)
+            addTab("Library", libraryPanel)
         }
 
         return JPanel(BorderLayout()).apply {
