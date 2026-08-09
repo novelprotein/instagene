@@ -19,6 +19,13 @@ object SeqIO {
         return SeqFormat.entries.firstOrNull { ext in it.extensions } ?: SeqFormat.FASTA
     }
 
+    /**
+     * The format that stores [seq] without losing anything: GenBank when there
+     * are features or a circular topology (a plasmid map), FASTA otherwise.
+     */
+    fun preferredSaveFormat(seq: Seq): SeqFormat =
+        if (seq.isCircular || seq.features.isNotEmpty()) SeqFormat.GENBANK else SeqFormat.FASTA
+
     fun detectFormat(text: String): SeqFormat =
         if (GenBank.looksLikeGenBank(text)) SeqFormat.GENBANK else SeqFormat.FASTA
 

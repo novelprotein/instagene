@@ -1,6 +1,7 @@
 package org.instagene.app.gui
 
 import org.instagene.core.Seq
+import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
 import java.awt.event.KeyEvent
 import java.io.File
@@ -148,15 +149,32 @@ class FileMenu(
     }
 
     fun saveFileAs() {
+        val fastaFilter = javax.swing.filechooser.FileNameExtensionFilter("FASTA", "fasta", "fa", "fna")
+        val genbankFilter = javax.swing.filechooser.FileNameExtensionFilter("GenBank", "gb", "gbk", "genbank")
         val chooser = JFileChooser().apply {
             fileSelectionMode = JFileChooser.FILES_ONLY
-            setFileFilter(javax.swing.filechooser.FileNameExtensionFilter("FASTA", "fasta", "fa", "fna"))
+            addChoosableFileFilter(fastaFilter)
+            addChoosableFileFilter(genbankFilter)
+            // Annotated or circular documents default to GenBank: FASTA would lose the plasmid map.
+            fileFilter = if (SeqIO.preferredSaveFormat(doc.seq) == SeqFormat.GENBANK) genbankFilter else fastaFilter
         }
 
         if (chooser.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
             var file = chooser.selectedFile
+            val chosen = chooser.fileFilter
             if (!file.name.contains(".")) {
-                file = File(file.parentFile, file.name + ".fasta")
+                val ext = if (chosen == genbankFilter) "gb" else "fasta"
+                file = File(file.parentFile, file.name + "." + ext)
+            }
+            if (wouldLosePlasmidData(file)) {
+                when (promptPlasmidLoss(file)) {
+                    JOptionPane.YES_OPTION -> saveToFile(
+                        File(file.parentFile, file.name.substringBeforeLast('.') + ".gb")
+                    )
+                    JOptionPane.NO_OPTION -> saveToFile(file)
+                    else -> return
+                }
+                return
             }
             if (file.exists() && JOptionPane.showConfirmDialog(frame, "File exists. Overwrite?") != JOptionPane.YES_OPTION) {
                 return
@@ -165,8 +183,8 @@ class FileMenu(
         }
     }
 
-    /** Writes the sequence to [file] on a background thread, then marks it saved on the EDT. */
-    private fun writeToFile(file: File) {
+    /** Saves the document to [file] on a background thread, then marks it saved on the EDT. */
+    fun saveToFile(file: File) {
         val seq = doc.seq
         Thread {
             try {
@@ -182,6 +200,38 @@ class FileMenu(
             }
         }.start()
     }
+
+    /**
+     * Writes the document to [file], warning first when the target would drop
+     * the plasmid map: FASTA cannot hold features or circular topology.
+     */
+    private fun writeToFile(file: File) {
+        if (wouldLosePlasmidData(file)) {
+            when (promptPlasmidLoss(file)) {
+                JOptionPane.YES_OPTION -> {
+                    saveFileAs()
+                    return
+                }
+                JOptionPane.NO_OPTION -> {}
+                else -> return
+            }
+        }
+        saveToFile(file)
+    }
+
+    /** True when [file] is FASTA but the document carries a Plasmid map FASTA cannot store. */
+    private fun wouldLosePlasmidData(file: File): Boolean =
+        SeqIO.preferredSaveFormat(doc.seq) == SeqFormat.GENBANK && SeqIO.formatOf(file) == SeqFormat.FASTA
+
+    /** Asks how to proceed when a save target cannot store the plasmid map. */
+    private fun promptPlasmidLoss(file: File): Int = JOptionPane.showConfirmDialog(
+        frame,
+        "${file.name} is FASTA and cannot store the plasmid map.\n" +
+            "Features and circular topology would be lost when it is reopened.",
+        "Plasmid Data Would Be Lost",
+        JOptionPane.YES_NO_CANCEL_OPTION,
+        JOptionPane.WARNING_MESSAGE,
+    )
 
     private fun updateTitle() {
         val filename = doc.file?.name ?: "Untitled"
@@ -219,7 +269,7 @@ fun confirmDiscardChanges(frame: JFrame?, doc: SeqDocument): Boolean {
     if (!doc.isDirty) return true
     val result = JOptionPane.showConfirmDialog(
         frame,
-        "Sequence has unsaved changes. Discard?",
+        "${doc.file?.name?: "Sequence"} has unsaved changes. Discard?",
         "Unsaved Changes",
         JOptionPane.YES_NO_CANCEL_OPTION,
         JOptionPane.WARNING_MESSAGE

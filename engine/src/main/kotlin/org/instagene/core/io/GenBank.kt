@@ -126,8 +126,15 @@ object GenBank {
                         }
                     }
 
-                    section == "DEFINITION" && line.startsWith(" ") ->
-                        description += " " + line.trim()
+                    section == "DEFINITION" -> {
+                        // Only space-indented lines continue the definition; the
+                        // next column-0 keyword (ACCESSION, SOURCE, ...) ends it.
+                        if (line.startsWith(" ")) {
+                            description += " " + line.trim()
+                        } else {
+                            section = ""
+                        }
+                    }
                 }
             }
         }
@@ -175,8 +182,6 @@ object GenBank {
         append("SOURCE      InstaGene\n")
         append("  ORGANISM  synthetic construct\n")
         append("FEATURES             Location/Qualifiers\n")
-        append("     %-16s%s\n".format("source", "1..${seq.length}"))
-        append("                     /mol_type=\"${if (seq.kind == SeqKind.RNA) "genomic RNA" else "genomic DNA"}\"\n")
         for (f in seq.features.sortedBy { it.start }) {
             val range = "${f.start + 1}..${f.end}"
             val location = if (f.strand == Strand.REVERSE) "complement($range)" else range

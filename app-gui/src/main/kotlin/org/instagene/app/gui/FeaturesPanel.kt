@@ -1,6 +1,7 @@
 package org.instagene.app.gui
 
 import org.instagene.core.Feature
+import org.instagene.core.Strand
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
@@ -18,8 +19,8 @@ import javax.swing.table.AbstractTableModel
 
 /**
  * Annotated regions on the current sequence: browse, jump to, add from the
- * editor selection, and delete. Feature edits go through `doc.mutate`, so they
- * are undoable.
+ * editor selection, add at explicit coordinates, and delete. Feature edits go
+ * through `doc.mutate`, so they are undoable.
  */
 class FeaturesPanel(
     private val doc: SeqDocument,
@@ -29,6 +30,7 @@ class FeaturesPanel(
     private val featuresModel = FeatureTableModel()
     private val featureTable = JTable(featuresModel)
     private val addButton = JButton("Add Feature from Selection...")
+    private val manualAddButton = JButton("Add Feature Manually...")
     private val deleteButton = JButton("Delete")
     private val summary = JLabel(" ")
 
@@ -65,6 +67,9 @@ class FeaturesPanel(
         add(addButton.apply {
             addActionListener { addFeatureDialog() }
         })
+        add(manualAddButton.apply {
+            addActionListener { manualAddDialog() }
+        })
         add(deleteButton.apply {
             addActionListener { deleteSelectedFeature() }
         })
@@ -92,10 +97,11 @@ class FeaturesPanel(
     /** Updates the action buttons and summary from the current state (no table rebuild). */
     private fun refreshSelectionState() {
         addButton.isEnabled = doc.hasSelection && doc.selectionEnd > doc.selectionStart
+        manualAddButton.isEnabled = doc.seq.length > 0
         deleteButton.isEnabled = featureTable.selectedRow in doc.seq.features.indices
         val features = doc.seq.features
         summary.text = if (features.isEmpty()) {
-            "No features. Select a region and use \"Add Feature from Selection...\"."
+            "No features. Select a region and use \"Add Feature from Selection...\", or type coordinates with \"Add Feature Manually...\"."
         } else {
             "${features.size} feature(s), ${features.sumOf { it.length }} bp annotated"
         }
@@ -103,6 +109,9 @@ class FeaturesPanel(
 
     /** Exposed for tests: whether "Add Feature from Selection..." is currently enabled. */
     fun isAddEnabled(): Boolean = addButton.isEnabled
+
+    /** Exposed for tests: whether "Add Feature Manually..." is currently enabled. */
+    fun isManualAddEnabled(): Boolean = manualAddButton.isEnabled
 
     /** Exposed for tests: the currently selected feature row, -1 when none. */
     fun selectedFeatureRow(): Int = featureTable.selectedRow
@@ -126,6 +135,33 @@ class FeaturesPanel(
             notes = notes,
         )
         doc.mutate("add feature") { it.withFeature(feature) }
+    }
+
+    /**
+     * Adds a feature at explicit coordinates: [start] and [end] are the
+     * 1-based inclusive positions biologists type in. No selection is needed.
+     * Returns false (and changes nothing) when the coordinates are invalid.
+     */
+    fun addFeatureManually(
+        name: String,
+        type: String = "misc_feature",
+        start: Int,
+        end: Int,
+        strand: Strand = Strand.FORWARD,
+        notes: String = "",
+    ): Boolean {
+        val length = doc.seq.length
+        if (start < 1 || end < start || end > length) return false
+        val feature = Feature(
+            name = name.ifBlank { "feature" },
+            type = type.ifBlank { "misc_feature" },
+            start = start - 1,
+            end = end,
+            strand = strand,
+            notes = notes,
+        )
+        doc.mutate("add feature") { it.withFeature(feature) }
+        return true
     }
 
     private fun addFeatureDialog() {
@@ -155,6 +191,54 @@ class FeaturesPanel(
         )
         if (ok == JOptionPane.OK_OPTION) {
             addFeature(nameField.text, typeField.selectedItem as String, notesField.text)
+        }
+    }
+
+    private fun manualAddDialog() {
+        if (doc.seq.length == 0) return
+        val nameField = JTextField(20)
+        val typeField = JComboBox(TYPES.toTypedArray())
+        val startField = JTextField(6)
+        val endField = JTextField(6)
+        val strandField = JComboBox(arrayOf("+", "-"))
+        val notesField = JTextField(20)
+        val form = JPanel(GridLayout(6, 2, 6, 6)).apply {
+            add(JLabel("Name"))
+            add(nameField)
+            add(JLabel("Type"))
+            add(typeField)
+            add(JLabel("Start (1-based)"))
+            add(startField)
+            add(JLabel("End (1-based)"))
+            add(endField)
+            add(JLabel("Strand"))
+            add(strandField)
+            add(JLabel("Notes"))
+            add(notesField)
+        }
+        val ok = JOptionPane.showConfirmDialog(
+            null,
+            JPanel(BorderLayout(0, 6)).apply {
+                add(JLabel("Feature on ${doc.seq.name}: 1..${doc.seq.length}"), BorderLayout.NORTH)
+                add(form, BorderLayout.CENTER)
+            },
+            "Add Feature Manually",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE,
+        )
+        if (ok != JOptionPane.OK_OPTION) return
+        val start = startField.text.trim().toIntOrNull()
+        val end = endField.text.trim().toIntOrNull()
+        val strand = if (strandField.selectedItem == "-") Strand.REVERSE else Strand.FORWARD
+        if (start == null || end == null ||
+            !addFeatureManually(nameField.text, typeField.selectedItem as String, start, end, strand, notesField.text)
+        ) {
+            JOptionPane.showMessageDialog(
+                null,
+                "Invalid coordinates — Start must be 1-based and End must be >= Start and <= ${doc.seq.length}.",
+                "Add Feature Manually",
+                JOptionPane.ERROR_MESSAGE,
+            )
         }
     }
 

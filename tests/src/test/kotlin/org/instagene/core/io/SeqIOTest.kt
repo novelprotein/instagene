@@ -1,5 +1,6 @@
 package org.instagene.core.io
 
+import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
@@ -54,6 +55,45 @@ class SeqIOTest {
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun annotatedCircularGenBankFileRoundTripPreservesEverything() {
+        val dir = createTempDirectory("instagene-test").toFile()
+        try {
+            val original = Seq(
+                name = "pMini",
+                bases = "ATGCATGCATGCATGC",
+                kind = SeqKind.DNA,
+                topology = Topology.CIRCULAR,
+                features = listOf(
+                    Feature("oris", "rep_origin", 0, 4, org.instagene.core.Strand.FORWARD, ""),
+                    Feature("ampR", "CDS", 4, 16, org.instagene.core.Strand.REVERSE, "beta-lactamase"),
+                    Feature("MCS", "misc_feature", 12, 16),
+                ),
+                description = "mini plasmid with a map",
+            )
+            val file = File(dir, "pMini.gb")
+            SeqIO.write(file, original)
+            val reloaded = SeqIO.read(file)
+            assertEquals(original.name, reloaded.name)
+            assertEquals(original.description, reloaded.description)
+            assertEquals(original.bases, reloaded.bases)
+            assertEquals(Topology.CIRCULAR, reloaded.topology)
+            assertEquals(original.features, reloaded.features)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun preferredSaveFormatKeepsAnnotatedAndCircularDocumentsInGenBank() {
+        assertEquals(SeqFormat.FASTA, SeqIO.preferredSaveFormat(Seq("plain", "ACGT")))
+        assertEquals(SeqFormat.GENBANK, SeqIO.preferredSaveFormat(Seq("plasmid", "ACGT", topology = Topology.CIRCULAR)))
+        assertEquals(
+            SeqFormat.GENBANK,
+            SeqIO.preferredSaveFormat(Seq("anno", "ACGTACGT", features = listOf(Feature("f", "misc_feature", 0, 4))))
+        )
     }
 
     @Test

@@ -1,6 +1,8 @@
 package org.instagene.app.gui
 
+import org.instagene.core.Feature
 import org.instagene.core.Seq
+import org.instagene.core.Topology
 import java.io.File
 import java.nio.file.Files
 import javax.swing.SwingUtilities
@@ -155,5 +157,48 @@ class FileMenuTest {
             awaitEdt(120_000) { content.digestPanel.computedCutCounts()?.values?.any { it > 0 } == true },
             "Async cut counts never arrived for the 2 Mbp genome",
         )
+    }
+
+    @Test
+    @Order(5)
+    fun saveAnnotatedPlasmidToGenBankAndReloadPreservesEverything() {
+        val original = Seq(
+            name = "pMini",
+            bases = "ATGCATGCATGCATGC",
+            topology = Topology.CIRCULAR,
+            features = listOf(
+                Feature("oris", "rep_origin", 0, 4),
+                Feature("ampR", "CDS", 4, 16),
+            ),
+            description = "mini plasmid with a map",
+        )
+        val file = Files.createTempFile("plasmid", ".gb").toFile()
+        file.deleteOnExit()
+        val doc = SeqDocument(original)
+        val menu = FileMenu(null, doc)
+
+        menu.saveToFile(file)
+
+        assertTrue(
+            awaitEdt { doc.file == file && !doc.isDirty },
+            "Save via the File menu's background path never completed",
+        )
+        val savedText = file.readText()
+        assertTrue(savedText.contains("LOCUS"))
+        assertTrue(savedText.contains("FEATURES"))
+        assertTrue(savedText.contains("/label=\"ampR\""))
+        // The writer must not inject a synthetic `source` feature row.
+        assertFalse(savedText.contains("mol_type"))
+
+        // Reopen through the same background-load path the app uses.
+        val reloaded = SeqDocument(Seq(bases = ""))
+        val reloadMenu = FileMenu(null, reloaded)
+        reloadMenu.loadFromFile(file)
+        assertTrue(awaitEdt { reloaded.file == file && reloaded.seq.length == 16 })
+        assertEquals(original.name, reloaded.seq.name)
+        assertEquals(original.description, reloaded.seq.description)
+        assertEquals(original.bases, reloaded.seq.bases)
+        assertEquals(Topology.CIRCULAR, reloaded.seq.topology)
+        assertEquals(original.features, reloaded.seq.features)
     }
 }

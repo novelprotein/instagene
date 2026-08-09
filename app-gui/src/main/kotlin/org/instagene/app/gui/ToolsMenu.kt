@@ -131,7 +131,7 @@ class ToolsMenu(
             addActionListener {
                 JOptionPane.showMessageDialog(
                     null,
-                    "InstaGene v0.1.0-alpha\n\nA vibe-coded gene editing tool.\n\nBuilt with Kotlin and Swing.",
+                    "InstaGene v0.1.0-alpha\n\ngene editing tool.\n\nBuilt with Kotlin and Swing.",
                     "About InstaGene",
                     JOptionPane.INFORMATION_MESSAGE
                 )

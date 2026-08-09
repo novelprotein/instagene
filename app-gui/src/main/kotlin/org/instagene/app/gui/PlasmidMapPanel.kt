@@ -14,11 +14,13 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.event.MouseMotionAdapter
 import java.awt.geom.Arc2D
 import java.awt.geom.Ellipse2D
 import javax.swing.BorderFactory
 import javax.swing.JCheckBox
 import javax.swing.JPanel
+import javax.swing.SwingUtilities
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -34,9 +36,10 @@ import kotlin.math.sqrt
 
 /**
  * The plasmid map: a circular (or linear) diagram of features and restriction
- * sites. Clicking a feature selects it in the editor. The header offers a
- * "Circular" toggle, which is only ever checked when the sequence actually is
- * circular (i.e. a plasmid), never on by default.
+ * sites. Clicking a feature selects it in the editor; dragging selects the
+ * section between the press and release points. The header offers a "Circular"
+ * toggle, which is only ever checked when the sequence actually is circular
+ * (i.e. a plasmid), never on by default.
  */
 class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
@@ -104,12 +107,40 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
         private val laneOf = HashMap<Feature, Int>()
         private var laneCount = 0
 
+        private var pressPosition: Int? = null
+        private var dragged = false
+
         init {
             isOpaque = true
             background = Palette.BACKGROUND
             preferredSize = Dimension(380, 380)
             addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) = handleClick(e)
+                override fun mousePressed(e: MouseEvent) {
+                    if (SwingUtilities.isLeftMouseButton(e)) {
+                        pressPosition = positionAt(e)
+                        dragged = false
+                    }
+                }
+
+                override fun mouseReleased(e: MouseEvent) {
+                    if (dragged) {
+                        // The selection was already updated during the drag.
+                        pressPosition = null
+                        dragged = false
+                    } else {
+                        if (pressPosition != null) handleClick(e)
+                        pressPosition = null
+                    }
+                }
+            })
+            addMouseMotionListener(object : MouseMotionAdapter() {
+                override fun mouseDragged(e: MouseEvent) {
+                    val current = positionAt(e) ?: return
+                    val start = pressPosition ?: return
+                    if (abs(current - start) < 2) return
+                    dragged = true
+                    onSelect?.invoke(minOf(start, current), maxOf(start, current))
+                }
             })
         }
 
@@ -396,25 +427,34 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
             g2.drawString(text, x - g2.fontMetrics.stringWidth(text) / 2, y)
         }
 
-        /** Maps a click to a feature or base position; clicks outside the map do nothing. */
-        private fun handleClick(e: MouseEvent) {
+        /**
+         * Sequence position under the pointer, or null when the sequence is
+         * empty or the point lies outside the map (the ring on circular maps).
+         */
+        private fun positionAt(e: MouseEvent): Int? {
             val seq = doc.seq
-            if (seq.length == 0) return
-            val position = if (seq.isCircular) {
+            if (seq.length == 0) return null
+            if (seq.isCircular) {
                 val dx = (e.x - centerX).toDouble()
                 val dy = (centerY - e.y).toDouble()
                 val dist = sqrt(dx * dx + dy * dy)
                 val outer = backboneRadius + 18.0
                 val inner = (backboneRadius - 24 - ringCount * 15 - 8).coerceAtLeast(0)
-                if (dist > outer || dist < inner) return
+                if (dist > outer || dist < inner) return null
                 var angle = PI / 2 - atan2(dy, dx)
                 if (angle < 0) angle += 2 * PI
-                (angle / (2 * PI) * seq.length).roundToInt().coerceIn(0, seq.length - 1)
-            } else {
-                val left = 40
-                val span = (width - 80).coerceAtLeast(1)
-                (((e.x - left).toDouble() / span) * seq.length).roundToInt().coerceIn(0, seq.length - 1)
+                return (angle / (2 * PI) * seq.length).roundToInt().coerceIn(0, seq.length - 1)
             }
+            val left = 40
+            val span = (width - 80).coerceAtLeast(1)
+            return (((e.x - left).toDouble() / span) * seq.length).roundToInt().coerceIn(0, seq.length - 1)
+        }
+
+        /** Maps a click to a feature or base position; clicks outside the map do nothing. */
+        private fun handleClick(e: MouseEvent) {
+            val seq = doc.seq
+            if (seq.length == 0) return
+            val position = positionAt(e) ?: return
             val feature = seq.features.firstOrNull { position in it.start until it.end }
             if (feature != null) {
                 onSelect?.invoke(feature.start, feature.end)
