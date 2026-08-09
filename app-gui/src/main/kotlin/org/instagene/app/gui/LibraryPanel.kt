@@ -3,7 +3,7 @@ package org.instagene.app.gui
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
-import org.instagene.core.prefs.SavedItem
+import org.instagene.app.gui.prefs.SavedItem
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Toolkit

@@ -6,9 +6,9 @@ import org.instagene.core.Enzymes
 import org.instagene.core.Fragment
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
-import org.instagene.core.prefs.SavedContext
-import org.instagene.core.prefs.SavedItem
-import org.instagene.core.prefs.SavedKind
+import org.instagene.app.gui.prefs.SavedContext
+import org.instagene.app.gui.prefs.SavedItem
+import org.instagene.app.gui.prefs.SavedKind
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout

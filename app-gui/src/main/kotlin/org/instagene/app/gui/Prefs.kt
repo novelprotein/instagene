@@ -1,7 +1,7 @@
 package org.instagene.app.gui
 
-import org.instagene.core.prefs.PrefsStore
-import org.instagene.core.prefs.UserPrefs
+import org.instagene.app.gui.prefs.PrefsStore
+import org.instagene.app.gui.prefs.UserPrefs
 
 /**
  * Mutable, app-wide prefs facade: a [UserPrefs] snapshot that panels read from

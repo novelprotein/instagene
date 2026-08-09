@@ -1,4 +1,4 @@
-package org.instagene.core.prefs
+package org.instagene.app.gui.prefs
 
 import java.io.File
 

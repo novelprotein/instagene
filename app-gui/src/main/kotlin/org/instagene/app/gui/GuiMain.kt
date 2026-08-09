@@ -1,6 +1,6 @@
 package org.instagene.app.gui
 
-import org.instagene.core.prefs.PrefsStore
+import org.instagene.app.gui.prefs.PrefsStore
 import java.awt.GraphicsEnvironment
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities

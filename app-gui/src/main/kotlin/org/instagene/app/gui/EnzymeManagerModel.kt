@@ -2,7 +2,7 @@ package org.instagene.app.gui
 
 import org.instagene.core.Enzyme
 import org.instagene.core.Enzymes
-import org.instagene.core.prefs.UserPrefs
+import org.instagene.app.gui.prefs.UserPrefs
 
 /**
  * Working state behind the Enzyme Manager dialog. Edits accumulate here against

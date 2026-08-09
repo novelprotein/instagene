@@ -4,14 +4,18 @@ import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import java.awt.BorderLayout
-import java.awt.FlowLayout
+import java.awt.Dimension
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
+import javax.swing.JScrollPane
+import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
 
@@ -34,8 +38,17 @@ class InfoPanel(
 
     val nameField = JTextField(28)
     private val nameApply = JButton("Apply name")
-    val descriptionField = JTextField(28)
-    private val descriptionApply = JButton("Apply description")
+    val descriptionField = JTextArea(3, 28).apply {
+        lineWrap = true
+        wrapStyleWord = true
+        // The description applies itself once the box loses focus.
+        addFocusListener(object : FocusAdapter() {
+            override fun focusLost(e: FocusEvent) = setDescription()
+        })
+    }
+    private val descriptionScroll = JScrollPane(descriptionField).apply {
+        preferredSize = Dimension(280, 72)
+    }
 
     val kindLabel = JLabel("-")
     val topologyLabel = JLabel("-")
@@ -51,31 +64,27 @@ class InfoPanel(
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
         nameApply.addActionListener { rename() }
-        descriptionApply.addActionListener { setDescription() }
         openFileButton.addActionListener { onOpen() }
 
         val properties = JPanel(GridBagLayout()).apply {
             border = BorderFactory.createTitledBorder("Properties")
             var y = 0
-            fun labelRow(title: String, component: JPanel) {
-                add(JLabel(title), constraints(0, y))
-                add(component, constraints(1, y, weightX = 1.0))
+            fun labelRow(title: String, component: javax.swing.JComponent) {
+                add(JLabel(title), constraints(0, y, anchor = GridBagConstraints.NORTHWEST))
+                add(component, constraints(1, y, weightX = 1.0, anchor = GridBagConstraints.NORTHWEST))
                 y++
             }
-            labelRow("Name", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
-                add(nameField)
-                add(nameApply)
+            labelRow("Name", JPanel(BorderLayout(6, 0)).apply {
+                add(nameField, BorderLayout.CENTER)
+                add(nameApply, BorderLayout.EAST)
             })
-            labelRow("Description", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
-                add(descriptionField)
-                add(descriptionApply)
-            })
-            labelRow("Kind", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(kindLabel) })
-            labelRow("Topology", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(topologyLabel) })
-            labelRow("Length", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(lengthLabel) })
-            labelRow("File", JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
-                add(fileLabel)
-                add(openFileButton)
+            labelRow("Description", descriptionScroll)
+            labelRow("Kind", kindLabel)
+            labelRow("Topology", topologyLabel)
+            labelRow("Length", lengthLabel)
+            labelRow("File", JPanel(BorderLayout(6, 0)).apply {
+                add(fileLabel, BorderLayout.CENTER)
+                add(openFileButton, BorderLayout.EAST)
             })
         }
 
@@ -83,8 +92,8 @@ class InfoPanel(
             border = BorderFactory.createTitledBorder("Statistics")
             var y = 0
             fun statRow(title: String, value: JLabel) {
-                add(JLabel(title), constraints(0, y))
-                add(value, constraints(1, y, weightX = 1.0))
+                add(JLabel(title), constraints(0, y, anchor = GridBagConstraints.NORTHWEST))
+                add(value, constraints(1, y, weightX = 1.0, anchor = GridBagConstraints.NORTHWEST))
                 y++
             }
             statRow("GC content", gcLabel)
@@ -146,12 +155,17 @@ class InfoPanel(
         }.apply { name = "InfoPanel-stats"; isDaemon = true }.start()
     }
 
-    private fun constraints(x: Int, y: Int, weightX: Double = 0.0): GridBagConstraints =
+    private fun constraints(
+        x: Int,
+        y: Int,
+        weightX: Double = 0.0,
+        anchor: Int = GridBagConstraints.WEST,
+    ): GridBagConstraints =
         GridBagConstraints().apply {
             gridx = x
             gridy = y
             weightx = weightX
-            anchor = GridBagConstraints.WEST
+            this.anchor = anchor
             fill = GridBagConstraints.HORIZONTAL
             insets = Insets(3, 6, 3, 6)
         }

@@ -1,8 +1,8 @@
 package org.instagene.app.gui
 
-import org.instagene.core.prefs.SavedContext
-import org.instagene.core.prefs.SavedItem
-import org.instagene.core.prefs.SavedKind
+import org.instagene.app.gui.prefs.SavedContext
+import org.instagene.app.gui.prefs.SavedItem
+import org.instagene.app.gui.prefs.SavedKind
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem

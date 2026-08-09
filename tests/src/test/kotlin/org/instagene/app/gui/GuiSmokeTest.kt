@@ -5,7 +5,7 @@ import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
-import org.instagene.core.prefs.SavedKind
+import org.instagene.app.gui.prefs.SavedKind
 import java.awt.GraphicsEnvironment
 import java.awt.image.BufferedImage
 import java.io.File
@@ -409,11 +409,11 @@ class GuiSmokeTest {
             val view = SequenceView(doc)
             val panel = LibraryPanel(prefs, doc, view) { _ -> }
             panel.addItem(
-                org.instagene.core.prefs.SavedItem(
+                org.instagene.app.gui.prefs.SavedItem(
                     kind = SavedKind.FRAGMENT,
                     name = "frag",
                     bases = "TTTT",
-                    context = org.instagene.core.prefs.SavedContext("src", start = 2, end = 6),
+                    context = org.instagene.app.gui.prefs.SavedContext("src", start = 2, end = 6),
                 )
             )
             assertEquals(1, panel.libraryTable.rowCount)
@@ -436,11 +436,11 @@ class GuiSmokeTest {
             val doc = SeqDocument(Seq(bases = "ACGT"))
             val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
             panel.addItem(
-                org.instagene.core.prefs.SavedItem(
+                org.instagene.app.gui.prefs.SavedItem(
                     kind = SavedKind.FRAGMENT,
                     name = "frag",
                     bases = "AAAA",
-                    context = org.instagene.core.prefs.SavedContext("src", 0, 4),
+                    context = org.instagene.app.gui.prefs.SavedContext("src", 0, 4),
                 )
             )
             assertEquals(1, panel.libraryTable.rowCount)

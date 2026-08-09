@@ -1,10 +1,12 @@
 plugins {
     kotlin("jvm")
     id("buildsrc.convention.kotlin-jvm")
+    alias(libs.plugins.kotlinPluginSerialization)
 }
 
 dependencies {
     implementation(project(":engine"))
+    implementation(libs.kotlinxSerialization)
     implementation(libs.flatlaf)
     implementation(libs.flatlafIntelliJ)
 }
