@@ -14,6 +14,7 @@ import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 import kotlin.system.exitProcess
 
+/** The File menu: new, open, open-recent, save, save-as and exit, with background-thread file I/O and unsaved-changes prompts. */
 class FileMenu(
     private val frame: JFrame?,
     private val doc: SeqDocument,
@@ -219,7 +220,7 @@ class FileMenu(
         saveToFile(file)
     }
 
-    /** True when [file] is FASTA but the document carries a Plasmid map FASTA cannot store. */
+    /** True when [file] is FASTA but the document carries a plasmid map that FASTA cannot store. */
     private fun wouldLosePlasmidData(file: File): Boolean =
         SeqIO.preferredSaveFormat(doc.seq) == SeqFormat.GENBANK && SeqIO.formatOf(file) == SeqFormat.FASTA
 

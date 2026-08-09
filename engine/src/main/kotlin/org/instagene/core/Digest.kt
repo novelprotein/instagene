@@ -52,6 +52,7 @@ data class Fragment(
 
     val end: Int get() = start + length
 
+    /** Wraps this fragment as a linear DNA [Seq] carrying its features; the default name derives from [sourceName] and the coordinates. */
     fun toSeq(name: String = "${sourceName}_${start + 1}-$end"): Seq =
         Seq(name, bases, SeqKind.DNA, Topology.LINEAR, features)
 
@@ -69,6 +70,7 @@ object Digest {
         return sites.sortedWith(compareBy({ it.topCut }, { it.enzyme.name }))
     }
 
+    /** All cut sites of [enzyme] in [seq], sorted by top-strand cut position. */
     fun cutSites(seq: Seq, enzyme: Enzyme): List<CutSite> {
         val out = ArrayList<CutSite>()
         scanSites(seq, enzyme) { i, forward, topCut, bottomCut ->
@@ -95,7 +97,7 @@ object Digest {
 
     /**
      * The number of times [enzyme] cuts [seq], without building any [CutSite]
-     * objects. The digest panel's summary column scans the whole catalog this way.
+     * objects, so whole catalogs of enzymes can be scanned cheaply.
      */
     fun countSites(seq: Seq, enzyme: Enzyme): Int {
         var count = 0
@@ -282,7 +284,7 @@ object Digest {
     fun enzymesCutting(seq: Seq, times: Int = 1, pool: List<Enzyme> = Enzymes.ALL): List<Enzyme> =
         pool.filter { countSites(seq, it) == times }
 
-    /** Per-enzyme cut counts, for the digest panel's summary column. */
+    /** Per-enzyme cut counts over [pool], for the digest summary column. */
     fun cutCounts(seq: Seq, pool: List<Enzyme> = Enzymes.ALL): Map<Enzyme, Int> =
         pool.associateWith { countSites(seq, it) }
 }

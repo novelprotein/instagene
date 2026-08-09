@@ -6,6 +6,7 @@ import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import java.io.File
 
+/** The sequence file formats InstaGene reads and writes. */
 enum class SeqFormat(val displayName: String, val extensions: List<String>) {
     FASTA("FASTA", listOf("fa", "fasta", "fna", "fas", "seq", "txt")),
     GENBANK("GenBank", listOf("gb", "gbk", "genbank", "ape")),
@@ -14,6 +15,7 @@ enum class SeqFormat(val displayName: String, val extensions: List<String>) {
 /** Format-sniffing front door for reading and writing sequence files. */
 object SeqIO {
 
+    /** The format for [file], from its extension; unknown extensions fall back to FASTA. */
     fun formatOf(file: File): SeqFormat {
         val ext = file.extension.lowercase()
         return SeqFormat.entries.firstOrNull { ext in it.extensions } ?: SeqFormat.FASTA
@@ -26,6 +28,7 @@ object SeqIO {
     fun preferredSaveFormat(seq: Seq): SeqFormat =
         if (seq.isCircular || seq.features.isNotEmpty()) SeqFormat.GENBANK else SeqFormat.FASTA
 
+    /** Sniffs the format of [text] from its opening lines. */
     fun detectFormat(text: String): SeqFormat =
         if (GenBank.looksLikeGenBank(text)) SeqFormat.GENBANK else SeqFormat.FASTA
 
@@ -36,6 +39,7 @@ object SeqIO {
         else -> rawSequence(text, defaultName)
     }
 
+    /** Parses every record in [text], in whichever format it appears to be. */
     fun parseAll(text: String, defaultName: String = "sequence"): List<Seq> = when {
         GenBank.looksLikeGenBank(text) -> splitGenBankRecords(text).map { GenBank.parse(it, defaultName) }
         text.contains('>') -> Fasta.parseAll(text, defaultName)
@@ -60,6 +64,7 @@ object SeqIO {
         }
     }
 
+    /** Reads every record from [file]: FASTA records stream one at a time, GenBank records split at record terminators. */
     fun readAll(file: File): List<Seq> {
         val firstLine = firstNonBlankLine(file)
         return if (firstLine.startsWith("LOCUS")) {
@@ -111,11 +116,13 @@ object SeqIO {
     private fun capacityHintFor(file: File): Int =
         file.length().coerceAtMost(Int.MAX_VALUE.toLong()).toInt().coerceIn(64, Int.MAX_VALUE)
 
+    /** Serializes [seq] in [format]. */
     fun write(seq: Seq, format: SeqFormat): String = when (format) {
         SeqFormat.FASTA -> Fasta.write(seq)
         SeqFormat.GENBANK -> GenBank.write(seq)
     }
 
+    /** Writes [seq] to [file] in [format], defaulting to the format its extension names. */
     fun write(file: File, seq: Seq, format: SeqFormat = formatOf(file)) {
         file.writeText(write(seq, format))
     }
@@ -174,6 +181,7 @@ object SeqIO {
 /** Convenience: `seq.toFasta()` reads better than `Fasta.write(seq)` at call sites. */
 fun Seq.toFasta(): String = Fasta.write(this)
 
+/** Convenience: `seq.toGenBank()` reads better than `GenBank.write(seq)` at call sites. */
 fun Seq.toGenBank(): String = GenBank.write(this)
 
 /** True when this sequence holds nucleotides rather than amino acids. */

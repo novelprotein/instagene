@@ -21,11 +21,13 @@ object GenBank {
     private val LOCATION_RANGE = Regex("""(\d+)\s*\.\.\s*[><]?(\d+)""")
     private val SINGLE_POSITION = Regex("""^\s*[><]?(\d+)\s*$""")
 
+    /** True when [text] opens with a LOCUS line, the GenBank signature. */
     fun looksLikeGenBank(text: String): Boolean =
         text.lineSequence().take(5).any { it.startsWith("LOCUS") }
 
     // ------------------------------------------------------------------ reading
 
+    /** Parses one GenBank record from [text]. */
     fun parse(text: String, defaultName: String = "sequence"): Seq =
         parseFrom(StringReader(text), defaultName)
 
@@ -169,6 +171,7 @@ object GenBank {
 
     // ------------------------------------------------------------------ writing
 
+    /** Serializes [seq] as a GenBank flat file, with its features and topology. */
     fun write(seq: Seq): String = buildString {
         val molecule = if (seq.kind == SeqKind.RNA) "RNA" else "DNA"
         val shape = if (seq.isCircular) "circular" else "linear  "

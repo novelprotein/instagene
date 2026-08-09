@@ -14,8 +14,10 @@ class CodonTable(
     fun translate(codon: String): Char =
         codons[codon.uppercase().replace('U', 'T')] ?: 'X'
 
+    /** True when [codon] translates to the stop symbol ('*'). */
     fun isStop(codon: String): Boolean = translate(codon) == '*'
 
+    /** True when [codon] (T or U) is one of this table's permitted start codons. */
     fun isStart(codon: String): Boolean =
         codon.uppercase().replace('U', 'T') in startCodons
 
@@ -34,6 +36,7 @@ class CodonTable(
         private fun tableOf(aminoAcids: String): Map<String, Char> =
             codonOrder().mapIndexed { i, codon -> codon to aminoAcids[i] }.toMap()
 
+        /** Table 1: the canonical genetic code. */
         val STANDARD = CodonTable(
             id = 1,
             displayName = "1 - Standard",
@@ -49,8 +52,10 @@ class CodonTable(
             startCodons = setOf("ATG", "GTG", "TTG", "ATT", "ATC", "ATA", "CTG"),
         )
 
+        /** The bundled tables: standard, then bacterial/plasmid. */
         val ALL = listOf(STANDARD, BACTERIAL)
 
+        /** The table with the NCBI [id], throwing [IllegalArgumentException] when it is not bundled. */
         fun byId(id: Int): CodonTable =
             ALL.firstOrNull { it.id == id }
                 ?: throw IllegalArgumentException("Unknown genetic code table $id (available: ${ALL.map { it.id }})")

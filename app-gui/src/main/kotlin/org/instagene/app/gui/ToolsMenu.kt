@@ -30,7 +30,7 @@ class ToolsMenu(
         syncEnabled()
     }
 
-    /** Digestion and topology only apply to nucleotide sequences; follow the sample type. */
+    /** Digestion and topology only apply to nucleotide sequences; follow the sequence type. */
     private fun syncEnabled() {
         val seq = doc.seq
         val dna = seq.kind == SeqKind.DNA
@@ -131,7 +131,7 @@ class ToolsMenu(
             addActionListener {
                 JOptionPane.showMessageDialog(
                     null,
-                    "InstaGene v0.1.0-alpha\n\ngene editing tool.\n\nBuilt with Kotlin and Swing.",
+                    "InstaGene v0.1.0-alpha\n\nA gene editing tool.\n\nBuilt with Kotlin and Swing.",
                     "About InstaGene",
                     JOptionPane.INFORMATION_MESSAGE
                 )

@@ -23,6 +23,7 @@ data class ExternalTool(
     val producesOutFile: Boolean = argsTemplate.any { it.contains("{out}") },
 )
 
+/** The outcome of running a [tool]: the command executed, its exit code and captured output, and the file it wrote when it produced one. */
 data class ToolResult(
     val tool: ExternalTool,
     val command: String,
@@ -142,11 +143,13 @@ object ExternalTools {
             ?.absolutePath
     }
 
+    /** True when [tool]'s executable is installed on `PATH`. */
     fun isAvailable(tool: ExternalTool): Boolean = locate(tool.executable) != null
 
     /** Every catalog entry that is actually installed on this machine. */
     fun available(): List<ExternalTool> = CATALOG.filter(::isAvailable)
 
+    /** Every catalog entry that is not installed on this machine. */
     fun missing(): List<ExternalTool> = CATALOG.filterNot(::isAvailable)
 
     /** Clears the `PATH` lookup cache, for when a tool is installed mid-session. */
@@ -156,7 +159,7 @@ object ExternalTools {
      * Runs [tool] over [seq].
      *
      * [placeholders] fills template slots such as `{pattern}` or `{other}`;
-     * [extraArgs] is appended verbatim, so the GUI can expose a free-text
+     * [extraArgs] is appended verbatim, so a caller can expose a free-text
      * argument box. Never throws for a non-zero exit — inspect [ToolResult].
      */
     fun run(
@@ -245,7 +248,7 @@ object ExternalTools {
         }
     }
 
-    /** One-line availability report, used by `instagene tools` and the GUI panel. */
+    /** One-line availability report, as used by `instagene tools`. */
     fun report(): String = buildString {
         appendLine("External CLI tools (optional — InstaGene works without them):")
         appendLine()

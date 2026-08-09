@@ -4,7 +4,7 @@
 This project contains 5 packages:
 - InstaGene-CLI is a tool for gaining insights from nucleic acid sequences or protein sequences, good for scripting.
 - InstaGene-GUI is a tool for creating and manipulating nucleic acid sequences or protein sequences.
-- InstaGene-WEB is a tool for functioning as an InstaGene-GUI lite and uses the web as an interface. It is a client and server.
+- InstaGene-WEB is a tool functioning as an InstaGene-GUI lite and uses the web as an interface. It is a client and server.
 - InstaGene-Engine is a library which functions as the backbone for the project. It does not force the other projects as a dependency, allowing it to be used in other gene editing projects without the overhead of an entire program.
 - InstaGene-Test is a unit testing suit which tests each project in this repo for bugs automatically. Tests are added each time a bug is discovered to prevent reintroduction of similar bugs.
 

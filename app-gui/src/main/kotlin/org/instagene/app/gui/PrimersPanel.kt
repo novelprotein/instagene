@@ -46,7 +46,7 @@ class PrimersPanel(
 
     private var result: Pair<SeqOps.Primer, SeqOps.Primer>? = null
 
-    /** Set once the user types a From/To themselves; selection moves then stop clobbering it. */
+    /** Set once the user types a From/To themselves; selection moves then no longer clobber it. */
     private var rangeEdited = false
 
     init {
@@ -133,6 +133,7 @@ class PrimersPanel(
         }
     }
 
+    /** Re-syncs the controls with the document and re-validates the current From/To range. */
     fun refresh() {
         val nucleotide = doc.seq.kind != SeqKind.PROTEIN
         setInteractive(nucleotide)
@@ -174,6 +175,7 @@ class PrimersPanel(
         return f0 to t0
     }
 
+    /** Designs the primers for the displayed From/To range with the current target Tm, showing them in the results table. */
     fun design() {
         if (doc.seq.kind == SeqKind.PROTEIN) return
         val (from, to) = toRange()

@@ -11,10 +11,12 @@ import java.io.File
  */
 class SeqDocument(initial: Seq, file: File? = null) {
 
+        /** Receives a callback with the change [Reason] whenever the document changes. */
     fun interface Listener {
         fun documentChanged(doc: SeqDocument, reason: Reason)
     }
 
+    /** What changed in the document: the sequence, the selection, or the mapped enzymes. */
     enum class Reason { SEQUENCE, SELECTION, ENZYMES }
 
     var seq: Seq = initial
@@ -40,14 +42,23 @@ class SeqDocument(initial: Seq, file: File? = null) {
     var anchor: Int = 0
         private set
 
+    /** The lower of [caret] and [anchor]. */
     val selectionStart: Int get() = minOf(caret, anchor)
+
+    /** The upper of [caret] and [anchor]. */
     val selectionEnd: Int get() = maxOf(caret, anchor)
+
+    /** True when [caret] and [anchor] differ, i.e. something is selected. */
     val hasSelection: Boolean get() = caret != anchor
+
+    /** The bases spanned by the current selection. */
     val selectedBases: String get() = seq.sub(selectionStart, selectionEnd)
 
+    /** The enzymes currently mapped for the cut-site view. */
     var mappedEnzymes: List<Enzyme> = emptyList()
         private set
 
+    /** Cut sites of [mappedEnzymes] in the current sequence, refreshed on every change. */
     var cutSites: List<CutSite> = emptyList()
         private set
 
@@ -57,6 +68,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
     private val historyLimit = 100
     private var notificationsEnabled = true
 
+    /** Registers [listener] to be notified of every document change. */
     fun addListener(listener: Listener) {
         listeners += listener
     }
@@ -108,6 +120,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
         notify(Reason.SEQUENCE)
     }
 
+    /** Records that the document was saved to [savedTo]: the dirty flag clears and the undo baseline moves up. */
     fun markSaved(savedTo: File) {
         file = savedTo
         savedSeq = seq
@@ -118,6 +131,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
     //val undoLabel: String? get() = undoStack.lastOrNull()?.first
     //val redoLabel: String? get() = redoStack.lastOrNull()?.first
 
+    /** Reverts the most recent [mutate], restoring the previous sequence. */
     fun undo() {
         val (label, previous) = undoStack.removeLastOrNull() ?: return
         redoStack.addLast(label to seq)
@@ -128,6 +142,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
         notify(Reason.SEQUENCE)
     }
 
+    /** Re-applies the change most recently reverted by [undo]. */
     fun redo() {
         val (label, next) = redoStack.removeLastOrNull() ?: return
         undoStack.addLast(label to seq)
@@ -145,18 +160,21 @@ class SeqDocument(initial: Seq, file: File? = null) {
 
     // -------------------------------------------------------------- selection
 
+    /** Moves the caret to [position] (clamped to the sequence); with [extendSelection] only the caret end of the selection moves. */
     fun moveCaret(position: Int, extendSelection: Boolean = false) {
         caret = position.coerceIn(0, seq.length)
         if (!extendSelection) anchor = caret
         notify(Reason.SELECTION)
     }
 
+    /** Selects `[start, end)`, both ends clamped to the sequence. */
     fun select(start: Int, end: Int) {
         anchor = start.coerceIn(0, seq.length)
         caret = end.coerceIn(0, seq.length)
         notify(Reason.SELECTION)
     }
 
+    /** Selects the whole sequence. */
     fun selectAll() = select(0, seq.length)
 
     private fun clampSelection() {
@@ -166,6 +184,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
 
     // ---------------------------------------------------------------- enzymes
 
+    /** Replaces the mapped set with [enzymes] and rescans cut sites synchronously. */
     fun setMappedEnzymes(enzymes: List<Enzyme>) {
         mappedEnzymes = enzymes
         refreshCutSites()
@@ -183,14 +202,17 @@ class SeqDocument(initial: Seq, file: File? = null) {
         notify(Reason.ENZYMES)
     }
 
+    /** Adds [enzyme] to the mapped set. */
     fun addEnzyme(enzyme: Enzyme) {
         setMappedEnzymes(mappedEnzymes + enzyme)
     }
 
+    /** Unmaps every enzyme. */
     fun clearEnzymes() {
         setMappedEnzymes(emptyList())
     }
 
+    /** Replaces the sequence outright, keeping the current file, and clears the undo history. */
     fun replaceSequence(seq: Seq) {
         reset(seq, file)
     }

@@ -17,11 +17,13 @@ data class Enzyme(
     val bottomCut: Int,
     val supplier: String = "",
 ) {
+    /** Length of the recognition [site]. */
     val siteLength: Int get() = site.length
 
     /** Positive for a 5' overhang, negative for a 3' overhang, zero for blunt. */
     val overhangLength: Int get() = bottomCut - topCut
 
+    /** The end the enzyme leaves: blunt, 5' or 3' overhang, from the relative cut positions. */
     val endType: EndType
         get() = when {
             overhangLength > 0 -> EndType.FIVE_PRIME_OVERHANG
@@ -29,6 +31,7 @@ data class Enzyme(
             else -> EndType.BLUNT
         }
 
+    /** True when the recognition [site] reads identically on the reverse strand, i.e. equals its reverse complement. */
     val isPalindromic: Boolean
         get() = site == site.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
 
@@ -51,6 +54,7 @@ enum class EndType(val label: String) {
 /** The commonly stocked cloning enzymes, enough to cover a typical MCS. */
 object Enzymes {
 
+    /** The built-in catalog of commonly stocked cloning enzymes, deduplicated by name. */
     val ALL: List<Enzyme> = listOf(
         Enzyme("AatII", "GACGTC", 5, 1),
         Enzyme("AccI", "GTMKAC", 2, 4),
@@ -152,12 +156,14 @@ object Enzymes {
         return null
     }
 
+    /** The enzyme named [name], from [custom] or the built-in catalog (case-insensitive), or null when unknown. */
     fun find(name: String, custom: Collection<Enzyme> = emptyList()): Enzyme? {
         val key = name.trim().lowercase()
         return byName[key]
             ?: custom.firstOrNull { it.name.trim().lowercase() == key }
     }
 
+    /** [find], or throw an [IllegalArgumentException] listing the available enzymes. */
     fun require(name: String, custom: Collection<Enzyme> = emptyList()): Enzyme =
         find(name, custom) ?: throw IllegalArgumentException(
             "Unknown enzyme '$name'. Try one of: ${pool(custom).joinToString(", ") { it.name }}"

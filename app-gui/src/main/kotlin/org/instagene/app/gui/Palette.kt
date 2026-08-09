@@ -49,6 +49,7 @@ object Palette {
         '*' to Color(0xC0, 0x39, 0x2B), '-' to Color(0x99, 0x9C, 0xA0),
     )
 
+    /** The colour of nucleotide [c] (case-insensitive); non-base characters fall back to the muted grey. */
     fun baseColor(c: Char): Color = BASE_COLORS[c.uppercaseChar()] ?: MUTED
 
     /** Colour for an amino acid, falling back to the muted nucleotide grey. */
@@ -70,7 +71,9 @@ object Palette {
         Color(0xCC, 0x5F, 0x91),
     )
 
+    /** The fill for the [index]-th feature, cycling round the palette. */
     fun featureColor(index: Int): Color = FEATURE_COLORS[Math.floorMod(index, FEATURE_COLORS.size)]
 
+    /** [color] with its alpha replaced by [alpha], RGB channels unchanged. */
     fun translucent(color: Color, alpha: Int): Color = Color(color.red, color.green, color.blue, alpha)
 }

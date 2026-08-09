@@ -2,14 +2,18 @@ package org.instagene.core
 
 import kotlinx.serialization.Serializable
 
+/** The kind of alphabet a [Seq] uses. */
 enum class SeqKind { DNA, RNA, PROTEIN }
 
+/** Whether a molecule is an open line or a closed circle. */
 enum class Topology { LINEAR, CIRCULAR }
 
+/** Which strand of the double helix a coordinate, cut or feature refers to. */
 enum class Strand(val sign: Int, val symbol: String) {
     FORWARD(1, "+"),
     REVERSE(-1, "-");
 
+    /** The opposite strand. */
     fun flipped(): Strand = if (this == FORWARD) REVERSE else FORWARD
 }
 
@@ -28,6 +32,7 @@ data class Feature(
     val strand: Strand = Strand.FORWARD,
     val notes: String = "",
 ) {
+    /** Span in bases: [end] - [start]. */
     val length: Int get() = end - start
 
     /** 1-based inclusive coordinates, the convention biologists actually read. */
@@ -78,12 +83,16 @@ data class Seq(
         return sb.toString()
     }
 
+    /** A copy named [newName], with everything else unchanged. */
     fun withName(newName: String): Seq = copy(name = newName)
 
+    /** A copy with topology [newTopology], with everything else unchanged. */
     fun withTopology(newTopology: Topology): Seq = copy(topology = newTopology)
 
+    /** A copy with [feature] added to the feature table, kept sorted by start. */
     fun withFeature(feature: Feature): Seq = copy(features = (features + feature).sortedBy { it.start })
 
+    /** A copy with [feature] removed from the feature table (by structural equality). */
     fun withoutFeature(feature: Feature): Seq = copy(features = features - feature)
 
     /** Inserts [insert] before position [at], shifting downstream features. */

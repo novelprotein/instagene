@@ -35,8 +35,10 @@ import javax.swing.UIManager
  */
 object ThemeManager {
 
+    /** Default theme id, used until the user selects another. */
     const val DEFAULT_THEME = "FlatDraculaIJTheme"
 
+    /** A selectable theme: its persisted [id], menu [displayName], [dark] flag and the factory for its look-and-feel. */
     data class Theme(
         val id: String,
         val displayName: String,
@@ -44,6 +46,7 @@ object ThemeManager {
         val create: () -> LookAndFeel,
     )
 
+    /** All selectable themes, in menu order. */
     val themes: List<Theme> = listOf(
         Theme("FlatLightLaf", "Light (FlatLaf)", dark = false, create = ::FlatLightLaf),
         Theme("FlatIntelliJLaf", "IntelliJ Light", dark = false, create = ::FlatIntelliJLaf),
@@ -73,10 +76,13 @@ object ThemeManager {
     /** The id of the last successfully applied theme. */
     fun current(): String = applied ?: DEFAULT_THEME
 
+    /** The theme with [id], or null when unknown. */
     fun theme(id: String): Theme? = themes.firstOrNull { it.id == id }
 
+    /** Human-readable name for the theme with [id]; the id itself when unknown. */
     fun displayName(id: String): String = theme(id)?.displayName ?: id
 
+    /** True when the theme with [id] is dark; false for unknown ids. */
     fun isDark(id: String): Boolean = theme(id)?.dark == true
 
     /**

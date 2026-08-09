@@ -101,11 +101,13 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         background = Palette.BACKGROUND
     }
 
+    /** Sets the base-grid font size in points (clamped to 8..28) and re-lays the view out. */
     fun setFontSize(points: Int) {
         baseFont = Font(Font.MONOSPACED, Font.PLAIN, points.coerceIn(8, 28))
         relayout()
     }
 
+    /** The current base-grid font size in points. */
     fun fontSize(): Int = baseFont.size
 
     // ------------------------------------------------------------------ layout
@@ -500,6 +502,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         e.consume()
     }
 
+    /** Types [text] into the document, replacing the selection when there is one, otherwise inserting at the caret. */
     fun insertBases(text: String) {
         val clean = when (doc.seq.kind) {
             SeqKind.PROTEIN -> Alphabet.clean(text).uppercase()
@@ -518,6 +521,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         doc.moveCaret(start + clean.length)
     }
 
+    /** Deletes the current selection, if any. */
     fun deleteSelection() {
         if (!doc.hasSelection) return
         val start = doc.selectionStart
@@ -526,11 +530,13 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         doc.moveCaret(start)
     }
 
+    /** Copies the selection to the system clipboard, or the whole sequence when nothing is selected. */
     fun copySelection() {
         val text = if (doc.hasSelection) doc.selectedBases else doc.seq.bases
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
     }
 
+    /** Pastes text from the system clipboard at the caret (via [insertBases]). */
     fun paste() {
         val clipboard = Toolkit.getDefaultToolkit().systemClipboard
         val text = runCatching { clipboard.getData(DataFlavor.stringFlavor) as? String }.getOrNull() ?: return

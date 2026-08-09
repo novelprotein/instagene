@@ -44,29 +44,38 @@ class Args(argv: List<String>) {
         }
     }
 
+    /** True when [key] was given, either as a flag or as an option. */
     fun has(key: String): Boolean = key in flags || key in options
 
+    /** True when [key] was given as a bare flag or with a truthy value (`true`, `yes` or `1`). */
     fun flag(key: String): Boolean = key in flags || options[key]?.lowercase() in setOf("true", "yes", "1")
 
+    /** The value of option [key], or null when it was not given. */
     fun opt(key: String): String? = options[key]
 
+    /** The value of option [key], or [default] when it was not given. */
     fun opt(key: String, default: String): String = options[key] ?: default
 
+    /** The value of option [key], throwing [CliException] when it was not given. */
     fun require(key: String): String = options[key]
         ?: throw CliException("Missing required option --$key")
 
+    /** The integer value of option [key], or [default]; [CliException] when it is not a whole number. */
     fun int(key: String, default: Int): Int = options[key]?.let {
         it.toIntOrNull() ?: throw CliException("--$key expects a whole number, got '$it'")
     } ?: default
 
+    /** The required integer value of option [key]; [CliException] when missing or not a whole number. */
     fun requireInt(key: String): Int = int(key, Int.MIN_VALUE).also {
         if (it == Int.MIN_VALUE) throw CliException("Missing required option --$key")
     }
 
+    /** The numeric value of option [key], or [default]; [CliException] when it is not a number. */
     fun double(key: String, default: Double): Double = options[key]?.let {
         it.toDoubleOrNull() ?: throw CliException("--$key expects a number, got '$it'")
     } ?: default
 
+    /** The [index]-th positional argument, or null when there are not that many. */
     fun positional(index: Int): String? = positionals.getOrNull(index)
 }
 

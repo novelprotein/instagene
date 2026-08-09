@@ -32,10 +32,13 @@ object Alphabet {
         'B' to "CGT", 'D' to "AGT", 'H' to "ACT", 'V' to "ACG", 'N' to "ACGT",
     )
 
+    /** True when [c] is an accepted nucleotide character (any IUPAC code or a gap), case-insensitively. */
     fun isNucleotide(c: Char): Boolean = NUCLEOTIDES.indexOf(c.uppercaseChar()) >= 0
 
+    /** True when [c] is an accepted amino-acid character (including B/Z/J, X and the stop symbol). */
     fun isAminoAcid(c: Char): Boolean = AMINO_ACIDS.indexOf(c.uppercaseChar()) >= 0
 
+    /** The complementary base of [c] under [kind], preserving case; unknown characters become 'N'. */
     fun complement(c: Char, kind: SeqKind): Char {
         val upper = c.uppercaseChar()
         val table = if (kind == SeqKind.RNA) RNA_COMPLEMENT else DNA_COMPLEMENT

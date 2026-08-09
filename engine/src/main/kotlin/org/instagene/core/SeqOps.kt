@@ -53,6 +53,7 @@ object SeqOps {
         )
     }
 
+    /** Like [translate], but over raw [bases] and returning just the amino-acid string. */
     fun translateBases(
         bases: String,
         frame: Int = 0,
@@ -83,8 +84,10 @@ object SeqOps {
         return gc * 100.0 / bases.length
     }
 
+    /** GC content of [seq] as a percentage. */
     fun gcContent(seq: Seq): Double = gcContent(seq.bases)
 
+    /** Counts of each uppercase character in [bases], in sorted character order. */
     fun baseCounts(bases: String): Map<Char, Int> =
         bases.uppercase().groupingBy { it }.eachCount().toSortedMap()
 
@@ -92,7 +95,7 @@ object SeqOps {
      * Melting temperature in degrees C.
      *
      * Uses the Wallace rule below 14 nt and the salt-adjusted GC formula above it —
-     * both are the rules of thumb primer design actually uses at the bench.
+     * both are the rule-of-thumb formulas used at the bench.
      * RNA uracil counts as thymine, so the formula works for RNA oligos too.
      */
     fun meltingTemp(bases: String, saltMolar: Double = 0.05): Double {
@@ -134,6 +137,7 @@ object SeqOps {
             }
         }
 
+    /** Molecular weight of [seq] in daltons: residue sums, plus water for proteins, minus the 5' phosphate for single-stranded nucleic acids. */
     fun molecularWeightDaltons(seq: Seq): Double = when (seq.kind) {
         SeqKind.PROTEIN -> {
             var residues = 0.0
@@ -156,6 +160,7 @@ object SeqOps {
         }
     }
 
+    /** Counts of each codon in [bases], read from [frame] onwards. */
     fun codonUsage(bases: String, frame: Int = 0): Map<String, Int> {
         val counts = LinkedHashMap<String, Int>()
         var i = frame
@@ -279,6 +284,7 @@ object SeqOps {
 
     // ---------------------------------------------------------------- primers
 
+        /** A designed PCR primer: its name, sequence, melting temperature and GC percentage. */
     data class Primer(val name: String, val bases: String, val tm: Double, val gc: Double) {
         override fun toString(): String =
             "$name  $bases  (${bases.length} nt, Tm ${(tm * 10).roundToInt() / 10.0} C, GC ${(gc * 10).roundToInt() / 10.0}%)"

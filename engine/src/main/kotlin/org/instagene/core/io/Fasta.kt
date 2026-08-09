@@ -9,6 +9,7 @@ import java.io.StringReader
 /** FASTA reading and writing. */
 object Fasta {
 
+    /** Default line width for wrapped FASTA output. */
     const val LINE_WIDTH = 60
 
     /** Parses every record in [text]. Bare sequence text with no header is accepted. */
@@ -82,6 +83,7 @@ object Fasta {
         return Seq(name, bases, kind, topology, emptyList(), description)
     }
 
+    /** Best-effort kind guess for [bases]: protein when mostly non-nucleotide, RNA when uracil-like, DNA otherwise. */
     fun detectKind(bases: String): SeqKind {
         if (bases.isEmpty()) return SeqKind.DNA
         val nucleotideLike = bases.count { it.uppercaseChar() in "ACGTUN-" }
@@ -93,6 +95,7 @@ object Fasta {
         }
     }
 
+    /** Serializes [seq] as FASTA: wrapped at [lineWidth], with length and topology appended to the header. */
     fun write(seq: Seq, lineWidth: Int = LINE_WIDTH): String = buildString {
         append('>').append(seq.name)
         val extras = listOfNotNull(
@@ -105,6 +108,7 @@ object Fasta {
         seq.bases.chunked(lineWidth).forEach { append(it).append('\n') }
     }
 
+    /** Serializes [seqs] into one multi-record FASTA. */
     fun writeAll(seqs: List<Seq>, lineWidth: Int = LINE_WIDTH): String =
         seqs.joinToString("") { write(it, lineWidth) }
 }

@@ -111,6 +111,7 @@ class InfoPanel(
         refresh()
     }
 
+    /** Re-reads the document and repaints every field, leaving anything being edited alone. */
     fun refresh() {
         val seq = doc.seq
         if (!nameField.hasFocus()) nameField.text = seq.name

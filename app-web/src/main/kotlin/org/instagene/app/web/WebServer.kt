@@ -25,12 +25,15 @@ object WebServer {
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
+    /** `/api/open` request: open a bundled [sample] or parse pasted [text]. */
     @Serializable
     data class OpenRequest(val sample: String? = null, val text: String? = null)
 
+    /** `/api/op` request: run operation [op] over [seq], with optional [args]. */
     @Serializable
     data class OpRequest(val op: String, val seq: Seq, val args: Map<String, String> = emptyMap())
 
+    /** `/api/op` response: the transformed [seq], a [text] result, or an [error]. */
     @Serializable
     data class OpResult(val op: String, val seq: Seq? = null, val text: String? = null, val error: String? = null)
 
