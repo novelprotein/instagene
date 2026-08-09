@@ -76,6 +76,12 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
         add(mapCanvas, BorderLayout.CENTER)
     }
 
+    /** Re-picks the theme background when the look-and-feel changes. */
+    override fun updateUI() {
+        super.updateUI()
+        background = Palette.BACKGROUND
+    }
+
     /** The checkbox mirrors `seq.isCircular`; it is never pre-checked for a linear sample. */
     private fun syncTopologyControl() {
         circularCheckbox.isSelected = doc.seq.isCircular
@@ -105,6 +111,11 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) = handleClick(e)
             })
+        }
+
+        override fun updateUI() {
+            super.updateUI()
+            background = Palette.BACKGROUND
         }
 
         override fun paintComponent(g: Graphics) {

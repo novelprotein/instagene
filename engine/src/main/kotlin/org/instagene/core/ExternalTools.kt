@@ -208,17 +208,31 @@ object ExternalTools {
                 .directory(workingDir ?: inFile.parentFile)
                 .start()
 
-            if (tool.readsStdin) {
-                process.outputStream.bufferedWriter().use { it.write(fasta) }
-            } else {
-                process.outputStream.close()
+            // Drain stdout and stderr concurrently: reading them in sequence can
+            // deadlock once a pipe buffer fills, which hangs both the reader and
+            // the child.
+            fun drain(stream: java.io.InputStream): String = stream.bufferedReader().readText()
+            val stdoutFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.inputStream) }
+            val stderrFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.errorStream) }
+
+            try {
+                if (tool.readsStdin) {
+                    process.outputStream.bufferedWriter().use { it.write(fasta) }
+                } else {
+                    process.outputStream.close()
+                }
+            } catch (_: java.io.IOException) {
+                // The child closed stdin before the FASTA was fully written.
             }
 
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
             val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
+                process.waitFor(5, TimeUnit.SECONDS)
+            }
+            val stdout = stdoutFuture.get(5, TimeUnit.SECONDS)
+            val stderr = stderrFuture.get(5, TimeUnit.SECONDS)
+            if (!finished) {
                 ToolResult(tool, command.joinToString(" "), 124, stdout, "Timed out after ${timeoutSeconds}s")
             } else {
                 ToolResult(

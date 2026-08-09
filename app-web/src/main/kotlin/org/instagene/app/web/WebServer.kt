@@ -261,7 +261,13 @@ object WebServer {
     // --------------------------------------------------------------- HTTP plumbing
 
     private fun handleStatic(exchange: HttpExchange) {
-        val path = exchange.requestURI.path.removePrefix("/").ifEmpty { "index.html" }
+        // Reject traversal: only serve files directly under the bundled /web tree.
+        val requested = exchange.requestURI.path.removePrefix("/")
+        if (requested.any { it == '/' }) {
+            respond(exchange, 404, "Not found", "text/plain")
+            return
+        }
+        val path = requested.ifEmpty { "index.html" }
         val resource = WebServer::class.java.getResource("/web/$path")
         if (resource == null) {
             respond(exchange, 404, "Not found", "text/plain")

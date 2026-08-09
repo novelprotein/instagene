@@ -323,6 +323,6 @@ engine module — the same code the CLI and desktop GUI use.
 - [ ] Multi-sequence comparison
 - [ ] Import from NCBI
 - [ ] Export to various formats (GFF, JSON, etc.)
-- [ ] Theme support (dark mode)
+- [x] Theme support (dark mode)
 - [ ] Tabbed multi-file editing
 - [ ] Hiding elements when not needed

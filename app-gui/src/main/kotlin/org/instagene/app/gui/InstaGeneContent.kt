@@ -77,7 +77,7 @@ class InstaGeneContent(
         return JMenuBar().apply {
             add(FileMenu(owner, doc, prefs).create())
             add(EditMenu(owner, doc, sequenceView, prefs).create())
-            add(ViewMenu(doc, sequenceView).create())
+            add(ViewMenu(doc, sequenceView, prefs).create())
             add(ToolsMenu(doc, digestPanel, prefs).create())
         }
     }

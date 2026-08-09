@@ -2,6 +2,7 @@ package org.instagene.core.prefs
 
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -37,11 +38,16 @@ class PrefsStore(
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, ".${file.name}.tmp")
         tmp.writeText(json.encodeToString(prefs))
-        Files.move(
-            tmp.toPath(),
-            file.toPath(),
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE,
-        )
+        try {
+            Files.move(
+                tmp.toPath(),
+                file.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            // Some filesystems only do atomic moves between same-kind stores.
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
     }
 }

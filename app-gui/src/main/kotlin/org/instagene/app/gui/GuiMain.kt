@@ -1,12 +1,9 @@
 package org.instagene.app.gui
 
-import com.formdev.flatlaf.FlatDarkLaf
-import com.formdev.flatlaf.FlatLightLaf
 import org.instagene.core.prefs.PrefsStore
 import java.awt.GraphicsEnvironment
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities
-import javax.swing.UIManager
 import kotlin.system.exitProcess
 
 /** Standalone entry point for the desktop front-end (`./gradlew :app-gui:runGui`). */
@@ -30,22 +27,17 @@ private val launched = AtomicBoolean(false)
 fun launch(openPath: String?) {
     if (!launched.compareAndSet(false, true)) return
     SwingUtilities.invokeLater {
-        setupTheme()
         val prefs = Prefs(PrefsStore())
+        applySavedTheme(prefs)
         InstaGeneWindow(openPath, prefs).isVisible = true
     }
 }
 
-private fun setupTheme() {
-    try {
-        // Use FlatDarkLaf (modern dark theme inspired by IntelliJ IDEA)
-        UIManager.setLookAndFeel(FlatDarkLaf())
-    } catch (e: Exception) {
-        // Fallback to light theme
-        try {
-            UIManager.setLookAndFeel(FlatLightLaf())
-        } catch (_: Exception) {
-            System.err.println("Warning: Could not load FlatLaf theme: ${e.message}")
-        }
+private fun applySavedTheme(prefs: Prefs) {
+    val saved = prefs.value.theme
+    if (!ThemeManager.apply(saved)) {
+        // Corrupt or outdated theme id: fall back to the default and repair prefs.
+        ThemeManager.apply(ThemeManager.DEFAULT_THEME)
+        prefs.update { it.copy(theme = ThemeManager.DEFAULT_THEME) }
     }
 }

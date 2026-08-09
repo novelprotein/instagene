@@ -82,7 +82,7 @@ class DigestPanel(
 
     /** Runs the per-enzyme cut-count scans in parallel; owned by this panel. */
     private val countPool: ExecutorService =
-        Executors.newFixedThreadPool(countThreads)
+        Executors.newFixedThreadPool(countThreads) { r -> Thread(r).apply { isDaemon = true } }
 
     companion object {
         private val countThreads = maxOf(2, Runtime.getRuntime().availableProcessors())
@@ -275,20 +275,21 @@ class DigestPanel(
             return
         }
         // The per-enzyme scans are independent, so they run on a shared pool and
-        // the partial maps are merged back on the event thread.
+        // the partial maps are merged back on the event thread once every chunk lands.
         val perTask = (enzymes.size + countThreads - 1) / countThreads
         val partial = java.util.concurrent.ConcurrentHashMap<Enzyme, Int>(enzymes.size)
+        val pending = java.util.concurrent.atomic.AtomicInteger(enzymes.chunked(perTask).size)
         for (chunk in enzymes.chunked(perTask)) {
             countPool.submit {
                 for (enzyme in chunk) partial[enzyme] = Digest.countSites(seq, enzyme)
-            }
-        }
-        countPool.submit {
-            SwingUtilities.invokeLater {
-                if (version != countsVersion) return@invokeLater
-                countsCache = partial
-                countsStale = false
-                rebuildEnzymeTable()
+                if (pending.decrementAndGet() == 0) {
+                    SwingUtilities.invokeLater {
+                        if (version != countsVersion) return@invokeLater
+                        countsCache = partial
+                        countsStale = false
+                        rebuildEnzymeTable()
+                    }
+                }
             }
         }
     }

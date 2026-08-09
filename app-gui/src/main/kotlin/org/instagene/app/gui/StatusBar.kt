@@ -16,12 +16,17 @@ class StatusBar(doc: SeqDocument, sequenceView: SequenceView) : JPanel(BorderLay
 
     init {
         add(statusLabel, BorderLayout.CENTER)
-        background = Palette.BACKGROUND
         border = javax.swing.BorderFactory.createEtchedBorder()
 
         doc.addListener { _, _ ->
             statusLabel.text = sequenceView.statusText()
         }
         statusLabel.text = sequenceView.statusText()
+    }
+
+    /** Re-picks the theme background when the look-and-feel changes. */
+    override fun updateUI() {
+        super.updateUI()
+        background = Palette.BACKGROUND
     }
 }

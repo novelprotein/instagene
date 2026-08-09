@@ -32,14 +32,16 @@ class FeaturesPanel(
     private val deleteButton = JButton("Delete")
     private val summary = JLabel(" ")
 
+    private val rowSelectionListener = javax.swing.event.ListSelectionListener {
+        if (!it.valueIsAdjusting) revealSelectedFeature()
+    }
+
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
         featureTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
         featureTable.rowHeight = 20
-        featureTable.selectionModel.addListSelectionListener {
-            if (!it.valueIsAdjusting) revealSelectedFeature()
-        }
+        featureTable.selectionModel.addListSelectionListener(rowSelectionListener)
 
         add(buildButtons(), BorderLayout.NORTH)
         add(JScrollPane(featureTable), BorderLayout.CENTER)
@@ -47,7 +49,12 @@ class FeaturesPanel(
 
         doc.addListener { _, reason ->
             when (reason) {
-                SeqDocument.Reason.SEQUENCE, SeqDocument.Reason.SELECTION -> refresh()
+                // The feature list only changes when the sequence does; rebuilding
+                // the table on every selection event would drop the user's row
+                // selection (the click-driven "reveal" sets a document selection,
+                // which otherwise unselects the row just clicked).
+                SeqDocument.Reason.SEQUENCE -> refresh()
+                SeqDocument.Reason.SELECTION -> refreshSelectionState()
                 else -> {}
             }
         }
@@ -63,8 +70,27 @@ class FeaturesPanel(
         })
     }
 
+    /** Rebuilds the table from the current features, reselecting the row at the
+     * same position so a feature being deleted hands selection to the next row. */
     fun refresh() {
+        val previousRow = featureTable.selectedRow
         featuresModel.fireTableDataChanged()
+        val target = when {
+            doc.seq.features.isEmpty() -> -1
+            previousRow in doc.seq.features.indices -> previousRow
+            else -> minOf(previousRow, doc.seq.features.size - 1).coerceAtLeast(0)
+        }
+        if (target >= 0) {
+            // Swap the listener out so reselecting does not fire another reveal.
+            featureTable.selectionModel.removeListSelectionListener(rowSelectionListener)
+            featureTable.selectionModel.setSelectionInterval(target, target)
+            featureTable.selectionModel.addListSelectionListener(rowSelectionListener)
+        }
+        refreshSelectionState()
+    }
+
+    /** Updates the action buttons and summary from the current state (no table rebuild). */
+    private fun refreshSelectionState() {
         addButton.isEnabled = doc.hasSelection && doc.selectionEnd > doc.selectionStart
         deleteButton.isEnabled = featureTable.selectedRow in doc.seq.features.indices
         val features = doc.seq.features
@@ -74,6 +100,20 @@ class FeaturesPanel(
             "${features.size} feature(s), ${features.sumOf { it.length }} bp annotated"
         }
     }
+
+    /** Exposed for tests: whether "Add Feature from Selection..." is currently enabled. */
+    fun isAddEnabled(): Boolean = addButton.isEnabled
+
+    /** Exposed for tests: the currently selected feature row, -1 when none. */
+    fun selectedFeatureRow(): Int = featureTable.selectedRow
+
+    /** Exposed for tests: selects the row at [row] as a mouse click would. */
+    fun selectFeatureRow(row: Int) {
+        featureTable.selectionModel.setSelectionInterval(row, row)
+    }
+
+    /** Exposed for tests: whether the Delete button is currently enabled. */
+    fun isDeleteEnabled(): Boolean = deleteButton.isEnabled
 
     /** Adds a feature over the current editor selection (undoable). */
     fun addFeature(name: String, type: String = "misc_feature", notes: String = "") {

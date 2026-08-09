@@ -60,6 +60,7 @@ data class Seq(
 
     /** Base at [index], wrapping around the origin when the sequence is circular. */
     fun baseAt(index: Int): Char {
+        require(length > 0) { "Cannot index into an empty sequence" }
         val i = if (isCircular) Math.floorMod(index, length) else index
         return bases[i]
     }
@@ -140,7 +141,6 @@ data class Seq(
             val s = f.start - o
             val e = f.end - o
             when {
-                f.end == length -> null // ends at the origin: a straddler, dropped from the wrap point
                 s >= 0 -> f.copy(start = s, end = e)
                 e <= 0 -> f.copy(start = s + length, end = e + length)
                 else -> null // straddles the new origin

@@ -63,4 +63,20 @@ class ArgsTest {
         assertTrue(args.flag("lonely"))
         assertTrue(args.flag("next"))
     }
+
+    @Test
+    fun shortOutDoesNotConsumeFollowingFlag() {
+        val trailing = Args(listOf("-o", "--fasta", "input.fa"))
+        assertNull(trailing.opt("out"))
+        // The flag consumes the file as its value, as in normal --key value parsing.
+        assertEquals("input.fa", trailing.opt("fasta"))
+        assertEquals(emptyList(), trailing.positionals)
+
+        val leading = Args(listOf("-o", "out.gb", "--fasta"))
+        assertEquals("out.gb", leading.opt("out"))
+        assertTrue(leading.flag("fasta"))
+
+        val bare = Args(listOf("-o"))
+        assertNull(bare.opt("out"))
+    }
 }

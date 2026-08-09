@@ -149,8 +149,9 @@ object Cli {
         val table = CodonTable.byId(args.int("table", 1))
         val frame = args.int("frame", 1) - 1
         if (args.flag("all-frames")) {
+            val stopAtStop = args.flag("stop-at-stop")
             for (f in 0..2) {
-                val p = SeqOps.translate(seq, f, table)
+                val p = SeqOps.translate(seq, f, table, stopAtStop)
                 println(">${seq.name}_frame${f + 1}")
                 println(p.bases.chunked(60).joinToString("\n"))
             }

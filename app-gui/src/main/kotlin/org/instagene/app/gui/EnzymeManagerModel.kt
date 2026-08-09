@@ -39,15 +39,12 @@ class EnzymeManagerModel(private val prefs: Prefs) {
     fun setEnabled(enzyme: Enzyme, enabled: Boolean) {
         val all = pool.map { it.name.lowercase() }.toSet()
         val current = working.enabledEnzymes.map { it.lowercase() }.toMutableSet()
-        val wasAllActive = current.isEmpty()
+        // The empty set means "all active": enabling anything is a no-op.
+        if (current.isEmpty() && enabled) return
+        if (current.isEmpty()) current.addAll(all)
         if (enabled) {
-            if (wasAllActive) {
-                current += enzyme.name.lowercase()
-            } else {
-                current += enzyme.name.lowercase()
-            }
+            current += enzyme.name.lowercase()
         } else {
-            if (wasAllActive) current.addAll(all)
             current -= enzyme.name.lowercase()
         }
         // A fully enabled set is normalised back to the empty list (= all active).

@@ -80,8 +80,8 @@ class GenBankTest {
         assertTrue(parsed.features.any { it.name == "cds" && it.strand == Strand.REVERSE })
     }
 
-    @Test
-    fun featuresBeyondLengthAreDropped() {
+@Test
+    fun featuresBeyondLengthAreClipped() {
         val gb = """
             LOCUS       short                     6 bp    DNA     linear
             FEATURES             Location/Qualifiers
@@ -90,10 +90,29 @@ class GenBankTest {
                  CDS             5..20
                                  /gene="overflow"
             ORIGIN
-                    1 atgcat
+                     1 atgcat
             //
         """.trimIndent()
         val seq = GenBank.parse(gb)
-        assertEquals(listOf("ok"), seq.features.map { it.name })
+        val ok = seq.features.first { it.name == "ok" }
+        assertEquals(0, ok.start)
+        assertEquals(6, ok.end)
+        val overflow = seq.features.first { it.name == "overflow" }
+        assertEquals(4, overflow.start)
+        assertEquals(6, overflow.end)
+    }
+
+    @Test
+    fun featureStartingBeyondLengthIsDropped() {
+        val gb = """
+            LOCUS       short                     6 bp    DNA     linear
+            FEATURES             Location/Qualifiers
+                 CDS             8..12
+                                 /gene="gone"
+            ORIGIN
+                     1 atgcat
+            //
+        """.trimIndent()
+        assertEquals(emptyList(), GenBank.parse(gb).features)
     }
 }

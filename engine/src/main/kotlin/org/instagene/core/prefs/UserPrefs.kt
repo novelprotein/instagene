@@ -52,4 +52,5 @@ data class UserPrefs(
     val primerDefaultTm: Double = 60.0,
     val activeTab: Int = 0,
     val library: List<SavedItem> = emptyList(),
+    val theme: String = "FlatDraculaIJTheme",
 )

@@ -97,10 +97,10 @@ object Fasta {
         append('>').append(seq.name)
         val extras = listOfNotNull(
             seq.description.takeIf { it.isNotBlank() },
-            "${seq.length} bp",
+            "${seq.length} ${if (seq.kind == SeqKind.PROTEIN) "aa" else "bp"}",
             seq.topology.name.lowercase(),
         )
-        append(' ').append(extras.joinToString(" | "))
+        if (extras.isNotEmpty()) append(' ').append(extras.joinToString(" | "))
         append('\n')
         seq.bases.chunked(lineWidth).forEach { append(it).append('\n') }
     }

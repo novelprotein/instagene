@@ -139,7 +139,12 @@ object GenBank {
             bases = seqBases,
             kind = kind,
             topology = topology,
-            features = features.filter { it.end <= seqBases.length }.sortedBy { it.start },
+            // Features beyond the sequence end are clipped rather than dropped, so a
+            // record whose sequence got truncated still keeps its annotations.
+            features = features.mapNotNull { f ->
+                val end = minOf(f.end, seqBases.length)
+                if (end > f.start) f.copy(end = end) else null
+            }.sortedBy { it.start },
             description = description,
         )
     }

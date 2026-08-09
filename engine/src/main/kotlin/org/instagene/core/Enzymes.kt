@@ -105,11 +105,6 @@ object Enzymes {
 
     private val byName = ALL.associateBy { it.name.lowercase() }
 
-    /** Alternate spellings that resolve to a canonical entry, e.g. `HindIII` for `HinDIII`. */
-    private val aliases = mapOf(
-        "hindiii" to "hindiii",
-    )
-
     /**
      * The working catalog: built-in [ALL] merged with the [custom] novel enzymes,
      * deduplicated by case-insensitive name (built-ins win).
@@ -159,7 +154,7 @@ object Enzymes {
 
     fun find(name: String, custom: Collection<Enzyme> = emptyList()): Enzyme? {
         val key = name.trim().lowercase()
-        return byName[key] ?: aliases[key]?.let { byName[it] }
+        return byName[key]
             ?: custom.firstOrNull { it.name.trim().lowercase() == key }
     }
 

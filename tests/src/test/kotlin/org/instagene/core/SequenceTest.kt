@@ -111,8 +111,15 @@ class SequenceTest {
         assertEquals(seq, seq.rotateOrigin(0))
         val rotated = seq.rotateOrigin(3)
         assertEquals("DEFABC", rotated.bases)
-        assertEquals(listOf("keep"), rotated.features.map { it.name })
-        assertEquals(Feature("keep", start = 0, end = 2), rotated.features.single())
+        // [3,5) moves to [0,2); [4,6) ("EF") never wrapped the origin and lands on [1,3).
+        assertEquals(listOf("keep", "straddle"), rotated.features.map { it.name })
+        assertEquals(Feature("keep", start = 0, end = 2), rotated.features.first { it.name == "keep" })
+        assertEquals(Feature("straddle", start = 1, end = 3), rotated.features.first { it.name == "straddle" })
+        // A feature that really wraps the new origin is dropped.
+        val wrapping = seq.rotateOrigin(4)
+        assertEquals("EFABCD", wrapping.bases)
+        assertEquals(listOf("straddle"), wrapping.features.map { it.name })
+        assertEquals(Feature("straddle", start = 0, end = 2), wrapping.features.single())
     }
 
     @Test
@@ -152,5 +159,30 @@ class SequenceTest {
             .withFeature(Feature("late", start = 4, end = 5))
             .withFeature(Feature("early", start = 1, end = 2))
         assertEquals(listOf("early", "late"), seq.features.map { it.name })
+    }
+
+    @Test
+    fun rotateOriginKeepsFeatureEndingAtOldOrigin() {
+        val seq = Seq(
+            bases = "ABCDEF",
+            topology = Topology.CIRCULAR,
+            features = listOf(
+                Feature("tail", start = 4, end = 6),
+                Feature("origin", start = 0, end = 2),
+            ),
+        )
+        val rotated = seq.rotateOrigin(4)
+        assertEquals("EFABCD", rotated.bases)
+        assertEquals(listOf("tail", "origin"), rotated.features.map { it.name })
+        assertEquals(Feature("tail", start = 0, end = 2), rotated.features.first { it.name == "tail" })
+        assertEquals(Feature("origin", start = 2, end = 4), rotated.features.first { it.name == "origin" })
+    }
+
+    @Test
+    fun emptyCircularBaseAtRejects() {
+        val empty = Seq(bases = "", topology = Topology.CIRCULAR)
+        assertFailsWith<IllegalArgumentException> { empty.baseAt(0) }
+        assertFailsWith<IllegalArgumentException> { empty.baseAt(3) }
+        assertEquals(empty, empty.rotateOrigin(2))
     }
 }

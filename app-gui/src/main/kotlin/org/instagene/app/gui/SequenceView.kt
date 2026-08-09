@@ -95,6 +95,12 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         relayout()
     }
 
+    /** Re-picks the theme background when the look-and-feel changes. */
+    override fun updateUI() {
+        super.updateUI()
+        background = Palette.BACKGROUND
+    }
+
     fun setFontSize(points: Int) {
         baseFont = Font(Font.MONOSPACED, Font.PLAIN, points.coerceIn(8, 28))
         relayout()
@@ -158,6 +164,9 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
 
     private fun xOf(column: Int) = padding + gutterWidth + column * charWidth
     private fun yOfRow(row: Int) = padding + row * rowHeight()
+
+    /** Exposed for tests: the x-coordinate at which [column] is painted. */
+    fun xCoordinate(column: Int): Int = xOf(column)
 
     /** Sequence index under a point, clamped to the sequence. */
     fun indexAt(px: Int, py: Int): Int {

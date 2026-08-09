@@ -2,14 +2,16 @@ package org.instagene.app.gui
 
 import org.instagene.core.SeqKind
 import java.awt.event.KeyEvent
+import javax.swing.ButtonGroup
 import javax.swing.JCheckBoxMenuItem
 import javax.swing.JMenu
 import javax.swing.JMenuItem
-import javax.swing.KeyStroke
+import javax.swing.JRadioButtonMenuItem
 
 class ViewMenu(
     private val doc: SeqDocument,
     private val sequenceView: SequenceView,
+    private val prefs: Prefs = Prefs(),
 ) {
 
     private val complementItem = JCheckBoxMenuItem("Show Complement Strand", true)
@@ -47,12 +49,36 @@ class ViewMenu(
             add(createZoomInItem())
             add(createZoomOutItem())
             add(createResetZoomItem())
+            addSeparator()
+            add(createThemesMenu())
         }
+    }
+
+    private fun createThemesMenu(): JMenu {
+        val group = ButtonGroup()
+        return JMenu("Theme").apply {
+            mnemonic = KeyEvent.VK_T
+            ThemeManager.themes.forEach { theme ->
+                val item = JRadioButtonMenuItem(theme.displayName)
+                group.add(item)
+                item.isSelected = theme.id == prefs.value.theme
+                item.addActionListener {
+                    if (item.isSelected) selectTheme(theme.id)
+                }
+                add(item)
+            }
+        }
+    }
+
+    /** Switches the running look-and-feel and persists the choice for next launch. */
+    private fun selectTheme(id: String) {
+        if (ThemeManager.current() == id || !ThemeManager.apply(id)) return
+        prefs.update { it.copy(theme = id) }
     }
 
     private fun createZoomInItem(): JMenuItem {
         return JMenuItem("Zoom In", KeyEvent.VK_PLUS).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_PLUS, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_PLUS)
             addActionListener {
                 val current = sequenceView.fontSize()
                 sequenceView.setFontSize(current + 1)
@@ -62,7 +88,7 @@ class ViewMenu(
 
     private fun createZoomOutItem(): JMenuItem {
         return JMenuItem("Zoom Out", KeyEvent.VK_MINUS).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_MINUS)
             addActionListener {
                 val current = sequenceView.fontSize()
                 sequenceView.setFontSize(current - 1)
@@ -72,7 +98,7 @@ class ViewMenu(
 
     private fun createResetZoomItem(): JMenuItem {
         return JMenuItem("Reset Zoom", KeyEvent.VK_0).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_0, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_0)
             addActionListener {
                 sequenceView.setFontSize(14)
             }

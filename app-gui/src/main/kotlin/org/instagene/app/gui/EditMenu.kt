@@ -41,42 +41,42 @@ class EditMenu(
 
     private fun createUndoItem(): JMenuItem {
         return JMenuItem("Undo", KeyEvent.VK_Z).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_Z, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_Z)
             addActionListener { doc.undo() }
         }
     }
 
     private fun createRedoItem(): JMenuItem {
         return JMenuItem("Redo", KeyEvent.VK_Y).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_Y, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_Y)
             addActionListener { doc.redo() }
         }
     }
 
     private fun createSelectAllItem(): JMenuItem {
         return JMenuItem("Select All", KeyEvent.VK_A).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_A, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_A)
             addActionListener { doc.selectAll() }
         }
     }
 
     private fun createCopyItem(): JMenuItem {
         return JMenuItem("Copy", KeyEvent.VK_C).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_C, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_C)
             addActionListener { sequenceView.copySelection() }
         }
     }
 
     private fun createPasteItem(): JMenuItem {
         return JMenuItem("Paste", KeyEvent.VK_V).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_V, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_V)
             addActionListener { sequenceView.paste() }
         }
     }
 
     private fun createCutItem(): JMenuItem {
         return JMenuItem("Cut", KeyEvent.VK_X).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_X, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_X)
             addActionListener {
                 sequenceView.copySelection()
                 sequenceView.deleteSelection()
@@ -92,7 +92,7 @@ class EditMenu(
 
     private fun createFindItem(): JMenuItem {
         return JMenuItem("Find...", KeyEvent.VK_F).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_F, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_F)
             addActionListener {
                 val pattern = JOptionPane.showInputDialog(frame, "Find sequence:", lastPattern ?: "")
                 if (pattern != null && pattern.isNotEmpty()) {

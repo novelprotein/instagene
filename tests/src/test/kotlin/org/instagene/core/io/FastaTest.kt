@@ -100,4 +100,18 @@ class FastaTest {
         assertEquals(1, first.size)
         assertEquals("AACC", first[0].bases)
     }
+
+    @Test
+    fun writeUsesAaUnitForProteins() {
+        val seq = Seq("prot", "MKT", SeqKind.PROTEIN, Topology.LINEAR)
+        assertTrue(Fasta.write(seq).startsWith(">prot 3 aa | linear"))
+    }
+
+    @Test
+    fun writeOmitsBlankDescriptionFromHeader() {
+        val seq = Seq("x", "ACGT", SeqKind.DNA, Topology.LINEAR, description = "")
+        val text = Fasta.write(seq)
+        assertTrue(text.startsWith(">x 4 bp | linear"))
+        assertEquals("x", Fasta.parse(text).name)
+    }
 }

@@ -31,7 +31,11 @@ class Args(argv: List<String>) {
                 }
 
                 arg == "-o" -> {
-                    argv.getOrNull(i + 1)?.let { options["out"] = it; i++ }
+                    val next = argv.getOrNull(i + 1)
+                    if (next != null && !next.startsWith("--")) {
+                        options["out"] = next
+                        i++
+                    }
                 }
 
                 else -> positionals += arg
