@@ -1,6 +1,5 @@
 package org.instagene.app.gui
 
-import org.instagene.core.Seq
 import org.instagene.core.Version
 import java.awt.BorderLayout
 import java.awt.event.WindowAdapter
@@ -12,8 +11,8 @@ import javax.swing.JFrame
  *
  * The editor UI itself lives in [InstaGeneContent]; this class only wraps it in
  * a `JFrame` (menus, toolbar, sequence editor, and tool panels). Closing the
- * window prompts for unsaved changes before it goes away. Window geometry is
- * remembered in [prefs] and restored on the next launch.
+ * window prompts for unsaved changes in every open tab before it goes away.
+ * Window geometry is remembered in [prefs] and restored on the next launch.
  */
 class InstaGeneWindow(
     openPath: String? = null,
@@ -26,8 +25,11 @@ class InstaGeneWindow(
         defaultCloseOperation = DO_NOTHING_ON_CLOSE
         addWindowListener(object : WindowAdapter() {
             override fun windowClosing(e: WindowEvent) {
-                rememberGeometry()
-                if (confirmDiscardChanges(this@InstaGeneWindow, content.doc)) dispose()
+                if (content.confirmCloseAll(this@InstaGeneWindow)) {
+                    content.persistProject()
+                    rememberGeometry()
+                    dispose()
+                }
             }
         })
 
@@ -46,12 +48,6 @@ class InstaGeneWindow(
         content = InstaGeneContent(openPath, this, prefs)
         jMenuBar = content.menuBar
         contentPane.add(content, BorderLayout.CENTER)
-    }
-
-    /** Convenience for opening a fragment (or any [Seq]) directly in its own window. */
-    constructor(initial: Seq, prefs: Prefs = Prefs()) : this(null, prefs) {
-        content.doc.loadSequence(initial)
-        title = "InstaGene ${Version.VERSION} - ${initial.name}"
     }
 
     /** Persists the current bounds so the next launch opens in the same place. */

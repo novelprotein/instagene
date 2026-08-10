@@ -37,7 +37,11 @@ import javax.swing.ToolTipManager
  * coordinates and the [org.instagene.core.Seq] coordinates identical, which is
  * what every other panel needs in order to highlight the same region.
  */
-class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
+class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
+
+    /** The document currently on display; re-pointed when the active tab changes. */
+    private var doc = initial
+    private var docListener: SeqDocument.Listener? = null
 
     var showComplement: Boolean = true
         set(value) {
@@ -88,9 +92,26 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
         ToolTipManager.sharedInstance().registerComponent(this)
         installMouseHandlers()
         installKeyHandlers()
-        doc.addListener { _, reason ->
-            if (reason == SeqDocument.Reason.SEQUENCE) relayout() else repaint()
-            if (reason == SeqDocument.Reason.SELECTION) scrollCaretIntoView()
+        bindDocument(doc)
+    }
+
+    /**
+     * Re-points this view at another document (used when the active tab
+     * changes). The editing state such as zoom survives, since the view is
+     * shared across tabs.
+     */
+    fun bindDocument(newDoc: SeqDocument) {
+        if (newDoc !== doc) {
+            docListener?.let { doc.removeListener(it) }
+            doc = newDoc
+            if (docListener != null) doc.addListener(docListener!!)
+        }
+        if (docListener == null) {
+            docListener = SeqDocument.Listener { _, reason ->
+                if (reason == SeqDocument.Reason.SEQUENCE) relayout() else repaint()
+                if (reason == SeqDocument.Reason.SELECTION) scrollCaretIntoView()
+            }
+            doc.addListener(docListener!!)
         }
         relayout()
     }
@@ -132,19 +153,7 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
 
     /** Greedy interval packing so overlapping features get their own row of bars. */
     private fun assignFeatureLanes() {
-        laneOf.clear()
-        val ends = ArrayList<Int>()
-        for (f in doc.seq.features.sortedBy { it.start }) {
-            var lane = ends.indexOfFirst { it <= f.start }
-            if (lane < 0) {
-                lane = ends.size
-                ends += f.end
-            } else {
-                ends[lane] = f.end
-            }
-            laneOf[f] = lane
-        }
-        featureLanes = ends.size
+        featureLanes = packLanes(doc.seq.features, laneOf)
     }
 
     /** The complement track only makes sense for nucleotide sequences. */
@@ -580,4 +589,25 @@ class SequenceView(private val doc: SeqDocument) : JComponent(), Scrollable {
     override fun getScrollableTracksViewportWidth(): Boolean = true
 
     override fun getScrollableTracksViewportHeight(): Boolean = false
+}
+
+/**
+ * Greedy interval packing so overlapping [features] each get their own lane,
+ * recording the lane of every feature in [laneOf]. Returns the number of lanes
+ * used (shared by the sequence track bars and the plasmid map's rings).
+ */
+internal fun packLanes(features: List<Feature>, laneOf: MutableMap<Feature, Int>): Int {
+    laneOf.clear()
+    val ends = ArrayList<Int>()
+    for (f in features.sortedBy { it.start }) {
+        var lane = ends.indexOfFirst { it <= f.start }
+        if (lane < 0) {
+            lane = ends.size
+            ends += f.end
+        } else {
+            ends[lane] = f.end
+        }
+        laneOf[f] = lane
+    }
+    return ends.size
 }

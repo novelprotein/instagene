@@ -3,7 +3,6 @@ package org.instagene.app.gui
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
-import org.instagene.core.Version
 import java.awt.event.KeyEvent
 import java.io.File
 import javax.swing.JFileChooser
@@ -13,13 +12,20 @@ import javax.swing.JMenuItem
 import javax.swing.JOptionPane
 import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
-import kotlin.system.exitProcess
 
-/** The File menu: new, open, open-recent, save, save-as and exit, with background-thread file I/O and unsaved-changes prompts. */
+/** The File menu: new, open, open-recent, project, close-tab, save, save-as and exit, with background-thread file I/O and unsaved-changes prompts. */
 class FileMenu(
     private val frame: JFrame?,
     private val doc: SeqDocument,
     private val prefs: Prefs = Prefs(),
+    private val onNewDocument: () -> Unit = {},
+    private val onOpenDocument: () -> Unit = {},
+    private val onOpenRecent: (File) -> Unit = {},
+    private val onNewProject: () -> Unit = {},
+    private val onOpenProject: () -> Unit = {},
+    private val onCloseTab: () -> Unit = {},
+    private val onExit: () -> Unit = {},
+    private val onTitleChanged: () -> Unit = {},
 ) {
 
     private val recentMenu = JMenu("Open Recent")
@@ -37,6 +43,11 @@ class FileMenu(
             add(createOpenItem())
             add(recentMenu)
             addSeparator()
+            add(createNewProjectItem())
+            add(createOpenProjectItem())
+            addSeparator()
+            add(createCloseTabItem())
+            addSeparator()
             add(createSaveItem())
             add(createSaveAsItem())
             addSeparator()
@@ -47,20 +58,37 @@ class FileMenu(
     private fun createNewItem(): JMenuItem {
         return JMenuItem("New", KeyEvent.VK_N).apply {
             accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_N, java.awt.event.InputEvent.CTRL_DOWN_MASK)
-            addActionListener {
-                if (confirmDiscardChanges(frame, doc)) {
-                    doc.replaceSequence(Seq(""))
-                    doc.file = null
-                    updateTitle()
-                }
-            }
+            addActionListener { onNewDocument() }
         }
     }
 
     private fun createOpenItem(): JMenuItem {
         return JMenuItem("Open...", KeyEvent.VK_O).apply {
             accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_O, java.awt.event.InputEvent.CTRL_DOWN_MASK)
-            addActionListener { openFile() }
+            addActionListener { onOpenDocument() }
+        }
+    }
+
+    private fun createNewProjectItem(): JMenuItem {
+        return JMenuItem("New Project...").apply {
+            addActionListener { onNewProject() }
+        }
+    }
+
+    private fun createOpenProjectItem(): JMenuItem {
+        return JMenuItem("Open Project...", KeyEvent.VK_P).apply {
+            accelerator = KeyStroke.getKeyStroke(
+                KeyEvent.VK_P,
+                java.awt.event.InputEvent.CTRL_DOWN_MASK or java.awt.event.InputEvent.SHIFT_DOWN_MASK,
+            )
+            addActionListener { onOpenProject() }
+        }
+    }
+
+    private fun createCloseTabItem(): JMenuItem {
+        return JMenuItem("Close Tab", KeyEvent.VK_W).apply {
+            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_W, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+            addActionListener { onCloseTab() }
         }
     }
 
@@ -80,44 +108,21 @@ class FileMenu(
 
     private fun createExitItem(): JMenuItem {
         return JMenuItem("Exit", KeyEvent.VK_X).apply {
-            addActionListener {
-                if (confirmDiscardChanges(frame, doc)) {
-                    exitProcess(0)
-                }
-            }
+            addActionListener { onExit() }
         }
     }
 
     /**
-     * Opens a file picker, then hands the chosen file to [loadFromFile], which
-     * parses on a background thread so the UI never blocks on big files.
+     * Parses [file] on a background thread (never blocking the EDT) and delivers
+     * the result to [onResult] back on the event thread. Shared by the in-place
+     * [loadFromFile] and by callers that open into a new tab. Parse errors and
+     * out-of-memory conditions are reported to the user here.
      */
-    fun openFile() {
-        val chooser = JFileChooser().apply {
-            fileSelectionMode = JFileChooser.FILES_ONLY
-            setFileFilter(javax.swing.filechooser.FileNameExtensionFilter("Sequence Files", "fasta", "fa", "fna", "gb", "gbk", "gp", "txt"))
-        }
-
-        if (chooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
-            val file = chooser.selectedFile
-            if (!confirmDiscardChanges(frame, doc)) return
-            loadFromFile(file)
-        }
-    }
-
-    /**
-     * Loads [file] without a file chooser: parses on a background thread and
-     * applies the result on the EDT. Shared by the menu action and tests.
-     */
-    fun loadFromFile(file: File) {
+    fun readAsync(file: File, onResult: (Seq) -> Unit) {
         Thread {
             try {
                 val seq = SeqIO.read(file)
-                SwingUtilities.invokeLater {
-                    doc.loadSequence(seq, file)
-                    updateTitle()
-                    addRecent(file)
-                }
+                SwingUtilities.invokeLater { onResult(seq) }
             } catch (_: OutOfMemoryError) {
                 SwingUtilities.invokeLater {
                     val message = buildString {
@@ -139,6 +144,18 @@ class FileMenu(
                 }
             }
         }.apply { isDaemon = false; name = "FileReader-${file.name}" }.start()
+    }
+
+    /**
+     * Loads [file] without a file chooser: parses on a background thread and
+     * applies the result on the EDT. Shared by the menu action and tests.
+     */
+    fun loadFromFile(file: File) {
+        readAsync(file) { seq ->
+            doc.loadSequence(seq, file)
+            updateTitle()
+            addRecent(file)
+        }
     }
 
     fun saveFile() {
@@ -236,9 +253,7 @@ class FileMenu(
     )
 
     private fun updateTitle() {
-        val filename = doc.file?.name ?: "Untitled"
-        val dirty = if (doc.isDirty) "*" else ""
-        frame?.title = "InstaGene ${Version.VERSION} - $filename$dirty"
+        onTitleChanged()
     }
 
     /** Records [file] in the recent-files list (most recent first, capped at 10). */
@@ -260,7 +275,7 @@ class FileMenu(
         for (path in paths) {
             recentMenu.add(JMenuItem(File(path).name).apply {
                 toolTipText = path
-                addActionListener { loadFromFile(File(path)) }
+                addActionListener { onOpenRecent(File(path)) }
             })
         }
     }

@@ -73,6 +73,11 @@ class SeqDocument(initial: Seq, file: File? = null) {
         listeners += listener
     }
 
+    /** Unregisters [listener]; a no-op when it was never registered. */
+    fun removeListener(listener: Listener) {
+        listeners.remove(listener)
+    }
+
     private fun notify(reason: Reason) {
         if (notificationsEnabled) {
             listeners.toList().forEach { it.documentChanged(this, reason) }
@@ -210,11 +215,6 @@ class SeqDocument(initial: Seq, file: File? = null) {
     /** Unmaps every enzyme. */
     fun clearEnzymes() {
         setMappedEnzymes(emptyList())
-    }
-
-    /** Replaces the sequence outright, keeping the current file, and clears the undo history. */
-    fun replaceSequence(seq: Seq) {
-        reset(seq, file)
     }
 
     /** Load a sequence while suppressing listener notifications for better performance. */

@@ -26,10 +26,13 @@ import javax.swing.table.AbstractTableModel
  */
 class LibraryPanel(
     private val prefs: Prefs,
-    private val doc: SeqDocument,
+    initial: SeqDocument,
     private val sequenceView: SequenceView,
     private val onOpenSeq: (Seq) -> Unit,
 ) : JPanel(BorderLayout(0, 6)) {
+
+    /** The document used as the "source" context; re-pointed when the active tab changes. */
+    private var doc = initial
 
     private val libraryModel = LibraryTableModel()
     val libraryTable = JTable(libraryModel)
@@ -61,6 +64,12 @@ class LibraryPanel(
         add(JScrollPane(libraryTable), BorderLayout.CENTER)
         add(buildActions(), BorderLayout.SOUTH)
         updateActionState()
+    }
+
+    /** Re-points this panel at another document (used when the active tab changes). */
+    fun bindDocument(newDoc: SeqDocument) {
+        if (newDoc === doc) return
+        doc = newDoc
     }
 
     private fun buildHeader(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
@@ -134,9 +143,6 @@ class LibraryPanel(
         val item = prefs.value.library.getOrNull(row) ?: return
         prefs.update { it.copy(library = it.library - item) }
     }
-
-    /** Exposed for tests: the saved item at [row]. */
-    fun itemAt(row: Int): SavedItem? = prefs.value.library.getOrNull(row)
 
     private inner class LibraryTableModel : AbstractTableModel() {
         private val columns = arrayOf("Kind", "Name", "Length", "Source")

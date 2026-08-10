@@ -23,9 +23,13 @@ import javax.swing.table.AbstractTableModel
  * through `doc.mutate`, so they are undoable.
  */
 class FeaturesPanel(
-    private val doc: SeqDocument,
+    initial: SeqDocument,
     private val onReveal: (Int, Int) -> Unit,
 ) : JPanel(BorderLayout(0, 6)) {
+
+    /** The document currently displayed; re-pointed when the active tab changes. */
+    private var doc = initial
+    private var docListener: SeqDocument.Listener? = null
 
     private val featuresModel = FeatureTableModel()
     private val featureTable = JTable(featuresModel)
@@ -49,16 +53,36 @@ class FeaturesPanel(
         add(JScrollPane(featureTable), BorderLayout.CENTER)
         add(summary, BorderLayout.SOUTH)
 
-        doc.addListener { _, reason ->
-            when (reason) {
-                // The feature list only changes when the sequence does; rebuilding
-                // the table on every selection event would drop the user's row
-                // selection (the click-driven "reveal" sets a document selection,
-                // which otherwise unselects the row just clicked).
-                SeqDocument.Reason.SEQUENCE -> refresh()
-                SeqDocument.Reason.SELECTION -> refreshSelectionState()
-                else -> {}
-            }
+        bindDocument(doc)
+        refresh()
+    }
+
+    /** The change handler: the feature list only changes when the sequence does. */
+    private fun listenerFor() = SeqDocument.Listener { _, reason ->
+        when (reason) {
+            // The feature list only changes when the sequence does; rebuilding
+            // the table on every selection event would drop the user's row
+            // selection (the click-driven "reveal" sets a document selection,
+            // which otherwise unselects the row just clicked).
+            SeqDocument.Reason.SEQUENCE -> refresh()
+            SeqDocument.Reason.SELECTION -> refreshSelectionState()
+            else -> {}
+        }
+    }
+
+    /**
+     * Re-points this panel at another document (used when the active tab
+     * changes) and rebuilds the feature table from it.
+     */
+    fun bindDocument(newDoc: SeqDocument) {
+        if (newDoc !== doc) {
+            docListener?.let { doc.removeListener(it) }
+            doc = newDoc
+            if (docListener != null) doc.addListener(docListener!!)
+        }
+        if (docListener == null) {
+            docListener = listenerFor()
+            doc.addListener(docListener!!)
         }
         refresh()
     }
@@ -151,7 +175,7 @@ class FeaturesPanel(
         notes: String = "",
     ): Boolean {
         val length = doc.seq.length
-        if (start < 1 || end < start || end > length) return false
+        if (start !in 1..length || end !in start..length) return false
         val feature = Feature(
             name = name.ifBlank { "feature" },
             type = type.ifBlank { "misc_feature" },

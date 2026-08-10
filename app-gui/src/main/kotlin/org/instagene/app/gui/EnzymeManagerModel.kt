@@ -94,10 +94,4 @@ class EnzymeManagerModel(private val prefs: Prefs) {
     fun commit() {
         prefs.update { working }
     }
-
-    /** Discards the working snapshot (Cancel). */
-    fun reset() {
-        working = prefs.value
-        notifyChanged()
-    }
 }

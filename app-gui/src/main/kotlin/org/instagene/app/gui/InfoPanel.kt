@@ -28,9 +28,13 @@ import javax.swing.SwingUtilities
  * [onOpen] by the caller (usually the same chooser flow as the File menu).
  */
 class InfoPanel(
-    private val doc: SeqDocument,
+    initial: SeqDocument,
     private val onOpen: () -> Unit = {},
 ) : JPanel(BorderLayout(0, 6)) {
+
+    /** The document currently displayed; re-pointed when the active tab changes. */
+    private var doc = initial
+    private var docListener: SeqDocument.Listener? = null
 
     /** Full-sequence scans (GC, Tm, MW) run off the EDT above this size, so a multi-GB genome load doesn't freeze the UI. */
     private val statsAsyncThreshold = 50_000_000
@@ -105,8 +109,24 @@ class InfoPanel(
         add(properties, BorderLayout.NORTH)
         add(statistics, BorderLayout.CENTER)
 
-        doc.addListener { _, reason ->
-            if (reason == SeqDocument.Reason.SEQUENCE) refresh()
+        bindDocument(doc)
+    }
+
+    /**
+     * Re-points this panel at another document (used when the active tab
+     * changes) and re-reads every field from it.
+     */
+    fun bindDocument(newDoc: SeqDocument) {
+        if (newDoc !== doc) {
+            docListener?.let { doc.removeListener(it) }
+            doc = newDoc
+            if (docListener != null) doc.addListener(docListener!!)
+        }
+        if (docListener == null) {
+            docListener = SeqDocument.Listener { _, reason ->
+                if (reason == SeqDocument.Reason.SEQUENCE) refresh()
+            }
+            doc.addListener(docListener!!)
         }
         refresh()
     }
