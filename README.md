@@ -15,18 +15,6 @@ This project contains 5 packages:
 
 **Status:** Work in Progress
 
-### Completed
-- [x] Core engine
-- [x] IO
-- [x] CodonTables
-- [x] Sequence parser
-- [x] Project structure
-- [x] Documentation
-- [x] Basic CLI
-- [x] Versioning system
-- [x] Library integration (engine published to GitHub Packages)
-- [x] Cross-platform installers (jpackage)
-
 ### In Progress
 - [x] HTML5 GUI
 - [x] Graphical User Interface (GUI)
@@ -35,7 +23,6 @@ This project contains 5 packages:
 - [ ] Editing Workflow
 - [ ] Make Cli production ready
 - [ ] Package and release
-- [ ] Move 100% of features into respective modules
 
 ### Planned
 - [ ] Plugin system

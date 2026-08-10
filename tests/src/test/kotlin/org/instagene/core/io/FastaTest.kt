@@ -48,7 +48,7 @@ class FastaTest {
 
     @Test
     fun emptyInput() {
-        assertFailsWith<IllegalArgumentException> { Fasta.parse("") }
+        assertFailsWith<SeqIOException> { Fasta.parse("") }
         assertTrue(Fasta.parseAll("").isEmpty())
     }
 

@@ -22,6 +22,11 @@ enum class Strand(val sign: Int, val symbol: String) {
  *
  * Features never wrap the origin; a region that would wrap is stored as two
  * features sharing a name (which is how GenBank `join()` records wrap around).
+ *
+ * [name] and [notes] are conveniences derived when reading GenBank (from the
+ * `label`/`gene`/`product`/`note` qualifiers); the full qualifier table as it
+ * appeared in the flat file lives in [qualifiers], keyed by qualifier name with
+ * one entry per occurrence (bare flags such as `/pseudo` hold an empty value).
  */
 @Serializable
 data class Feature(
@@ -31,6 +36,7 @@ data class Feature(
     val end: Int,
     val strand: Strand = Strand.FORWARD,
     val notes: String = "",
+    val qualifiers: Map<String, List<String>> = emptyMap(),
 ) {
     /** Span in bases: [end] - [start]. */
     val length: Int get() = end - start
@@ -49,6 +55,12 @@ data class Feature(
  *
  * Every editing operation returns a new [Seq] and carries the feature table
  * along, shifting and clipping coordinates so annotations survive edits.
+ *
+ * [metadata] holds the record-level fields that a flat file such as GenBank
+ * carries beyond the molecule itself (accession, version, source organism,
+ * comment, date, division, molecule type, ...), keyed by field name. It is
+ * free-form so round-tripping a file never drops fields the model does not
+ * otherwise know about.
  */
 @Serializable
 data class Seq(
@@ -58,6 +70,7 @@ data class Seq(
     val topology: Topology = Topology.LINEAR,
     val features: List<Feature> = emptyList(),
     val description: String = "",
+    val metadata: Map<String, String> = emptyMap(),
 ) {
     val length: Int get() = bases.length
 

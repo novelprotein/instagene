@@ -68,4 +68,14 @@ object Alphabet {
     /** Returns the offending characters in [seq], or an empty set when it is valid. */
     fun invalidCharacters(seq: String): Set<Char> =
         seq.filterNot { isNucleotide(it) }.toSet()
+
+    /**
+     * Returns the characters in [seq] that [kind]'s alphabet rejects, or an
+     * empty set when the whole sequence is valid: nucleotides are checked
+     * against [NUCLEOTIDES], amino acids against [AMINO_ACIDS].
+     */
+    fun invalidCharacters(seq: String, kind: SeqKind): Set<Char> {
+        val allowed = if (kind == SeqKind.PROTEIN) AMINO_ACIDS else NUCLEOTIDES
+        return seq.filterNot { allowed.indexOf(it.uppercaseChar()) >= 0 }.toSet()
+    }
 }

@@ -41,7 +41,11 @@ import kotlin.math.sqrt
  * toggle, which is only ever checked when the sequence actually is circular
  * (i.e. a plasmid), never on by default.
  */
-class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4)) {
+class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
+
+    /** The document currently displayed; re-pointed when the active tab changes. */
+    private var doc = initial
+    private var docListener: SeqDocument.Listener? = null
 
     /** Called when the user clicks a feature or cut site, so the editor can follow. */
     var onSelect: ((Int, Int) -> Unit)? = null
@@ -66,10 +70,11 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
                 it.withTopology(target)
             }
         }
-        doc.addListener { _, reason ->
+        docListener = SeqDocument.Listener { _, reason ->
             mapCanvas.repaint()
             if (reason == SeqDocument.Reason.SEQUENCE) syncTopologyControl()
         }
+        doc.addListener(docListener!!)
         syncTopologyControl()
 
         add(JPanel(BorderLayout(6, 0)).apply {
@@ -77,6 +82,27 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
             add(circularCheckbox, BorderLayout.WEST)
         }, BorderLayout.NORTH)
         add(mapCanvas, BorderLayout.CENTER)
+    }
+
+    /**
+     * Re-points this panel at another document (used when the active tab
+     * changes) and re-syncs the topology control from it.
+     */
+    fun bindDocument(newDoc: SeqDocument) {
+        if (newDoc !== doc) {
+            docListener?.let { doc.removeListener(it) }
+            doc = newDoc
+            if (docListener != null) doc.addListener(docListener!!)
+        }
+        if (docListener == null) {
+            docListener = SeqDocument.Listener { _, reason ->
+                mapCanvas.repaint()
+                if (reason == SeqDocument.Reason.SEQUENCE) syncTopologyControl()
+            }
+            doc.addListener(docListener!!)
+        }
+        syncTopologyControl()
+        mapCanvas.repaint()
     }
 
     /** Re-picks the theme background when the look-and-feel changes. */
@@ -173,19 +199,7 @@ class PlasmidMapPanel(private val doc: SeqDocument) : JPanel(BorderLayout(0, 4))
 
         /** Greedy interval packing so overlapping features get their own ring. */
         private fun assignLayers() {
-            ringOf.clear()
-            val ends = ArrayList<Int>()
-            for (f in doc.seq.features.sortedBy { it.start }) {
-                var lane = ends.indexOfFirst { it <= f.start }
-                if (lane < 0) {
-                    lane = ends.size
-                    ends += f.end
-                } else {
-                    ends[lane] = f.end
-                }
-                ringOf[f] = lane
-            }
-            ringCount = ends.size
+            ringCount = packLanes(doc.seq.features, ringOf)
         }
 
 

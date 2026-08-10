@@ -30,9 +30,13 @@ import javax.swing.table.AbstractTableModel
  * library action are backed by [prefs].
  */
 class PrimersPanel(
-    private val doc: SeqDocument,
+    initial: SeqDocument,
     private val prefs: Prefs = Prefs(),
 ) : JPanel(BorderLayout(0, 6)) {
+
+    /** The document currently displayed; re-pointed when the active tab changes. */
+    private var doc = initial
+    private var docListener: SeqDocument.Listener? = null
 
     private val fromField = JTextField(8)
     private val toField = JTextField(8)
@@ -70,7 +74,7 @@ class PrimersPanel(
         fromField.document.addDocumentListener(editListener())
         toField.document.addDocumentListener(editListener())
 
-        doc.addListener { _, reason ->
+        docListener = SeqDocument.Listener { _, reason ->
             when (reason) {
                 SeqDocument.Reason.SEQUENCE -> {
                     // The amplicon may have moved or changed; stale primers are misleading.
@@ -82,6 +86,51 @@ class PrimersPanel(
                     refresh()
                 }
                 else -> {}
+            }
+        }
+        doc.addListener(docListener!!)
+        fillFromSelection()
+        refresh()
+    }
+
+    /**
+     * Re-points this panel at another document (used when the active tab
+     * changes). A stale amplicon and any manually-typed range are reset, since
+     * they describe the previous sequence.
+     */
+    fun bindDocument(newDoc: SeqDocument) {
+        val switched = newDoc !== doc
+        if (switched) {
+            docListener?.let { doc.removeListener(it) }
+            doc = newDoc
+            if (docListener != null) doc.addListener(docListener!!)
+        }
+        if (docListener == null) {
+            docListener = SeqDocument.Listener { _, reason ->
+                when (reason) {
+                    SeqDocument.Reason.SEQUENCE -> {
+                        // The amplicon may have moved or changed; stale primers are misleading.
+                        result = null
+                        refresh()
+                    }
+                    SeqDocument.Reason.SELECTION -> {
+                        fillFromSelection()
+                        refresh()
+                    }
+                    else -> {}
+                }
+            }
+            doc.addListener(docListener!!)
+        }
+        if (switched) {
+            result = null
+            rangeEdited = false
+            suppressEditTracking = true
+            try {
+                fromField.text = ""
+                toField.text = ""
+            } finally {
+                suppressEditTracking = false
             }
         }
         fillFromSelection()

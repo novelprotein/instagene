@@ -38,11 +38,15 @@ import javax.swing.table.AbstractTableModel
  * working set, and the panel state is persisted back into [prefs].
  */
 class DigestPanel(
-    private val doc: SeqDocument,
+    initial: SeqDocument,
     private val onExtractFragment: (Seq) -> Unit,
     private val onReveal: (Int, Int) -> Unit,
     private val prefs: Prefs = Prefs(),
 ) : JPanel(BorderLayout(0, 6)) {
+
+    /** The document currently displayed; re-pointed when the active tab changes. */
+    private var doc = initial
+    private var docListener: SeqDocument.Listener? = null
 
     private val checked = LinkedHashSet<Enzyme>()
     private val enzymeModel = EnzymeTableModel()
@@ -164,8 +168,39 @@ class DigestPanel(
 
         prefs.addListener { onPrefsChanged() }
 
-        doc.addListener { _, reason ->
+        docListener = SeqDocument.Listener { _, reason ->
             if (reason == SeqDocument.Reason.SEQUENCE) refresh()
+        }
+        doc.addListener(docListener!!)
+        refresh()
+    }
+
+    /**
+     * Re-points this panel at another document (used when the active tab
+     * changes). The ticked enzyme set is re-derived from the document's mapped
+     * enzymes, which are per-document state and therefore survive a tab switch.
+     */
+    fun bindDocument(newDoc: SeqDocument) {
+        val switched = newDoc !== doc
+        if (switched) {
+            docListener?.let { doc.removeListener(it) }
+            doc = newDoc
+            if (docListener != null) doc.addListener(docListener!!)
+        }
+        if (docListener == null) {
+            docListener = SeqDocument.Listener { _, reason ->
+                if (reason == SeqDocument.Reason.SEQUENCE) refresh()
+            }
+            doc.addListener(docListener!!)
+        }
+        if (switched) {
+            countsVersion++ // invalidate any in-flight scan against the old sequence
+            digestVersion++
+            countsCache = null
+            countsStale = false
+            val mapped = newDoc.mappedEnzymes.mapTo(HashSet()) { it.name.lowercase() }
+            checked.clear()
+            checked += enabledPool.filter { it.name.lowercase() in mapped }
         }
         refresh()
     }

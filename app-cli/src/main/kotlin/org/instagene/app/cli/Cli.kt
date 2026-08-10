@@ -35,6 +35,9 @@ object Cli {
         } catch (e: AssemblyException) {
             System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
+        } catch (e: org.instagene.core.io.SeqIOException) {
+            System.err.println(Colors.red("instagene: ${e.message}", colors))
+            1
         } catch (e: IllegalArgumentException) {
             System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
