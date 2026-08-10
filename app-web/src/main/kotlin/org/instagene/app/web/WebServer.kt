@@ -43,19 +43,28 @@ object WebServer {
     private var executor: ExecutorService? = null
 
     /**
-     * Starts the server; a port of 0 binds an ephemeral port (used by tests).
-     *
-     * The web front-end opens only through this explicit call, and at most once
-     * per JVM — a second call while a server is running is rejected. The server
-     * binds the loopback interface, so it is reachable only from this machine.
+     * Starts the server on the loopback interface ([port] of 0 binds an
+     * ephemeral port, used by tests). See [start] with an explicit host.
      */
-    fun start(port: Int = 8080): HttpServer {
+    fun start(port: Int = 8080): HttpServer = start("127.0.0.1", port)
+
+    /**
+     * Starts the server bound to [host]; a port of 0 binds an ephemeral port
+     * (used by tests).
+     *
+     * The default host is the loopback interface, so the server is reachable
+     * only from this machine — use `0.0.0.0` (e.g. `--share`) to serve the
+     * whole network. The web front-end opens only through this explicit call,
+     * and at most once per JVM — a second call while a server is running is
+     * rejected.
+     */
+    fun start(host: String, port: Int): HttpServer {
         synchronized(this) {
             running?.let {
                 throw IllegalStateException("Web front-end already running on port ${it.address.port}")
             }
             val pool = Executors.newFixedThreadPool(4)
-            val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0)
+            val server = HttpServer.create(InetSocketAddress(InetAddress.getByName(host), port), 0)
             server.executor = pool
             server.createContext("/api/", ::handleApi)
             server.createContext("/", ::handleStatic)

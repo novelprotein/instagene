@@ -96,4 +96,41 @@ class CliTest {
         assertEquals(1, code)
         assertTrue(out.startsWith("instagene:") || out.contains("instagene:"))
     }
+
+    @Test
+    fun envFileSuppliesDefaultsAndCommandLineWins() {
+        val dir = createTempDirectory("cli-env").toFile()
+        try {
+            val env = File(dir, "defaults.env")
+            env.writeText("# default enzyme filter\nfilter=eco\n")
+            val (defCode, defOut) = capture { Cli.run(listOf("enzymes", "--env", env.absolutePath)) }
+            assertEquals(0, defCode)
+            assertTrue(defOut.contains("EcoRI", ignoreCase = true))
+            assertTrue(!defOut.contains("BamHI"))
+
+            val (winCode, winOut) = capture {
+                Cli.run(listOf("enzymes", "--env", env.absolutePath, "--filter", "bam"))
+            }
+            assertEquals(0, winCode)
+            assertTrue(winOut.contains("BamHI", ignoreCase = true))
+            assertTrue(!winOut.contains("EcoRI"))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun missingEnvFileFailsCleanly() {
+        val (code, out) = capture { Cli.run(listOf("info", "--env", "/no/such/env/file")) }
+        assertEquals(1, code)
+        assertTrue(out.contains("env file not found"))
+    }
+
+    @Test
+    fun versionReportsBundledBuildVersion() {
+        val (code, out) = capture { Cli.run(listOf("--version", "--no-colors")) }
+        assertEquals(0, code)
+        assertTrue(out.trim().matches(Regex("""InstaGene \d+(\.\d+)+(\+[\w-]+)?""")))
+        assertTrue(!out.contains("\u001b["))
+    }
 }

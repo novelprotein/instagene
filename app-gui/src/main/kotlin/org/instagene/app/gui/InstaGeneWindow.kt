@@ -1,6 +1,7 @@
 package org.instagene.app.gui
 
 import org.instagene.core.Seq
+import org.instagene.core.Version
 import java.awt.BorderLayout
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
@@ -17,7 +18,7 @@ import javax.swing.JFrame
 class InstaGeneWindow(
     openPath: String? = null,
     private val prefs: Prefs = Prefs(),
-) : JFrame("InstaGene - Sequence Editor") {
+) : JFrame("InstaGene ${Version.VERSION} - Sequence Editor") {
 
     val content: InstaGeneContent
 
@@ -50,7 +51,7 @@ class InstaGeneWindow(
     /** Convenience for opening a fragment (or any [Seq]) directly in its own window. */
     constructor(initial: Seq, prefs: Prefs = Prefs()) : this(null, prefs) {
         content.doc.loadSequence(initial)
-        title = "InstaGene - ${initial.name}"
+        title = "InstaGene ${Version.VERSION} - ${initial.name}"
     }
 
     /** Persists the current bounds so the next launch opens in the same place. */

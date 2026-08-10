@@ -3,6 +3,7 @@ package org.instagene.app.gui
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
+import org.instagene.core.Version
 import java.awt.event.KeyEvent
 import java.io.File
 import javax.swing.JFileChooser
@@ -237,7 +238,7 @@ class FileMenu(
     private fun updateTitle() {
         val filename = doc.file?.name ?: "Untitled"
         val dirty = if (doc.isDirty) "*" else ""
-        frame?.title = "InstaGene - $filename$dirty"
+        frame?.title = "InstaGene ${Version.VERSION} - $filename$dirty"
     }
 
     /** Records [file] in the recent-files list (most recent first, capped at 10). */

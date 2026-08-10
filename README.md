@@ -11,7 +11,7 @@ This project contains 5 packages:
 
 ## Project Status
 
-**Current Version:** 0.0.0-alpha
+**Current Version:** 0.0.1
 
 **Status:** Work in Progress
 
@@ -23,6 +23,9 @@ This project contains 5 packages:
 - [x] Project structure
 - [x] Documentation
 - [x] Basic CLI
+- [x] Versioning system
+- [x] Library integration (engine published to GitHub Packages)
+- [x] Cross-platform installers (jpackage)
 
 ### In Progress
 - [x] HTML5 GUI
@@ -32,15 +35,13 @@ This project contains 5 packages:
 - [ ] Editing Workflow
 - [ ] Make Cli production ready
 - [ ] Package and release
-- [ ] Library integration (using the engine as a reusable library)
 - [ ] Move 100% of features into respective modules
 
 ### Planned
 - [ ] Plugin system
-- [ ] Cross-platform installers
+- [ ] Installer icons & signing
 - [ ] Performance optimization
 - [ ] Improved documentation
-- [ ] Versioning system
 
 
 This project uses [Gradle](https://gradle.org/). To build and run the application, use the *Gradle* tool window by
@@ -49,7 +50,8 @@ clicking the Gradle icon in the right-hand toolbar, or run it directly from the 
 * Run `./gradlew run` to run a single front-end (defaults to the desktop GUI; pick another with `-Pplatform=cli|gui|web`).
 * Run `./gradlew :app-cli:runCli [--args="..."]` to run the command-line front-end directly.
 * Run `./gradlew :app-gui:runGui [--args="..."]` to run the Swing desktop front-end directly.
-* Run `./gradlew :app-web:runWeb --args="--port 8080"` to run the HTML5 web front-end directly.
+* Run `./gradlew :app-web:runWeb --args="--port 8080"` to run the HTML5 web front-end directly
+  (`--listen HOST` binds a specific address, `--share` binds all interfaces so other machines on the LAN can connect).
 * Run `./gradlew build` to only build the application.
 * Run `./gradlew check` to run all checks, including tests.
 * Run `./gradlew clean` to clean all build outputs.
@@ -71,14 +73,67 @@ suite** (including the headless Swing smoke tests) with `./gradlew build` on JDK
 Run the same gate locally at any time:
 
 * `./gradlew build` — compiles every module and runs every check and test.
+* `./gradlew verifySeparation` — enforces the separation rules: the engine
+  must never reference `org.instagene.app`, the front-ends must never reference
+  each other, and the published engine jar must contain only core classes.
+
+### Using instagene-engine
+
+The engine is published to GitHub Packages as
+`org.instagene:instagene-engine`. Installers must authenticate to GitHub
+Packages, so add the repository to the consumer's `build.gradle.kts` (or
+`settings.gradle.kts`):
+
+```kotlin
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/novelprotein/instagene")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR")
+            password = System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+
+dependencies {
+    // "0.0.1" for an official release tag; developer builds publish "-<sha>".
+    implementation("org.instagene:instagene-engine:0.0.1")
+}
+```
+
+Versions: tagged releases publish exactly `0.0.1`; every other build publishes
+`0.0.1-<short-sha>` (with a `-sources` jar alongside). The engine has a single
+runtime dependency (kotlinx-serialization) and the front-end-free API lives in
+the `org.instagene.core` package.
+
+### Native installers
+
+Cross-platform installers are built with jpackage through the
+`org.panteleyev.jpackageplugin`; jpackage cannot cross-compile, so each
+installer is built on its own OS:
+
+```bash
+./gradlew :app-gui:jpackage -Pjpackage.type=DEB        # Ubuntu: .deb
+./gradlew :app-gui:jpackage -Pjpackage.type=RPM        # Fedora: .rpm
+./gradlew :app-gui:jpackage -Pjpackage.type=MSI        # Windows (WiX): .msi
+./gradlew :app-gui:jpackage -Pjpackage.type=DMG        # macOS: .dmg (unsigned)
+./gradlew :app-gui:jpackage -Pjpackage.type=APP_IMAGE  # raw app image
+./gradlew :app-gui:jpackageAppImageZip -Pjpackage.type=APP_IMAGE  # …zipped
+```
+
+- `-Pjpackage.dest=RELATIVE_PATH` overrides the output folder (relative to the
+  project's `build/` directory; default `jpackage/dist`).
+- The build pins jpackage to the JDK 26 toolchain, so it never falls back to a
+  random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
+- All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`
+  so `--main-jar` stays stable.
 
 ### Git rules (local hooks)
 
 The repository ships git hooks under `.githooks/` that run automatically on every
 commit, so broken code or sloppy messages cannot slip through:
 
-* `pre-commit` — runs `./gradlew test` (the full suite across all modules) and
-  rejects trailing-whitespace errors in the staged diff.
+* `pre-commit` — runs `./gradlew test` (the full suite across all modules).
 * `commit-msg` — requires a non-empty, descriptive subject (placeholders such as
   `wip`/`fix`/`stuff` are rejected; generated `Merge`/`Revert` lines pass).
 
@@ -104,6 +159,14 @@ the engine:
 The root `run` task picks exactly one front-end via `-Pplatform=cli|gui|web` (default `gui`),
 so `./gradlew run` never launches all three at once. The web server opens **only** when the web
 platform is run explicitly (`:app-web:runWeb`); the desktop and CLI apps never start it. Each front-end launches exactly once per process.
+
+The version is defined once — `instagene.version` in `gradle.properties` — and surfaces
+everywhere it is displayed: the CLI `version` command, the `About` dialog and window titles
+of the desktop GUI, and the web-server banner.
+
+The CLI accepts two global options: `--env FILE` applies defaults from a `KEY=VALUE` file
+(command-line values win) and `--no-colors` forces plain output (styling is otherwise only
+used when stdout is a real terminal; `NO_COLOR` has the same effect).
 
 The shared build logic was extracted to a convention plugin located in `buildSrc`.
 

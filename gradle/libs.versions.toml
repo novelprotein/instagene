@@ -4,25 +4,19 @@
 
 [versions]
 kotlin = "2.4.0"
-kotlinxDatetime = "0.8.0"
 kotlinxSerializationJSON = "1.11.0"
-kotlinxCoroutines = "1.10.2"
 flatlaf = "3.4.1"
 junitJupiter = "5.12.2"
+jpackage = "2.1.0"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
-kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJSON" }
-kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 flatlaf = { module = "com.formdev:flatlaf", version.ref = "flatlaf" }
 flatlafIntelliJ = { module = "com.formdev:flatlaf-intellij-themes", version.ref = "flatlaf" }
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junitJupiter" }
 junitJupiterParams = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junitJupiter" }
 
-# Libraries can be bundled together for easier import
-[bundles]
-kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]
-
 [plugins]
 kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+jpackagePlugin = { id = "org.panteleyev.jpackageplugin", version.ref = "jpackage" }

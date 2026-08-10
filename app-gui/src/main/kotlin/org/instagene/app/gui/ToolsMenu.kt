@@ -4,6 +4,7 @@ import org.instagene.core.Enzyme
 import org.instagene.core.Enzymes
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
+import org.instagene.core.Version
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
@@ -131,7 +132,7 @@ class ToolsMenu(
             addActionListener {
                 JOptionPane.showMessageDialog(
                     null,
-                    "InstaGene v0.1.0-alpha\n\nA gene editing tool.\n\nBuilt with Kotlin and Swing.",
+                    "InstaGene ${Version.VERSION}\n\nA gene editing tool.\n\nBuilt with Kotlin and Swing.",
                     "About InstaGene",
                     JOptionPane.INFORMATION_MESSAGE
                 )

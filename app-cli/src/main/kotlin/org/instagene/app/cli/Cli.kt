@@ -10,6 +10,7 @@ import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.SeqOps
 import org.instagene.core.Topology
+import org.instagene.core.Version
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
 import java.io.File
@@ -23,26 +24,27 @@ object Cli {
 
     fun run(argv: List<String>): Int {
         val command = argv.firstOrNull()?.lowercase() ?: "help"
-        val args = Args(argv.drop(1))
+        val colors = Colors.enabled(argv.drop(1).contains("--no-colors"))
         return try {
+            val args = Args(envDefaults(argv.drop(1)) + argv.drop(1))
             dispatch(command, args)
             0
         } catch (e: CliException) {
-            System.err.println("instagene: ${e.message}")
+            System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
         } catch (e: AssemblyException) {
-            System.err.println("instagene: ${e.message}")
+            System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
         } catch (e: IllegalArgumentException) {
-            System.err.println("instagene: ${e.message}")
+            System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
         }
     }
 
     private fun dispatch(command: String, args: Args) {
         when (command) {
-            "help", "--help", "-h" -> println(usage())
-            "version", "--version" -> println("InstaGene $VERSION")
+            "help", "--help", "-h" -> println(usage(args.colors))
+            "version", "--version" -> println(Colors.bold("InstaGene ${Version.VERSION}", args.colors))
             "enzymes" -> listEnzymes(args)
             "tools" -> externalTools(args)
             "sample" -> sample(args)
@@ -101,6 +103,42 @@ object Cli {
         return SeqIO.read(file)
     }
 
+    // ----------------------------------------------------------------- options
+
+    /**
+     * Expands `--env FILE` into option tokens (`--key value` pairs) that are
+     * placed *before* the command line, so flag values given directly on the
+     * command line always win. Lines are `KEY=VALUE`, with `#` comments and
+     * bare keys treated as flags (`true`).
+     */
+    private fun envDefaults(argv: List<String>): List<String> {
+        val path = envFile(argv) ?: return emptyList()
+        val file = File(path)
+        if (!file.isFile) throw CliException("env file not found: $path")
+        return file.readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .flatMap { line ->
+                val eq = line.indexOf('=')
+                if (eq < 0) listOf("--$line", "true")
+                else listOf("--${line.substring(0, eq).trim().lowercase()}", line.substring(eq + 1).trim())
+            }
+    }
+
+    private fun envFile(argv: List<String>): String? {
+        var i = 0
+        while (i < argv.size) {
+            val arg = argv[i]
+            if (arg.startsWith("--env=")) return arg.substringAfter('=')
+            if (arg == "--env") {
+                val next = argv.getOrNull(i + 1)
+                if (next != null && !next.startsWith("--")) return next
+            }
+            i++
+        }
+        return null
+    }
+
     // ------------------------------------------------------------------ output
 
     private fun emit(seq: Seq, args: Args) {
@@ -114,7 +152,7 @@ object Cli {
         val text = SeqIO.write(seq, format)
         if (outPath != null) {
             File(outPath).writeText(text)
-            System.err.println("Wrote ${seq.length} bp to $outPath (${format.displayName})")
+            System.err.println(Colors.green("Wrote ${seq.length} bp to $outPath (${format.displayName})", args.colors))
         } else {
             print(text)
         }
@@ -378,15 +416,20 @@ object Cli {
 
     private fun round(v: Double): Double = (v * 10).roundToInt() / 10.0
 
-    const val VERSION = "1.0"
-
-    fun usage(): String = """
-        InstaGene $VERSION - DNA/RNA editing and plasmid construction.
+    fun usage(colors: Boolean = false): String {
+        val heading = Colors.bold("InstaGene ${Version.VERSION} - DNA/RNA editing and plasmid construction.", colors)
+        return """
+        $heading
 
         Usage: instagene <command> [options] [file]
 
         Input is read from the given file, from --in, or from stdin (FASTA, GenBank or bare bases).
         Output goes to stdout, or to --out FILE. Use --to fasta|genbank to pick the format.
+
+        Global options
+          --env FILE        apply defaults from a KEY=VALUE file (command line wins)
+          --no-colors       plain output, no ANSI colors
+          --version         print the InstaGene version and exit
 
         Inspecting
           info FILE                       summary: length, GC, Tm, features, unique cutters
@@ -429,4 +472,5 @@ object Cli {
           instagene digest --enzymes EcoRI,HinDIII gfp.fa
           instagene plasmid --backbone puc19.gb --insert gfp.fa --enzymes EcoRI,HinDIII -o pGFP.gb
     """.trimIndent()
+    }
 }

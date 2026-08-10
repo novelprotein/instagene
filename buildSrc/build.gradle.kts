@@ -6,6 +6,11 @@ plugins {
 }
 
 kotlin {
+    // buildSrc is a nested build: its own settings files (settings.gradle.kts next
+    // to this script) applies the foojay resolver, so this toolchain request is
+    // served by explicit toolchain repositories instead of the deprecated
+    // auto-provisioning path (the locally installed Ubuntu JDK 21 is a JRE and
+    // lacks a compiler, hence the explicit pin).
     jvmToolchain(21)
 }
 

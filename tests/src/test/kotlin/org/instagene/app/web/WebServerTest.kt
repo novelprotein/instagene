@@ -169,4 +169,15 @@ class WebServerTest {
             WebServer.stop()
         }
     }
+
+    @Test
+    fun canBindAllInterfacesForSharing() {
+        val server = WebServer.start("0.0.0.0", 0)
+        try {
+            val base = "http://localhost:${server.address.port}"
+            assertEquals(200, statusOf(HttpRequest.newBuilder(URI("$base/api/samples")).GET().build()))
+        } finally {
+            WebServer.stop()
+        }
+    }
 }

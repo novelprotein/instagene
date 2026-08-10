@@ -10,6 +10,9 @@ class Args(argv: List<String>) {
     private val flags = LinkedHashSet<String>()
     val positionals = ArrayList<String>()
 
+    /** Whether ANSI styling may be used: a real terminal and no `--no-colors`/`NO_COLOR`. */
+    val colors: Boolean
+
     init {
         var i = 0
         while (i < argv.size) {
@@ -42,6 +45,7 @@ class Args(argv: List<String>) {
             }
             i++
         }
+        colors = Colors.enabled(has("no-colors"))
     }
 
     /** True when [key] was given, either as a flag or as an option. */
