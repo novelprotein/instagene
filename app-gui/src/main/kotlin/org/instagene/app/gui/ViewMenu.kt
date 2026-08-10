@@ -12,6 +12,8 @@ class ViewMenu(
     private val doc: SeqDocument,
     private val sequenceView: SequenceView,
     private val prefs: Prefs = Prefs(),
+    private val isFileBrowserVisible: () -> Boolean = { true },
+    private val onFileBrowserVisible: (Boolean) -> Unit = {},
 ) {
 
     private val complementItem = JCheckBoxMenuItem("Show Complement Strand", true)
@@ -51,6 +53,16 @@ class ViewMenu(
             add(createResetZoomItem())
             addSeparator()
             add(createThemesMenu())
+            addSeparator()
+            add(createFileBrowserItem())
+        }
+    }
+
+    /** Shows or hides the project file browser (the left-hand tree). */
+    private fun createFileBrowserItem(): JMenuItem {
+        return JCheckBoxMenuItem("Show File Browser", isFileBrowserVisible()).apply {
+            accelerator = menuShortcut(KeyEvent.VK_B)
+            addActionListener { onFileBrowserVisible(isSelected) }
         }
     }
 

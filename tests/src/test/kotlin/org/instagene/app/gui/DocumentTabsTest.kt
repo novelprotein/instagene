@@ -3,14 +3,18 @@ package org.instagene.app.gui
 import org.instagene.core.Seq
 import org.instagene.core.project.ProjectLayout
 import org.instagene.core.project.SeqProject
+import java.awt.BorderLayout
 import java.io.File
 import java.nio.file.Files
 import javax.swing.JButton
+import javax.swing.JCheckBoxMenuItem
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -92,9 +96,14 @@ class DocumentTabsTest {
     fun closingTheLastTabExitsTheProgram() {
         onEdt {
             val content = InstaGeneContent()
+            // The window starts in the welcome state with nothing open; opening
+            // a fresh document moves it to the working view.
+            assertEquals(0, content.docTabs.tabCount, "welcome state must start with no tabs")
+            val doc = content.newDocument()
             assertEquals(1, content.docTabs.tabCount)
-            assertTrue(content.closeTab(content.activeDocument, force = true))
+            assertTrue(content.closeTab(doc, force = true))
             assertEquals(0, content.docTabs.tabCount, "closing the last tab must not open a fresh document")
+            assertTrue(content.exitPending, "closing the last tab must request the window to close")
         }
     }
 
@@ -122,12 +131,12 @@ class DocumentTabsTest {
 
         val content = onEdt { InstaGeneContent() }
         onEdt { content.openFileInTab(file) }
-        assertTrue(awaitEdt { content.activeDocument.file == file }, "file was never opened")
+        assertTrue(awaitEdt { content.activeDoc?.file == file }, "file was never opened")
 
-        val tab = content.activeDocument
+        val tab = content.activeDoc
         onEdt { content.openFileInTab(file) }
-        assertEquals(2, content.docTabs.tabCount, "duplicate tab created for an open file")
-        assertSame(tab, content.activeDocument)
+        assertEquals(1, content.docTabs.tabCount, "re-opening an open file must reuse its tab, not create another")
+        assertSame(tab, content.activeDoc)
     }
 
     @Test
@@ -149,7 +158,7 @@ class DocumentTabsTest {
 
         val content = onEdt { InstaGeneContent() }
         content.openProjectAt(root)
-        assertTrue(awaitEdt { content.docTabs.tabCount == 3 }, "project documents were not loaded")
+        assertTrue(awaitEdt { content.docTabs.tabCount == 2 }, "project documents were not loaded")
 
         val active = content.activeDocument
         assertEquals("b.gb", active.file?.name)
@@ -171,7 +180,7 @@ class DocumentTabsTest {
 
         val content = onEdt { InstaGeneContent() }
         content.openProjectAt(root)
-        assertTrue(awaitEdt { content.activeDocument.file == a })
+        assertTrue(awaitEdt { content.activeDoc?.file == a })
 
         // Editing marks the active tab dirty and the title keeps the marker
         // across a save-less tab switch.
@@ -185,8 +194,122 @@ class DocumentTabsTest {
         // edits are never silently persisted.
         val reopened = onEdt { InstaGeneContent() }
         reopened.openProjectAt(root)
-        assertTrue(awaitEdt { reopened.activeDocument.file == a })
+        assertTrue(awaitEdt { reopened.activeDoc?.file == a })
         assertEquals("AAAA", reopened.activeDocument.seq.bases)
         assertFalse(reopened.activeDocument.isDirty, "unsaved edits must not be silently persisted")
+    }
+
+    @Test
+    fun welcomeStateShowsOpenOptionsAndLeavesWhenADocumentOpens() {
+        onEdt {
+            val content = InstaGeneContent()
+            assertEquals(0, content.docTabs.tabCount, "no file to open means the welcome state")
+            assertNull(content.activeDoc)
+
+            // The empty-state menu bar still shows the full set of top-level
+            // options; the sequence-only ones are merely disabled.
+            val menus = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text }
+            assertEquals(listOf("File", "Edit", "View", "Tools"), menus, "all top-level menus must be present")
+            val edit = content.menuBar.getMenu(1)!!
+            val tools = content.menuBar.getMenu(3)!!
+            assertFalse(edit.isEnabled, "Edit must be disabled with no document open")
+            assertFalse(tools.isEnabled, "Tools must be disabled with no document open")
+
+            // "New Document" moves the window into the working view.
+            content.welcomePanel.newDocumentButton.doClick()
+            assertEquals(1, content.docTabs.tabCount)
+            assertNotNull(content.activeDoc, "New Document must open a fresh document")
+        }
+    }
+
+    @Test
+    fun fileBrowserToggleMinimizesAndRestoresTheTree() {
+        onEdt {
+            val content = InstaGeneContent()
+            assertTrue(content.fileBrowserVisible)
+            assertTrue(content.fileBrowserTreeVisible)
+            assertSame(content.fileBrowserPanel, content.projectSplit.leftComponent)
+
+            content.fileBrowserToggle.doClick()
+            assertFalse(content.fileBrowserVisible)
+            assertFalse(content.fileBrowserTreeVisible)
+            // The panel stays in the split and keeps its header; only the tree
+            // section is hidden, so the browser collapses to the header strip
+            // and the toggle never disappears.
+            assertSame(content.fileBrowserPanel, content.projectSplit.leftComponent)
+            assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
+            assertTrue(content.fileBrowserToggle.isShowing || content.fileBrowserToggle.isVisible)
+
+            content.fileBrowserToggle.doClick()
+            assertTrue(content.fileBrowserVisible)
+            assertTrue(content.fileBrowserTreeVisible)
+            assertSame(content.fileBrowserPanel, content.projectSplit.leftComponent)
+        }
+    }
+
+    @Test
+    fun browserToggleLivesInItsHeaderAndTheToolbarIsGone() {
+        onEdt {
+            val content = InstaGeneContent()
+
+            // The File Browser toggle moved into the toggleable header section
+            // at the top of the file browser side panel.
+            assertEquals(
+                listOf(content.fileBrowserToggle),
+                content.fileBrowserHeader.components.toList(),
+                "the header must hold exactly the File Browser toggle",
+            )
+            assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
+            assertSame(content.fileBrowserPanel, content.fileBrowserHeader.parent)
+
+            // The top toolbar is gone: the working view's top strip is the tab
+            // strip itself, with no New/Open buttons of its own.
+            val working = content.docTabs.parent
+            val layout = working?.layout as? BorderLayout
+            assertEquals(content.docTabs, layout?.getLayoutComponent(BorderLayout.NORTH), "tabs must be the working view's top")
+            assertFalse(
+                working.components.any { it is javax.swing.AbstractButton },
+                "the working view must have no toolbar buttons",
+            )
+            assertFalse("New" in collectButtonTexts(content), "the New button must be removed")
+        }
+    }
+
+    /** Every button label found in [container], recursively. */
+    private fun collectButtonTexts(container: java.awt.Container): List<String> {
+        val texts = ArrayList<String>()
+        for (c in container.components) {
+            if (c is javax.swing.AbstractButton) texts += c.text
+            if (c is java.awt.Container) texts += collectButtonTexts(c)
+        }
+        return texts
+    }
+
+    @Test
+    fun viewMenuTogglesTheFileBrowser() {
+        onEdt {
+            val content = InstaGeneContent()
+            val doc = content.newDocument()
+            val menu = ViewMenu(
+                doc,
+                content.sequenceView,
+                Prefs(),
+                isFileBrowserVisible = { content.fileBrowserVisible },
+                onFileBrowserVisible = { content.setFileBrowserVisible(it) },
+            ).create()
+            val item = (0 until menu.menuComponentCount)
+                .map { menu.getMenuComponent(it) }
+                .filterIsInstance<JCheckBoxMenuItem>()
+                .firstOrNull { it.text == "Show File Browser" }
+            assertNotNull(item, "View menu must contain a Show File Browser item")
+
+            // Selecting the item via the menu fires its action listener with the
+            // checkbox's new state; drive the listener directly rather than
+            // relying on doClick()'s press/release selection semantics.
+            item.isSelected = false
+            val listener = item.actionListeners.single()
+            listener.actionPerformed(java.awt.event.ActionEvent(item, java.awt.event.ActionEvent.ACTION_PERFORMED, ""))
+            assertFalse(content.fileBrowserVisible, "deselecting the View menu item must hide the browser")
+        }
     }
 }

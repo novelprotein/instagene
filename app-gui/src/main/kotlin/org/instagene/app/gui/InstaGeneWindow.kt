@@ -2,8 +2,15 @@ package org.instagene.app.gui
 
 import org.instagene.core.Version
 import java.awt.BorderLayout
+import java.awt.GraphicsEnvironment
+import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetAdapter
+import java.awt.dnd.DropTargetDropEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import java.io.File
 import javax.swing.JFrame
 
 /**
@@ -48,6 +55,32 @@ class InstaGeneWindow(
         content = InstaGeneContent(openPath, this, prefs)
         jMenuBar = content.menuBar
         contentPane.add(content, BorderLayout.CENTER)
+
+        installFileDrop()
+    }
+
+    /**
+     * Dragging a file from the OS file manager onto the window opens it in a
+     * new tab (or hands non-editable files to the system app). No-op on
+     * headless systems, which have no native drag source.
+     */
+    private fun installFileDrop() {
+        if (GraphicsEnvironment.isHeadless()) return
+        content.dropTarget = DropTarget(content, object : DropTargetAdapter() {
+            override fun drop(e: DropTargetDropEvent) {
+                val flavor = DataFlavor.javaFileListFlavor
+                if (!e.isDataFlavorSupported(flavor)) {
+                    e.rejectDrop()
+                    return
+                }
+                e.acceptDrop(DnDConstants.ACTION_COPY)
+                val transferable = e.transferable
+                @Suppress("UNCHECKED_CAST")
+                val files = transferable.getTransferData(flavor) as? List<File> ?: emptyList()
+                files.forEach { content.openFileInTab(it) }
+                e.dropComplete(true)
+            }
+        })
     }
 
     /** Persists the current bounds so the next launch opens in the same place. */

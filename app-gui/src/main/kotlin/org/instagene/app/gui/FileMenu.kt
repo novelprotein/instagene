@@ -16,9 +16,10 @@ import javax.swing.SwingUtilities
 /** The File menu: new, open, open-recent, project, close-tab, save, save-as and exit, with background-thread file I/O and unsaved-changes prompts. */
 class FileMenu(
     private val frame: JFrame?,
-    private val doc: SeqDocument,
+    private val doc: Doc,
     private val prefs: Prefs = Prefs(),
     private val onNewDocument: () -> Unit = {},
+    private val onNewTextDocument: () -> Unit = {},
     private val onOpenDocument: () -> Unit = {},
     private val onOpenRecent: (File) -> Unit = {},
     private val onNewProject: () -> Unit = {},
@@ -40,6 +41,7 @@ class FileMenu(
             mnemonic = KeyEvent.VK_F
 
             add(createNewItem())
+            add(createNewTextItem())
             add(createOpenItem())
             add(recentMenu)
             addSeparator()
@@ -59,6 +61,16 @@ class FileMenu(
         return JMenuItem("New", KeyEvent.VK_N).apply {
             accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_N, java.awt.event.InputEvent.CTRL_DOWN_MASK)
             addActionListener { onNewDocument() }
+        }
+    }
+
+    private fun createNewTextItem(): JMenuItem {
+        return JMenuItem("New Text File", KeyEvent.VK_T).apply {
+            accelerator = KeyStroke.getKeyStroke(
+                KeyEvent.VK_T,
+                java.awt.event.InputEvent.CTRL_DOWN_MASK or java.awt.event.InputEvent.SHIFT_DOWN_MASK,
+            )
+            addActionListener { onNewTextDocument() }
         }
     }
 
@@ -148,14 +160,39 @@ class FileMenu(
 
     /**
      * Loads [file] without a file chooser: parses on a background thread and
-     * applies the result on the EDT. Shared by the menu action and tests.
+     * applies the result on the EDT. Only meaningful for sequence documents.
+     * Shared by the menu action and tests.
      */
     fun loadFromFile(file: File) {
+        val seqDoc = doc as? SeqDocument ?: return
         readAsync(file) { seq ->
-            doc.loadSequence(seq, file)
+            seqDoc.loadSequence(seq, file)
             updateTitle()
             addRecent(file)
         }
+    }
+
+    /**
+     * Reads [file] as plain text on a background thread (never blocking the
+     * EDT) and delivers the content to [onResult] back on the event thread.
+     * I/O errors are reported to the user here.
+     */
+    fun readTextAsync(file: File, onResult: (String) -> Unit) {
+        Thread {
+            try {
+                val text = file.readText()
+                SwingUtilities.invokeLater { onResult(text) }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    JOptionPane.showMessageDialog(
+                        frame,
+                        "Error opening file:\n\n${e.message ?: "Unknown error"}\n\nFile: ${file.name}",
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE,
+                    )
+                }
+            }
+        }.apply { isDaemon = false; name = "TextReader-${file.name}" }.start()
     }
 
     fun saveFile() {
@@ -168,6 +205,11 @@ class FileMenu(
     }
 
     fun saveFileAs() {
+        val seqDoc = doc as? SeqDocument
+        if (seqDoc == null) {
+            saveTextAs()
+            return
+        }
         val fastaFilter = javax.swing.filechooser.FileNameExtensionFilter("FASTA", "fasta", "fa", "fna")
         val genbankFilter = javax.swing.filechooser.FileNameExtensionFilter("GenBank", "gb", "gbk", "genbank")
         val chooser = JFileChooser().apply {
@@ -175,7 +217,7 @@ class FileMenu(
             addChoosableFileFilter(fastaFilter)
             addChoosableFileFilter(genbankFilter)
             // Annotated or circular documents default to GenBank: FASTA would lose the plasmid map.
-            fileFilter = if (SeqIO.preferredSaveFormat(doc.seq) == SeqFormat.GENBANK) genbankFilter else fastaFilter
+            fileFilter = if (SeqIO.preferredSaveFormat(seqDoc.seq) == SeqFormat.GENBANK) genbankFilter else fastaFilter
         }
 
         if (chooser.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
@@ -202,12 +244,35 @@ class FileMenu(
         }
     }
 
+    /** Saves a text document through a plain-text chooser. */
+    private fun saveTextAs() {
+        val textFilter = javax.swing.filechooser.FileNameExtensionFilter("Text", "txt", "md", "notes")
+        val chooser = JFileChooser().apply {
+            fileSelectionMode = JFileChooser.FILES_ONLY
+            addChoosableFileFilter(textFilter)
+            fileFilter = textFilter
+        }
+        if (chooser.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
+            var file = chooser.selectedFile
+            if (!file.name.contains(".")) file = File(file.parentFile, file.name + ".txt")
+            if (file.exists() && JOptionPane.showConfirmDialog(frame, "File exists. Overwrite?") != JOptionPane.YES_OPTION) {
+                return
+            }
+            writeToFile(file)
+        }
+    }
+
     /** Saves the document to [file] on a background thread, then marks it saved on the EDT. */
     fun saveToFile(file: File) {
-        val seq = doc.seq
         Thread {
             try {
-                SeqIO.write(file, seq)
+                val seqDoc = doc as? SeqDocument
+                val textDoc = doc as? TextDocument
+                when {
+                    seqDoc != null -> SeqIO.write(file, seqDoc.seq)
+                    textDoc != null -> file.writeText(textDoc.text)
+                    else -> throw IllegalStateException("Unknown document type")
+                }
                 SwingUtilities.invokeLater {
                     doc.markSaved(file)
                     updateTitle()
@@ -239,8 +304,10 @@ class FileMenu(
     }
 
     /** True when [file] is FASTA but the document carries a plasmid map that FASTA cannot store. */
-    private fun wouldLosePlasmidData(file: File): Boolean =
-        SeqIO.preferredSaveFormat(doc.seq) == SeqFormat.GENBANK && SeqIO.formatOf(file) == SeqFormat.FASTA
+    private fun wouldLosePlasmidData(file: File): Boolean {
+        val seqDoc = doc as? SeqDocument ?: return false
+        return SeqIO.preferredSaveFormat(seqDoc.seq) == SeqFormat.GENBANK && SeqIO.formatOf(file) == SeqFormat.FASTA
+    }
 
     /** Asks how to proceed when a save target cannot store the plasmid map. */
     private fun promptPlasmidLoss(file: File): Int = JOptionPane.showConfirmDialog(
@@ -282,11 +349,11 @@ class FileMenu(
 }
 
 /** Prompts to discard unsaved changes; returns true when it is safe to proceed. */
-fun confirmDiscardChanges(frame: JFrame?, doc: SeqDocument): Boolean {
+fun confirmDiscardChanges(frame: JFrame?, doc: Doc): Boolean {
     if (!doc.isDirty) return true
     val result = JOptionPane.showConfirmDialog(
         frame,
-        "${doc.file?.name?: "Sequence"} has unsaved changes. Discard?",
+        "${doc.file?.name ?: doc.displayName} has unsaved changes. Discard?",
         "Unsaved Changes",
         JOptionPane.YES_NO_CANCEL_OPTION,
         JOptionPane.WARNING_MESSAGE

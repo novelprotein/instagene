@@ -53,4 +53,5 @@ data class UserPrefs(
     val activeTab: Int = 0,
     val library: List<SavedItem> = emptyList(),
     val theme: String = "FlatDraculaIJTheme",
+    val fileBrowserVisible: Boolean = true,
 )

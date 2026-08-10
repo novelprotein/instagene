@@ -9,9 +9,9 @@ import java.io.File
  * One open sequence, plus everything the views need to stay in step: the
  * selection, the enzymes currently mapped, an undo history and a dirty flag.
  */
-class SeqDocument(initial: Seq, file: File? = null) {
+class SeqDocument(initial: Seq, file: File? = null) : Doc {
 
-        /** Receives a callback with the change [Reason] whenever the document changes. */
+    /** Receives a callback with the change [Reason] whenever the document changes. */
     fun interface Listener {
         fun documentChanged(doc: SeqDocument, reason: Reason)
     }
@@ -22,14 +22,17 @@ class SeqDocument(initial: Seq, file: File? = null) {
     var seq: Seq = initial
         private set
 
-    var file: File? = file
+    override var file: File? = file
         set(value) {
             field = value
             notify(Reason.SEQUENCE)
         }
 
-    var isDirty: Boolean = false
+    override var isDirty: Boolean = false
         private set
+
+    /** The name shown on the document tab and in the window title. */
+    override val displayName: String get() = file?.name ?: seq.name.ifBlank { "Untitled" }
 
     /** The sequence as of the last save/load: the baseline `isDirty` is compared against. */
     private var savedSeq: Seq = initial
@@ -63,6 +66,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
         private set
 
     private val listeners = ArrayList<Listener>()
+    private val docListeners = ArrayList<Doc.Listener>()
     private val undoStack = ArrayDeque<Pair<String, Seq>>()
     private val redoStack = ArrayDeque<Pair<String, Seq>>()
     private val historyLimit = 100
@@ -78,9 +82,18 @@ class SeqDocument(initial: Seq, file: File? = null) {
         listeners.remove(listener)
     }
 
+    override fun addDocListener(listener: Doc.Listener) {
+        docListeners += listener
+    }
+
+    override fun removeDocListener(listener: Doc.Listener) {
+        docListeners.remove(listener)
+    }
+
     private fun notify(reason: Reason) {
         if (notificationsEnabled) {
             listeners.toList().forEach { it.documentChanged(this, reason) }
+            docListeners.toList().forEach { it.docChanged(this) }
         }
     }
 
@@ -126,7 +139,7 @@ class SeqDocument(initial: Seq, file: File? = null) {
     }
 
     /** Records that the document was saved to [savedTo]: the dirty flag clears and the undo baseline moves up. */
-    fun markSaved(savedTo: File) {
+    override fun markSaved(savedTo: File) {
         file = savedTo
         savedSeq = seq
         isDirty = false
