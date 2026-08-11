@@ -4,6 +4,7 @@ import org.instagene.core.Seq
 import org.instagene.core.project.ProjectLayout
 import org.instagene.core.project.SeqProject
 import java.awt.BorderLayout
+import java.awt.FlowLayout
 import java.io.File
 import java.nio.file.Files
 import javax.swing.JButton
@@ -226,25 +227,86 @@ class DocumentTabsTest {
     fun fileBrowserToggleMinimizesAndRestoresTheTree() {
         onEdt {
             val content = InstaGeneContent()
+            // No project is open, so the browser starts minimized: it collapses
+            // to a button-wide strip with no margins or divider, and the split
+            // never widens on resize (resizeWeight 0), so no blank pane appears.
+            assertFalse(content.fileBrowserVisible)
+            assertFalse(content.fileBrowserTreeVisible)
+            assertSame(content.fileBrowserPanel, content.projectSplit.leftComponent)
+            assertEquals(0, content.projectSplit.dividerSize, "a minimized browser must hide the divider")
+            assertEquals(0.0, content.projectSplit.resizeWeight, "a minimized browser must not take resize space")
+            assertEquals(
+                content.fileBrowserHeader.preferredSize.width,
+                content.projectSplit.dividerLocation,
+                "a minimized browser must collapse to the toggle width",
+            )
+            assertEquals(0, (content.fileBrowserHeader.layout as FlowLayout).hgap, "no horizontal margin when minimized")
+            assertTrue(content.fileBrowserToggle.isShowing || content.fileBrowserToggle.isVisible, "the restore toggle must stay")
+
+            content.fileBrowserToggle.doClick()
             assertTrue(content.fileBrowserVisible)
             assertTrue(content.fileBrowserTreeVisible)
-            assertSame(content.fileBrowserPanel, content.projectSplit.leftComponent)
+            assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
+            assertTrue(content.fileBrowserToggle.isShowing || content.fileBrowserToggle.isVisible)
+            assertTrue(content.projectSplit.dividerSize > 0, "expanding must bring the divider back")
+            assertEquals(0.15, content.projectSplit.resizeWeight)
+            assertEquals(180, content.projectSplit.dividerLocation, "expanding must restore the saved tree width")
+            assertEquals(4, (content.fileBrowserHeader.layout as FlowLayout).hgap)
 
             content.fileBrowserToggle.doClick()
             assertFalse(content.fileBrowserVisible)
             assertFalse(content.fileBrowserTreeVisible)
-            // The panel stays in the split and keeps its header; only the tree
-            // section is hidden, so the browser collapses to the header strip
-            // and the toggle never disappears.
-            assertSame(content.fileBrowserPanel, content.projectSplit.leftComponent)
-            assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
-            assertTrue(content.fileBrowserToggle.isShowing || content.fileBrowserToggle.isVisible)
+            assertEquals(0, content.projectSplit.dividerSize, "minimizing must hide the divider again")
+            assertEquals(0.0, content.projectSplit.resizeWeight, "minimizing must drop the resize weight again")
+            assertEquals(0, (content.fileBrowserHeader.layout as FlowLayout).hgap, "margins must stay gone")
+        }
+    }
 
+    @Test
+    fun viewMenuBrowserToggleTracksTheActualBrowserState() {
+        onEdt {
+            val content = InstaGeneContent()
+            val browserItem = showFileBrowserItem(content)
+
+            // Empty state: the browser starts minimized and the View toggle agrees.
+            assertFalse(content.fileBrowserVisible)
+            assertFalse(browserItem.isSelected)
+
+            // Minimizing via the header toggle flips the View toggle too.
             content.fileBrowserToggle.doClick()
             assertTrue(content.fileBrowserVisible)
-            assertTrue(content.fileBrowserTreeVisible)
-            assertSame(content.fileBrowserPanel, content.projectSplit.leftComponent)
+            assertTrue(browserItem.isSelected)
+
+            // Unchecking the View toggle minimizes the browser again.
+            browserItem.doClick()
+            assertFalse(content.fileBrowserVisible)
+            assertFalse(content.fileBrowserToggle.isSelected)
         }
+    }
+
+    @Test
+    fun viewMenuBrowserToggleTracksBrowserStateWithADocumentOpen() {
+        onEdt {
+            val content = InstaGeneContent()
+            content.newDocument()
+            val browserItem = showFileBrowserItem(content)
+
+            assertFalse(content.fileBrowserVisible)
+            assertFalse(browserItem.isSelected)
+
+            content.fileBrowserToggle.doClick()
+            assertTrue(browserItem.isSelected)
+
+            browserItem.doClick()
+            assertFalse(content.fileBrowserVisible)
+            assertFalse(content.fileBrowserToggle.isSelected)
+        }
+    }
+
+    private fun showFileBrowserItem(content: InstaGeneContent): JCheckBoxMenuItem {
+        val viewMenu = content.menuBar.getMenu(2) ?: fail("View menu missing")
+        return viewMenu.menuComponents.filterIsInstance<JCheckBoxMenuItem>()
+            .first { it.text == "Show File Browser" }
     }
 
     @Test

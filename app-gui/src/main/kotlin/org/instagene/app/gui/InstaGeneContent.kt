@@ -61,7 +61,7 @@ class InstaGeneContent(
     /** One tab per open document. */
     val docTabs = JTabbedPane()
 
-    /** The tool panels (Info/Map/Sequence/Enzyme/Features/Primers/Library), shared across documents. */
+    /** The tool panels (Info/Map/Sequence/Enzyme/Features/Primers/Library/History), shared across documents. */
     val toolTabs = JTabbedPane()
 
     /**
@@ -88,6 +88,12 @@ class InstaGeneContent(
     val libraryPanel: LibraryPanel
     val statusBar: StatusBar
     val menuBar = JMenuBar()
+
+    /** Records and persists the current project's edit history (`.instagene/history.json`). */
+    val editRecorder = EditRecorder()
+
+    /** The Edit History tool tab, bound to [editRecorder]. */
+    val editHistoryPanel: EditHistoryPanel
 
     /** Swaps between the shared tool tabs and the text editor as the active tab changes. */
     val editorHost = JPanel(CardLayout())
@@ -125,9 +131,17 @@ class InstaGeneContent(
         add(fileBrowserToggle)
     }
 
-    /** Whether the left-hand file browser is currently expanded. */
-    var fileBrowserVisible: Boolean = prefs.value.fileBrowserVisible
+    /** Whether the left-hand file browser is currently expanded.
+     * The browser starts minimized because no project is open on launch; it is
+     * expanded by the user through the header toggle or the View menu. */
+    var fileBrowserVisible: Boolean = false
         private set
+
+    /** The "Show File Browser" toggle of the empty-state View menu, kept in sync with the browser. */
+    private val emptyViewBrowserItem = JCheckBoxMenuItem("Show File Browser", false).apply {
+        accelerator = menuShortcut(KeyEvent.VK_B)
+        addActionListener { setFileBrowserVisible(isSelected) }
+    }
 
     /** Whether the tree section of the file browser is shown (false when minimized). */
     val fileBrowserTreeVisible: Boolean
@@ -197,6 +211,7 @@ class InstaGeneContent(
         infoPanel = InfoPanel(initial) { openFile() }
         libraryPanel = LibraryPanel(prefs, initial, sequenceView) { seq -> openSequence(seq) }
         statusBar = StatusBar(initial, sequenceView)
+        editHistoryPanel = EditHistoryPanel(editRecorder)
 
         docTabs.tabLayoutPolicy = JTabbedPane.SCROLL_TAB_LAYOUT
         docTabs.addChangeListener { onDocTabSelected() }
@@ -204,9 +219,12 @@ class InstaGeneContent(
         editorHost.add(buildToolTabs(), cardTools)
         editorHost.add(textEditorView, cardText)
         welcomePanel = WelcomePanel(
+            prefs,
             onOpenFile = { openFile() },
             onOpenProject = { openProject() },
             onNewDocument = { newDocument() },
+            onOpenRecentFile = { openFileInTab(it) },
+            onOpenRecentProject = { openProjectAt(it) },
         )
         projectTreePanel = ProjectTreePanel(
             onOpenFile = { file -> openFileInTab(file) },
@@ -269,11 +287,14 @@ class InstaGeneContent(
         return doc
     }
 
-    /** Opens a file picker; the chosen file lands in a new tab or the system app. */
+    /** Opens a file picker restricted to sequence files; the chosen file lands in a new tab.
+     * Non-sequence files (text, images, PDFs) are only reachable in the context of a
+     * project, e.g. through the project tree, so a project never needs another editor. */
     fun openFile() {
         val chooser = JFileChooser().apply {
             fileSelectionMode = JFileChooser.FILES_ONLY
-            isAcceptAllFileFilterUsed = true
+            isAcceptAllFileFilterUsed = false
+            fileFilter = FileTypes.sequenceFileFilter()
         }
         if (chooser.showOpenDialog(owner) == JFileChooser.APPROVE_OPTION) {
             openFileInTab(chooser.selectedFile)
@@ -294,6 +315,14 @@ class InstaGeneContent(
         menus[doc]?.file?.addRecent(file)
     }
 
+    /** Records [root] as a recent project (most recent first, capped at 10). */
+    private fun noteRecentProject(root: File) {
+        val path = root.absolutePath
+        prefs.update {
+            it.copy(recentProjects = (listOf(path) + it.recentProjects.filter { p -> p != path }).take(10))
+        }
+    }
+
     /**
      * Closes the tab of [doc], prompting for unsaved changes unless [force].
      * Closing the last tab exits the program.
@@ -301,6 +330,8 @@ class InstaGeneContent(
     fun closeTab(doc: Doc, force: Boolean = false): Boolean {
         if (!hub.contains(doc)) return false
         if (!force && !confirmDiscardChanges(owner, doc)) return false
+        editRecorder.recordDocumentClosed(doc)
+        editRecorder.unbind(doc)
         hub.remove(doc)
         menus.remove(doc)
         recordedFile.remove(doc)
@@ -330,8 +361,10 @@ class InstaGeneContent(
         }
         if (chooser.showOpenDialog(owner) != JFileChooser.APPROVE_OPTION) return
         val root = chooser.selectedFile
+        noteRecentProject(root)
         project = SeqProject.create(root).also { it.save() }
         projectTreePanel.setProject(project)
+        editRecorder.setProject(project, created = true)
         persistProject()
         updateTitle()
     }
@@ -348,9 +381,13 @@ class InstaGeneContent(
     /** Opens the project at [root], loading its documents off the EDT in tab order. */
     fun openProjectAt(root: File) {
         val opened = SeqProject.open(root)
+        noteRecentProject(root)
         project = opened
         projectTreePanel.setProject(opened)
-        projectSplit.setDividerLocation(opened.manifest.layout.treeSplitRatio)
+        editRecorder.setProject(opened, created = false)
+        // The saved tree split only applies while the browser is actually
+        // shown; while collapsed it stays a button-wide strip with no blank pane.
+        if (fileBrowserVisible) projectSplit.setDividerLocation(opened.manifest.layout.treeSplitRatio)
         val files = opened.openDocuments()
         if (files.isEmpty()) {
             toolTabs.selectedIndex = opened.manifest.layout.activeToolTab.coerceIn(0, toolTabs.tabCount - 1)
@@ -402,6 +439,7 @@ class InstaGeneContent(
         p.setActive(if (active != null && p.relativePath(active) != null) active else null)
         p.setLayout(ProjectLayout(activeToolTab = toolTabs.selectedIndex, treeSplitRatio = splitRatio()))
         p.save()
+        editRecorder.flush()
     }
 
     /** The current tree split as a 0..1 ratio, defaulting to the persisted value off-screen. */
@@ -418,6 +456,9 @@ class InstaGeneContent(
         doc.addDocListener { onDocChanged(it) }
         recordedFile[doc] = doc.file
         hub.add(doc)
+        editRecorder.bind(doc)
+        // Restored project documents are not re-logged as opens: they are already part of the history.
+        if (!loadingProject) editRecorder.recordDocumentOpened(doc)
         return doc
     }
 
@@ -554,7 +595,12 @@ class InstaGeneContent(
                 onExit = { if (confirmCloseAll(owner)) { persistProject(); owner?.dispose() } },
                 onTitleChanged = { updateTitle() },
             ),
-            edit = EditMenu(owner, menusDoc, sequenceView, prefs),
+            edit = EditMenu(
+                owner,
+                doc,
+                if (doc is SeqDocument) SequenceEditActions(sequenceView, doc) else TextEditActions(textEditorView),
+                prefs,
+            ),
             view = ViewMenu(
                 menusDoc,
                 sequenceView,
@@ -573,9 +619,9 @@ class InstaGeneContent(
             buildEmptyMenuBar()
         } else {
             val set = menuSetFor(active)
-            menuBar.add(set.file.create())
             val sequence = active is SeqDocument
-            menuBar.add(set.edit.create().apply { isEnabled = sequence })
+            menuBar.add(set.file.create())
+            menuBar.add(set.edit.create())
             menuBar.add(set.view.create().apply { isEnabled = sequence })
             menuBar.add(set.tools.create().apply { isEnabled = sequence })
         }
@@ -602,10 +648,8 @@ class InstaGeneContent(
         menuBar.add(emptyStateMenuSet.edit.create().apply { isEnabled = false })
         menuBar.add(JMenu("View").apply {
             mnemonic = KeyEvent.VK_V
-            add(JCheckBoxMenuItem("Show File Browser", fileBrowserVisible).apply {
-                accelerator = menuShortcut(KeyEvent.VK_B)
-                addActionListener { setFileBrowserVisible(isSelected) }
-            })
+            emptyViewBrowserItem.isSelected = fileBrowserVisible
+            add(emptyViewBrowserItem)
         })
         menuBar.add(emptyStateMenuSet.tools.create().apply { isEnabled = false })
     }
@@ -638,6 +682,7 @@ class InstaGeneContent(
             addTab("Features", featuresPanel)
             addTab("Primers", primersPanel)
             addTab("Library", libraryPanel)
+            addTab("History", editHistoryPanel)
         }
         return toolTabs
     }
@@ -663,26 +708,43 @@ class InstaGeneContent(
         fileBrowserVisible = visible
         prefs.update { it.copy(fileBrowserVisible = visible) }
         applyFileBrowserVisible(visible)
+        syncFileBrowserItems()
     }
 
-    /** Applies the browser state to the split and keeps the header toggle in sync.
-     * The panel (and its header) stay in the split permanently; minimizing just
-     * hides the tree section and the split divider so the panel collapses to
-     * the header strip. */
+    /** Aligns every "Show File Browser" menu toggle with the browser's actual state. */
+    private fun syncFileBrowserItems() {
+        emptyViewBrowserItem.isSelected = fileBrowserVisible
+        menus.values.forEach { it.view.syncFileBrowser() }
+    }
+
+    /**
+     * Applies the browser state to the split and keeps the header toggle in
+     * sync. While expanded the browser occupies [lastTreeWidth] pixels on the
+     * left. While minimized it collapses to the button-wide header with no
+     * margins and no divider, and the split's resize weight drops to zero so
+     * resizing the window never re-opens a blank pane; the header toggle
+     * restores it.
+     */
     private fun applyFileBrowserVisible(visible: Boolean) {
         if (!visible && projectSplit.width > 0) lastTreeWidth = projectSplit.dividerLocation
         treeScroll.isVisible = visible
-        projectSplit.leftComponent = fileBrowserPanel
+        fileBrowserHeader.layout = FlowLayout(FlowLayout.LEFT, if (visible) 4 else 0, if (visible) 4 else 0)
         if (visible) {
             if (expandedDividerSize < 0) expandedDividerSize = projectSplit.dividerSize.coerceAtLeast(1)
+            projectSplit.leftComponent = fileBrowserPanel
             projectSplit.dividerSize = expandedDividerSize
+            projectSplit.resizeWeight = 0.15
             projectSplit.dividerLocation = lastTreeWidth
         } else {
             expandedDividerSize = projectSplit.dividerSize.coerceAtLeast(1)
+            projectSplit.leftComponent = fileBrowserPanel
             projectSplit.dividerSize = 0
+            projectSplit.resizeWeight = 0.0
             projectSplit.dividerLocation = fileBrowserHeader.preferredSize.width
         }
         fileBrowserToggle.isSelected = visible
+        revalidate()
+        repaint()
     }
 }
 

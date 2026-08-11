@@ -2,6 +2,7 @@ package org.instagene.app.gui
 
 import org.instagene.core.Alphabet
 import java.io.File
+import javax.swing.filechooser.FileNameExtensionFilter
 
 /** The kind of file a project node can be, decided by [FileTypes.classify]. */
 enum class FileType {
@@ -27,10 +28,15 @@ enum class FileType {
  */
 object FileTypes {
 
-    private val sequenceExtensions = setOf("fasta", "fa", "fna", "fas", "gb", "gbk", "genbank", "gp", "ape", "seq")
+    /** Extensions that make a file eligible for the open-file dialog. */
+    val sequenceExtensions = setOf("fasta", "fa", "fna", "fas", "gb", "gbk", "genbank", "gp", "ape", "seq")
     private val textExtensions = setOf("md", "markdown", "notes", "log")
     private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "tif", "tiff")
     private val pdfExtensions = setOf("pdf")
+
+    /** The file filter for the open-file dialog: only sequence files are shown. */
+    fun sequenceFileFilter(): FileNameExtensionFilter =
+        FileNameExtensionFilter("Sequence files", *sequenceExtensions.toTypedArray())
 
     /** The dominant file-type of [file]. Only reads enough of the file to sniff it. */
     fun classify(file: File): FileType {

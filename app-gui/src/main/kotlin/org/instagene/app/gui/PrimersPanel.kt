@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.core.Feature
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import org.instagene.app.gui.prefs.SavedContext
@@ -14,6 +15,7 @@ import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JLabel
+import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSpinner
@@ -53,6 +55,11 @@ class PrimersPanel(
     /** Set once the user types a From/To themselves; selection moves then no longer clobber it. */
     private var rangeEdited = false
 
+    companion object {
+        /** Amplicons longer than this are not auto-designed; the user picks a region instead. */
+        private const val AUTO_DESIGN_MAX_AMPLICON = 20_000
+    }
+
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
@@ -63,7 +70,9 @@ class PrimersPanel(
         add(JScrollPane(resultsTable), BorderLayout.CENTER)
         add(summary, BorderLayout.SOUTH)
 
-        designButton.addActionListener { design() }
+        designButton.addActionListener {
+            if (design()) promptToAddPrimersToFeatures()
+        }
         copyButton.addActionListener { copyAsFasta() }
         saveButton.addActionListener { savePrimers() }
 
@@ -74,23 +83,9 @@ class PrimersPanel(
         fromField.document.addDocumentListener(editListener())
         toField.document.addDocumentListener(editListener())
 
-        docListener = SeqDocument.Listener { _, reason ->
-            when (reason) {
-                SeqDocument.Reason.SEQUENCE -> {
-                    // The amplicon may have moved or changed; stale primers are misleading.
-                    result = null
-                    refresh()
-                }
-                SeqDocument.Reason.SELECTION -> {
-                    fillFromSelection()
-                    refresh()
-                }
-                else -> {}
-            }
-        }
+        docListener = SeqDocument.Listener { _, reason -> handleDocChanged(reason) }
         doc.addListener(docListener!!)
-        fillFromSelection()
-        refresh()
+        autoPopulateAndDesign()
     }
 
     /**
@@ -106,20 +101,7 @@ class PrimersPanel(
             if (docListener != null) doc.addListener(docListener!!)
         }
         if (docListener == null) {
-            docListener = SeqDocument.Listener { _, reason ->
-                when (reason) {
-                    SeqDocument.Reason.SEQUENCE -> {
-                        // The amplicon may have moved or changed; stale primers are misleading.
-                        result = null
-                        refresh()
-                    }
-                    SeqDocument.Reason.SELECTION -> {
-                        fillFromSelection()
-                        refresh()
-                    }
-                    else -> {}
-                }
-            }
+            docListener = SeqDocument.Listener { _, reason -> handleDocChanged(reason) }
             doc.addListener(docListener!!)
         }
         if (switched) {
@@ -133,8 +115,7 @@ class PrimersPanel(
                 suppressEditTracking = false
             }
         }
-        fillFromSelection()
-        refresh()
+        autoPopulateAndDesign()
     }
 
     private fun editListener() = object : javax.swing.event.DocumentListener {
@@ -182,6 +163,48 @@ class PrimersPanel(
         }
     }
 
+    /**
+     * Fills From/To from the current selection, or the whole sequence when there
+     * is none, then auto-designs primers so the tab is immediately useful.
+     * Manually typed ranges are respected and never clobbered; amplicons larger
+     * than [AUTO_DESIGN_MAX_AMPLICON] are left for the user to scope manually.
+     */
+    private fun autoPopulateAndDesign() {
+        if (rangeEdited) return
+        fillFromSelection()
+        if (fromField.text.isEmpty() && toField.text.isEmpty() && doc.seq.length > 0) {
+            suppressEditTracking = true
+            try {
+                fromField.text = "1"
+                toField.text = doc.seq.length.toString()
+            } finally {
+                suppressEditTracking = false
+            }
+        }
+        refresh()
+        val from = fromField.text.toIntOrNull()
+        val to = toField.text.toIntOrNull()
+        if (from == null || to == null || from >= to) return
+        if (to - from > AUTO_DESIGN_MAX_AMPLICON) {
+            summary.text = "Sequence too large for automatic primer design — select a region " +
+                    "(max $AUTO_DESIGN_MAX_AMPLICON bp) or enter From/To."
+            return
+        }
+        design()
+    }
+
+    private fun handleDocChanged(reason: SeqDocument.Reason) {
+        when (reason) {
+            SeqDocument.Reason.SEQUENCE -> {
+                // The amplicon may have moved or changed; stale primers are misleading.
+                result = null
+                autoPopulateAndDesign()
+            }
+            SeqDocument.Reason.SELECTION -> autoPopulateAndDesign()
+            else -> {}
+        }
+    }
+
     /** Re-syncs the controls with the document and re-validates the current From/To range. */
     fun refresh() {
         val nucleotide = doc.seq.kind != SeqKind.PROTEIN
@@ -225,14 +248,15 @@ class PrimersPanel(
     }
 
     /** Designs the primers for the displayed From/To range with the current target Tm, showing them in the results table. */
-    fun design() {
-        if (doc.seq.kind == SeqKind.PROTEIN) return
+    fun design(): Boolean {
+        if (doc.seq.kind == SeqKind.PROTEIN) return false
         val (from, to) = toRange()
-        if (from !in 0..doc.seq.length || to !in from..doc.seq.length || from == to) return
+        if (from !in 0..doc.seq.length || to !in from..doc.seq.length || from == to) return false
         val tm = (tmSpinner.value as Number).toDouble()
         result = SeqOps.designPrimers(doc.seq, from, to, targetTm = tm)
         resultsModel.fireTableDataChanged()
         refresh()
+        return true
     }
 
     /** Programmatic design over `[start, end)` (0-based), used by tests. */
@@ -241,6 +265,52 @@ class PrimersPanel(
         toField.text = end.toString()
         tmSpinner.value = tm
         design()
+    }
+
+    /**
+     * Asks the user whether to annotate the designed primers on the sequence.
+     * Shown after a manual "Design primers" click, when a pair was just found;
+     * auto-designed pairs (which fire on every selection change) never prompt.
+     */
+    private fun promptToAddPrimersToFeatures() {
+        val pair = result ?: return
+        val (from, to) = toRange()
+        val message = buildString {
+            appendLine("Found primers for amplicon ${from + 1}..$to:")
+            appendLine()
+            appendLine("${pair.first.name}  ${pair.first.bases}")
+            appendLine("${pair.second.name}  ${pair.second.bases}")
+            appendLine()
+            append("Add them to the sequence's features list?")
+        }
+        val choice = JOptionPane.showConfirmDialog(
+            null,
+            message,
+            "Add primers to features",
+            JOptionPane.YES_NO_OPTION,
+        )
+        if (choice == JOptionPane.YES_OPTION) addPrimersToFeatures()
+    }
+
+    /**
+     * Annotates the last designed primer pair on the sequence as `primer_bind`
+     * features (the forward primer at the amplicon start, the reverse at its
+     * end). The change is undoable; returns false when there is nothing to add.
+     */
+    fun addPrimersToFeatures(): Boolean {
+        val pair = result ?: return false
+        if (doc.seq.kind == SeqKind.PROTEIN) return false
+        val (from, to) = toRange()
+        val fwd = Feature(pair.first.name, "primer_bind", from, from + pair.first.bases.length)
+        val rev = Feature(pair.second.name, "primer_bind", to - pair.second.bases.length, to)
+        val existing = doc.seq.features.map { it.name.lowercase() }.toSet()
+        doc.mutate("add primers to features") {
+            var next = it
+            if (fwd.name.lowercase() !in existing) next = next.withFeature(fwd)
+            if (rev.name.lowercase() !in existing) next = next.withFeature(rev)
+            next
+        }
+        return true
     }
 
     private fun copyAsFasta() {
@@ -278,6 +348,9 @@ class PrimersPanel(
 
     /** Exposed for tests: the current From/To field text. */
     fun rangeFields(): Pair<String, String> = fromField.text to toField.text
+
+    /** Exposed for tests: the current summary/hint text. */
+    fun summaryText(): String = summary.text
 
     private inner class PrimerTableModel : AbstractTableModel() {
         private val columns = arrayOf("Name", "Sequence", "Length", "Tm", "GC%")

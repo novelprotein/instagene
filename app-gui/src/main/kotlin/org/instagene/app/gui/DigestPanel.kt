@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.core.CutSite
 import org.instagene.core.Digest
 import org.instagene.core.Enzyme
 import org.instagene.core.Enzymes
@@ -51,8 +52,11 @@ class DigestPanel(
     private val checked = LinkedHashSet<Enzyme>()
     private val enzymeModel = EnzymeTableModel()
     private val fragmentModel = FragmentTableModel()
+    private val matchesModel = MatchTableModel()
     private val enzymeTable = JTable(enzymeModel)
     private val fragmentTable = JTable(fragmentModel)
+    private val matchesTable = JTable(matchesModel)
+    private val matchesLabel = JLabel("Matches")
     private val filterField = JTextField()
     private val cuttersOnly = JCheckBox("Only enzymes that cut", true)
     private val uniqueOnly = JCheckBox("Only unique cutters", false)
@@ -62,6 +66,7 @@ class DigestPanel(
 
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
+    private var matches: List<CutSite> = emptyList()
 
     /** The full catalog (built-in + custom), used for the cut-count scan and lookups. */
     private var pool: List<Enzyme> = Enzymes.pool(prefs.value.customEnzymes)
@@ -100,7 +105,16 @@ class DigestPanel(
         enzymeTable.columnModel.getColumn(0).maxWidth = 30
         enzymeTable.columnModel.getColumn(3).maxWidth = 50
         enzymeTable.selectionModel.addListSelectionListener {
-            if (!it.valueIsAdjusting) revealFirstSiteOfSelectedEnzyme()
+            if (!it.valueIsAdjusting) {
+                showMatchesForSelectedEnzyme()
+                revealFirstSiteOfSelectedEnzyme()
+            }
+        }
+
+        matchesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+        matchesTable.rowHeight = 20
+        matchesTable.selectionModel.addListSelectionListener {
+            if (!it.valueIsAdjusting) revealSelectedMatch()
         }
 
         fragmentTable.rowHeight = 20
@@ -111,9 +125,26 @@ class DigestPanel(
 
         add(buildTop(), BorderLayout.NORTH)
 
-        val split = JSplitPane(
+        // Enzyme table on top, every individual match of the selected enzyme
+        // beneath it, and the digest fragments at the bottom.
+        val matchesPanel = JPanel(BorderLayout(0, 4)).apply {
+            add(
+                matchesLabel.apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
+                BorderLayout.NORTH
+            )
+            add(JScrollPane(matchesTable), BorderLayout.CENTER)
+        }
+        val top = JSplitPane(
             JSplitPane.VERTICAL_SPLIT,
             JScrollPane(enzymeTable),
+            matchesPanel,
+        ).apply {
+            resizeWeight = 0.62
+            border = null
+        }
+        val split = JSplitPane(
+            JSplitPane.VERTICAL_SPLIT,
+            top,
             JPanel(BorderLayout(0, 4)).apply {
                 add(
                     JLabel("Fragments").apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
@@ -123,7 +154,7 @@ class DigestPanel(
                 add(buildFragmentButtons(), BorderLayout.SOUTH)
             },
         ).apply {
-            resizeWeight = 0.55
+            resizeWeight = 0.62
             border = null
         }
         add(split, BorderLayout.CENTER)
@@ -269,8 +300,11 @@ class DigestPanel(
             countsStale = false
             visibleEnzymes = emptyList()
             fragments = emptyList()
+            matches = emptyList()
             enzymeModel.fireTableDataChanged()
             fragmentModel.fireTableDataChanged()
+            matchesModel.fireTableDataChanged()
+            matchesLabel.text = "Matches"
             summary.text = "Restriction digestion applies to double-stranded DNA" +
                     (if (seq.kind == SeqKind.PROTEIN) " (this is a protein sequence)." else ".")
             return
@@ -281,7 +315,10 @@ class DigestPanel(
         applySelection()
     }
 
-    /** Repopulates the enzyme rows from the cached counts (possibly stale). */
+    /** Repopulates the enzyme rows from the cached counts (possibly stale).
+     * Rows are ordered so the enzymes that cut the sequence come first, by
+     * number of cuts descending, so the relevant enzymes are always identified
+     * at the top of the table. */
     private fun rebuildEnzymeTable() {
         val counts = countsCache.orEmpty()
         val needle = filterField.text.trim().lowercase()
@@ -291,9 +328,42 @@ class DigestPanel(
                     enzyme.site.lowercase().contains(needle)) &&
                     (!cuttersOnly.isSelected || n > 0) &&
                     (!uniqueOnly.isSelected || n == 1)
-        }
+        }.sortedWith(
+            compareByDescending<Enzyme> { counts[it] ?: 0 }
+                .thenBy { it.name.lowercase() }
+        )
         enzymeModel.counts = counts
         enzymeModel.fireTableDataChanged()
+        showMatchesForSelectedEnzyme()
+    }
+
+    /**
+     * Lists every individual match of the enzyme selected in the enzyme table,
+     * or clears the list when nothing is selected.
+     */
+    private fun showMatchesForSelectedEnzyme() {
+        val row = enzymeTable.selectedRow
+        val enzyme = visibleEnzymes.getOrNull(row)
+        if (enzyme == null || doc.seq.kind != SeqKind.DNA) {
+            matches = emptyList()
+            matchesLabel.text = "Matches"
+            matchesModel.fireTableDataChanged()
+            return
+        }
+        matches = Digest.cutSites(doc.seq, enzyme)
+        matchesLabel.text = "Matches for ${enzyme.name} (${matches.size})"
+        matchesModel.fireTableDataChanged()
+    }
+
+    private fun revealSelectedMatch() {
+        revealMatch(matchesTable.selectedRow)
+    }
+
+    /** Reveals the match at [row] in the sequence view, handling origin-wrapping sites. */
+    fun revealMatch(row: Int) {
+        val site = matches.getOrNull(row) ?: return
+        val wraps = doc.seq.isCircular && site.recognitionEnd > doc.seq.length
+        if (wraps) onReveal(0, doc.seq.length) else onReveal(site.recognitionStart, site.recognitionEnd)
     }
 
     /** Scans [seq] on background threads; stale results for an older sequence are dropped. */
@@ -347,6 +417,18 @@ class DigestPanel(
 
     /** Exposed for tests: the enzymes currently ticked in the table, in order. */
     fun selectedEnzymes(): List<Enzyme> = checked.toList()
+
+    /** Exposed for tests: the enzymes displayed in the table, in row order (cutters first). */
+    fun displayedEnzymes(): List<Enzyme> = visibleEnzymes.toList()
+
+    /** Exposed for tests: selects the row for [enzyme] in the table (if visible), showing its matches. */
+    fun selectEnzymeInTable(enzyme: Enzyme) {
+        val row = visibleEnzymes.indexOfFirst { it.name.equals(enzyme.name, ignoreCase = true) }
+        if (row >= 0) enzymeTable.selectionModel.setSelectionInterval(row, row)
+    }
+
+    /** Exposed for tests: the individual matches listed for the selected enzyme, in order. */
+    fun displayedMatches(): List<CutSite> = matches.toList()
 
     /** Maps [enzymes] through the panel, keeping tables and the document in sync. */
     fun selectEnzymes(enzymes: List<Enzyme>) {
@@ -481,6 +563,30 @@ class DigestPanel(
             val enzyme = visibleEnzymes[rowIndex]
             if (value == true) checked += enzyme else checked -= enzyme
             applySelection()
+        }
+    }
+
+    private inner class MatchTableModel : AbstractTableModel() {
+        private val columns = arrayOf("#", "Position", "Strand", "Sequence", "End")
+
+        override fun getRowCount(): Int = matches.size
+        override fun getColumnCount(): Int = columns.size
+        override fun getColumnName(column: Int): String = columns[column]
+
+        override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
+            val site = matches[rowIndex]
+            val wraps = doc.seq.isCircular && site.recognitionEnd > doc.seq.length
+            return when (columnIndex) {
+                0 -> rowIndex + 1
+                1 -> if (wraps) {
+                    "${site.recognitionStart + 1} (wraps)"
+                } else {
+                    "${site.recognitionStart + 1}..${site.recognitionEnd}"
+                }
+                2 -> site.strand.symbol
+                3 -> doc.seq.sub(site.recognitionStart, site.recognitionStart + site.enzyme.siteLength)
+                else -> site.enzyme.endType.label
+            }
         }
     }
 

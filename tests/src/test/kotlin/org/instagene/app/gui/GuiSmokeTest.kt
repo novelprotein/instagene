@@ -56,6 +56,18 @@ class GuiSmokeTest {
         }
     }
 
+    /** Pumps the EDT until the digest panel's cut-count scan has landed. */
+    private fun awaitDigestCounts(panel: DigestPanel) {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            var ready = false
+            SwingUtilities.invokeAndWait { ready = panel.computedCutCounts() != null }
+            if (ready) return
+            Thread.sleep(10)
+        }
+        fail("digest cut counts never became available")
+    }
+
     @Test
     fun sequenceViewInsertDeleteAndStatus() {
         onEdt {
@@ -106,7 +118,7 @@ class GuiSmokeTest {
             assertEquals("File", fileMenu.text)
             assertTrue(fileMenu.itemCount > 0)
 
-            val editMenu = EditMenu(null, doc, view).create()
+            val editMenu = EditMenu(null, doc, SequenceEditActions(view, doc)).create()
             assertEquals("Edit", editMenu.text)
 
             val viewMenu = ViewMenu(doc, view).create()
@@ -117,11 +129,64 @@ class GuiSmokeTest {
 
             // The actions live in the menus now (no toolbar); clicking an item
             // still drives the model.
+            val undoItem = menuItem(editMenu, "Undo")
+            assertFalse(undoItem.isEnabled)
             menuItem(editMenu, "Select All").doClick()
             assertTrue(doc.hasSelection)
             assertEquals(doc.seq.length, doc.selectionEnd)
-            assertTrue(menuItem(editMenu, "Undo").isEnabled)
+            doc.mutate("insert 1 base") { it.insertAt(0, "A") }
+            assertTrue(undoItem.isEnabled)
+            assertEquals("Undo insert 1 base", undoItem.text)
             assertTrue(menuItem(editMenu, "Copy").isEnabled)
+        }
+    }
+
+    @Test
+    fun textEditMenuDrivesTheTextEditor() {
+        onEdt {
+            val doc = TextDocument("hello")
+            val view = TextEditorView(doc)
+            val actions = TextEditActions(view)
+            val editMenu = EditMenu(null, doc, actions).create()
+
+            val undoItem = menuItem(editMenu, "Undo")
+            assertFalse(undoItem.isEnabled)
+            menuItem(editMenu, "Select All").doClick()
+            assertEquals("hello", view.area.selectedText)
+            menuItem(editMenu, "Delete").doClick()
+            assertEquals("", doc.text)
+            assertTrue(doc.isDirty)
+            assertTrue(undoItem.isEnabled)
+            assertEquals("Undo edit", undoItem.text)
+            undoItem.doClick()
+            assertEquals("hello", doc.text)
+            assertEquals("hello", view.area.text)
+            assertFalse(undoItem.isEnabled)
+
+            assertTrue(actions.findNext("ell"))
+            assertEquals(1, view.area.selectionStart)
+            assertEquals(4, view.area.selectionEnd)
+            assertFalse(actions.findNext("nope"))
+        }
+    }
+
+    @Test
+    fun sequenceFindNextSearchesForwardAndReverseComplement() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGTACGT"))
+            val view = SequenceView(doc)
+            val actions = SequenceEditActions(view, doc)
+
+            doc.moveCaret(2)
+            assertTrue(actions.findNext("ACG"))
+            assertEquals(4, doc.selectionStart)
+            assertEquals(7, doc.selectionEnd)
+
+            doc.moveCaret(0)
+            assertTrue(actions.findNext("CGT"))
+            assertEquals(1, doc.selectionStart)
+            assertEquals(4, doc.selectionEnd)
+            assertFalse(actions.findNext("TTT"))
         }
     }
 
@@ -197,6 +262,84 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun digestPanelSortsCuttersToTheTop() {
+        // Construct on the EDT; the cut-count scan runs on background threads, so
+        // poll for it from the test thread before asserting.
+        val panel = onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT"))
+            val prefs = Prefs().apply { update { it.copy(digestCuttersOnly = false) } }
+            DigestPanel(doc, {}, { _, _ -> }, prefs)
+        }
+        awaitDigestCounts(panel)
+        onEdt {
+            // EcoRI cuts twice, BamHI once, NotI never; with cuttersOnly off the
+            // whole catalog is shown but the cutters must come first.
+            val counts = panel.computedCutCounts()
+            assertEquals(2, counts!![org.instagene.core.Enzymes.require("EcoRI")])
+            assertEquals(1, counts[org.instagene.core.Enzymes.require("BamHI")])
+            assertEquals(0, counts[org.instagene.core.Enzymes.require("NotI")])
+
+            val shown = panel.displayedEnzymes()
+            assertTrue(shown.contains(org.instagene.core.Enzymes.require("NotI")))
+            assertEquals("EcoRI", shown[0].name)
+            assertEquals("BamHI", shown[1].name)
+            val ordered = shown.map { counts[it] ?: 0 }
+            assertEquals(ordered.sortedDescending(), ordered, "cut counts must be non-increasing down the table")
+        }
+    }
+
+    @Test
+    fun digestPanelCuttersOnlyKeepsOnlyCutters() {
+        val panel = onEdt {
+            DigestPanel(SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT")), {}, { _, _ -> })
+        }
+        awaitDigestCounts(panel)
+        onEdt {
+            val shown = panel.displayedEnzymes()
+            assertTrue(shown.isNotEmpty())
+            assertTrue(shown.all { (panel.computedCutCounts()!![it] ?: 0) > 0 })
+            assertEquals("EcoRI", shown.first().name)
+        }
+    }
+
+    @Test
+    fun digestPanelListsIndividualMatchesForSelectedEnzyme() {
+        val panel = onEdt {
+            DigestPanel(SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT")), {}, { _, _ -> })
+        }
+        awaitDigestCounts(panel)
+        onEdt {
+            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("EcoRI"))
+            val eco = panel.displayedMatches()
+            assertEquals(2, eco.size)
+            assertEquals(2, eco[0].recognitionStart)
+            assertEquals(14, eco[1].recognitionStart)
+            assertEquals(org.instagene.core.Strand.FORWARD, eco[0].strand)
+
+            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("BamHI"))
+            val bam = panel.displayedMatches()
+            assertEquals(1, bam.size)
+            assertEquals(8, bam[0].recognitionStart)
+        }
+    }
+
+    @Test
+    fun digestPanelRevealsIndividualMatch() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "NNNGAATTCNNN"))
+            val prefs = Prefs().apply { update { it.copy(digestCuttersOnly = false) } }
+            var revealed: Pair<Int, Int>? = null
+            val panel = DigestPanel(doc, {}, { s, e -> revealed = s to e }, prefs)
+
+            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("EcoRI"))
+            assertEquals(1, panel.displayedMatches().size)
+            assertEquals(3, panel.displayedMatches()[0].recognitionStart)
+            panel.revealMatch(0)
+            assertEquals(3 to 9, revealed)
+        }
+    }
+
+    @Test
     fun plasmidMapPaintsCircularAndLinearProtein() {
         onEdt {
             val circular = SeqDocument(Seq(
@@ -257,7 +400,10 @@ class GuiSmokeTest {
         onEdt {
             val content = InstaGeneContent(null)
             val titles = (0 until content.toolTabs.tabCount).map { content.toolTabs.getTitleAt(it) }
-            assertEquals(listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers", "Library"), titles)
+            assertEquals(
+                listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers", "Library", "History"),
+                titles,
+            )
 
             val sequenceIndex = titles.indexOf("Sequence")
             val sequenceTab = content.toolTabs.getComponentAt(sequenceIndex)
@@ -369,6 +515,41 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun primersPanelAutoDesignsForWholeSequenceOnBind() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
+            val panel = PrimersPanel(doc)
+            val primers = panel.lastPrimers()
+            assertNotNull(primers)
+            assertEquals("1" to "24", panel.rangeFields())
+            assertNotEquals(primers.first.name, primers.second.name)
+            assertTrue(primers.first.bases.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun primersPanelAutoDesignsForSelection() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGT".repeat(12)))
+            doc.select(4, 40)
+            val panel = PrimersPanel(doc)
+            assertNotNull(panel.lastPrimers())
+            assertEquals("5" to "40", panel.rangeFields())
+        }
+    }
+
+    @Test
+    fun primersPanelDoesNotAutoDesignHugeSequence() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGT".repeat(6000)))
+            val panel = PrimersPanel(doc)
+            assertNull(panel.lastPrimers())
+            assertEquals("1" to "24000", panel.rangeFields())
+            assertTrue(panel.summaryText().contains("too large", ignoreCase = true))
+        }
+    }
+
+    @Test
     fun primersPanelKeepsManuallyTypedRangeAcrossSelectionMoves() {
         onEdt {
             val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
@@ -398,6 +579,39 @@ class GuiSmokeTest {
             assertEquals(0, library[0].context.start)
             assertEquals(24, library[0].context.end)
             assertNotNull(library[0].context.tm)
+        }
+    }
+
+    @Test
+    fun primersPanelAddsDesignedPrimersToFeatures() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT", name = "tgt"))
+            val panel = PrimersPanel(doc)
+            panel.designAmplicon(0, 24)
+            val pair = panel.lastPrimers()
+            assertNotNull(pair)
+
+            assertTrue(panel.addPrimersToFeatures())
+            var primers = doc.seq.features.filter { it.type == "primer_bind" }
+            assertEquals(2, primers.size)
+
+            val fwd = primers.first { it.name == pair.first.name }
+            val rev = primers.first { it.name == pair.second.name }
+            // Forward primer at the amplicon start; reverse primer at its end.
+            assertEquals(0, fwd.start)
+            assertEquals(pair.first.bases.length, fwd.end)
+            assertEquals(24 - pair.second.bases.length, rev.start)
+            assertEquals(24, rev.end)
+
+            // Re-designing and adding again must not duplicate the annotations.
+            panel.designAmplicon(0, 24)
+            assertTrue(panel.addPrimersToFeatures())
+            primers = doc.seq.features.filter { it.type == "primer_bind" }
+            assertEquals(2, primers.size)
+
+            // The annotation is undoable.
+            doc.undo()
+            assertEquals(0, doc.seq.features.size)
         }
     }
 

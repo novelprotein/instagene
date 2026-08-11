@@ -43,6 +43,7 @@ data class UserPrefs(
     val windowHeight: Int = 800,
     val windowMaximized: Boolean = false,
     val recentFiles: List<String> = emptyList(),
+    val recentProjects: List<String> = emptyList(),
     val customEnzymes: List<Enzyme> = emptyList(),
     val enabledEnzymes: List<String> = emptyList(),
     val digestFilter: String = "",

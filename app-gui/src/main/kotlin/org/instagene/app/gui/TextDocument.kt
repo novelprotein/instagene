@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.core.project.EditKind
 import java.io.File
 
 /**
@@ -22,6 +23,7 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
     override val displayName: String get() = file?.name ?: "Untitled"
 
     private val listeners = ArrayList<Doc.Listener>()
+    private val editListeners = ArrayList<Doc.EditListener>()
     private val undoStack = ArrayDeque<Pair<String, String>>()
     private val redoStack = ArrayDeque<Pair<String, String>>()
     private val historyLimit = 100
@@ -34,8 +36,20 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
         listeners.remove(listener)
     }
 
+    override fun addEditListener(listener: Doc.EditListener) {
+        editListeners += listener
+    }
+
+    override fun removeEditListener(listener: Doc.EditListener) {
+        editListeners.remove(listener)
+    }
+
     private fun fireChanged() {
         listeners.toList().forEach { it.docChanged(this) }
+    }
+
+    private fun fireEdit(kind: EditKind, label: String?) {
+        editListeners.toList().forEach { it.docEdited(this, kind, label, null) }
     }
 
     /** Applies [transform], recording an undo entry labelled [label]. */
@@ -48,6 +62,7 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
         text = next
         refreshDirty()
         fireChanged()
+        fireEdit(EditKind.EDIT, label)
     }
 
     /** Replaces the whole buffer, recording an undo entry labelled [label]. */
@@ -67,10 +82,12 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
     }
 
     override fun markSaved(savedTo: File) {
+        val savedAs = file != null && file != savedTo
         file = savedTo
         savedText = text
         isDirty = false
         fireChanged()
+        fireEdit(if (savedAs) EditKind.SAVE_AS else EditKind.SAVE, null)
     }
 
     /** Reverts the most recent [mutate], restoring the previous buffer. */
@@ -80,6 +97,7 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
         text = previous
         refreshDirty()
         fireChanged()
+        fireEdit(EditKind.UNDO, label)
     }
 
     /** Re-applies the change most recently reverted by [undo]. */
@@ -89,6 +107,7 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
         text = next
         refreshDirty()
         fireChanged()
+        fireEdit(EditKind.REDO, label)
     }
 
     /** True when an [undo] would do something. */

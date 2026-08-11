@@ -54,16 +54,24 @@ class ViewMenu(
             addSeparator()
             add(createThemesMenu())
             addSeparator()
-            add(createFileBrowserItem())
+            syncFileBrowser()
+            add(fileBrowserItem)
         }
     }
 
-    /** Shows or hides the project file browser (the left-hand tree). */
-    private fun createFileBrowserItem(): JMenuItem {
-        return JCheckBoxMenuItem("Show File Browser", isFileBrowserVisible()).apply {
-            accelerator = menuShortcut(KeyEvent.VK_B)
-            addActionListener { onFileBrowserVisible(isSelected) }
-        }
+    /**
+     * The "Show File Browser" toggle. A single persistent instance, kept in
+     * step with the browser's actual (minimized/expanded) state via
+     * [syncFileBrowser].
+     */
+    private val fileBrowserItem = JCheckBoxMenuItem("Show File Browser", isFileBrowserVisible()).apply {
+        accelerator = menuShortcut(KeyEvent.VK_B)
+        addActionListener { onFileBrowserVisible(isSelected) }
+    }
+
+    /** Reflects the project browser's current state in [fileBrowserItem]. */
+    fun syncFileBrowser() {
+        fileBrowserItem.isSelected = isFileBrowserVisible()
     }
 
     private fun createThemesMenu(): JMenu {

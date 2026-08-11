@@ -11,7 +11,7 @@ This project contains 5 packages:
 
 ## Project Status
 
-**Current Version:** 0.0.1
+**Current Version:** 0.0.2
 
 **Status:** Work in Progress
 
@@ -19,16 +19,12 @@ This project contains 5 packages:
 - [x] HTML5 GUI
 - [x] Graphical User Interface (GUI)
 - [x] Test suite
-- [ ] Harden IO
-- [ ] Editing Workflow
 - [ ] Make Cli production ready
-- [ ] Package and release
 
 ### Planned
 - [ ] Plugin system
 - [ ] Installer icons & signing
 - [ ] Performance optimization
-- [ ] Improved documentation
 
 
 This project uses [Gradle](https://gradle.org/). To build and run the application, use the *Gradle* tool window by

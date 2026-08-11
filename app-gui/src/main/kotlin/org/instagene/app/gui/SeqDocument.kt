@@ -3,6 +3,8 @@ package org.instagene.app.gui
 import org.instagene.core.CutSite
 import org.instagene.core.Enzyme
 import org.instagene.core.Seq
+import org.instagene.core.SeqKind
+import org.instagene.core.project.EditKind
 import java.io.File
 
 /**
@@ -67,6 +69,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
 
     private val listeners = ArrayList<Listener>()
     private val docListeners = ArrayList<Doc.Listener>()
+    private val editListeners = ArrayList<Doc.EditListener>()
     private val undoStack = ArrayDeque<Pair<String, Seq>>()
     private val redoStack = ArrayDeque<Pair<String, Seq>>()
     private val historyLimit = 100
@@ -88,6 +91,18 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
 
     override fun removeDocListener(listener: Doc.Listener) {
         docListeners.remove(listener)
+    }
+
+    override fun addEditListener(listener: Doc.EditListener) {
+        editListeners += listener
+    }
+
+    override fun removeEditListener(listener: Doc.EditListener) {
+        editListeners.remove(listener)
+    }
+
+    private fun fireEdit(kind: EditKind, label: String?, detail: String?) {
+        editListeners.toList().forEach { it.docEdited(this, kind, label, detail) }
     }
 
     private fun notify(reason: Reason) {
@@ -112,6 +127,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
 
     /** Applies [transform], recording an undo entry labelled [label]. */
     fun mutate(label: String, transform: (Seq) -> Seq) {
+        val before = seq
         val next = transform(seq)
         if (next == seq) return
         undoStack.addLast(label to seq)
@@ -122,6 +138,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         clampSelection()
         refreshCutSites()
         notify(Reason.SEQUENCE)
+        fireEdit(EditKind.EDIT, label, changeDetail(before, next))
     }
 
     /** Replaces the sequence outright (file load, format change) and clears history. */
@@ -140,35 +157,55 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
 
     /** Records that the document was saved to [savedTo]: the dirty flag clears and the undo baseline moves up. */
     override fun markSaved(savedTo: File) {
+        val savedAs = file != null && file != savedTo
         file = savedTo
         savedSeq = seq
         isDirty = false
         notify(Reason.SEQUENCE)
+        fireEdit(if (savedAs) EditKind.SAVE_AS else EditKind.SAVE, null, null)
     }
 
-    //val undoLabel: String? get() = undoStack.lastOrNull()?.first
-    //val redoLabel: String? get() = redoStack.lastOrNull()?.first
+    fun canUndo(): Boolean = undoStack.isNotEmpty()
+    fun canRedo(): Boolean = redoStack.isNotEmpty()
+    fun undoLabel(): String? = undoStack.lastOrNull()?.first
+    fun redoLabel(): String? = redoStack.lastOrNull()?.first
 
     /** Reverts the most recent [mutate], restoring the previous sequence. */
     fun undo() {
         val (label, previous) = undoStack.removeLastOrNull() ?: return
         redoStack.addLast(label to seq)
+        val before = seq
         seq = previous
         refreshDirty()
         clampSelection()
         refreshCutSites()
         notify(Reason.SEQUENCE)
+        fireEdit(EditKind.UNDO, label, changeDetail(before, previous))
     }
 
     /** Re-applies the change most recently reverted by [undo]. */
     fun redo() {
         val (label, next) = redoStack.removeLastOrNull() ?: return
         undoStack.addLast(label to seq)
+        val before = seq
         seq = next
         refreshDirty()
         clampSelection()
         refreshCutSites()
         notify(Reason.SEQUENCE)
+        fireEdit(EditKind.REDO, label, changeDetail(before, next))
+    }
+
+    /** A short summary of what changed between [before] and [after], for the edit history. */
+    private fun changeDetail(before: Seq, after: Seq): String? {
+        val unit = if (after.kind == SeqKind.PROTEIN) "aa" else "bp"
+        return when {
+            before.length != after.length -> "${before.length} -> ${after.length} $unit"
+            before.name != after.name -> "${before.name} -> ${after.name}"
+            before.topology != after.topology -> "${before.topology.name.lowercase()} -> ${after.topology.name.lowercase()}"
+            before.features != after.features -> "features ${before.features.size} -> ${after.features.size}"
+            else -> null
+        }
     }
 
     /** Dirty means "differs from the last saved or loaded state", not "edited at all". */

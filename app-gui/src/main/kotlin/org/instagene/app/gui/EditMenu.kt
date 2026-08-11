@@ -11,19 +11,42 @@ import javax.swing.KeyStroke
 
 class EditMenu(
     private val frame: javax.swing.JFrame?,
-    private val doc: SeqDocument,
-    private val sequenceView: SequenceView,
+    private val doc: Doc,
+    private val editor: EditActions,
     private val prefs: Prefs = Prefs(),
 ) {
 
+    private val undoItem = JMenuItem("Undo", KeyEvent.VK_Z).apply {
+        accelerator = menuShortcut(KeyEvent.VK_Z)
+        addActionListener { editor.undo() }
+    }
+
+    private val redoItem = JMenuItem("Redo", KeyEvent.VK_Y).apply {
+        accelerator = menuShortcut(KeyEvent.VK_Y)
+        addActionListener { editor.redo() }
+    }
+
     private var lastPattern: String? = null
+
+    init {
+        doc.addDocListener { refreshUndoRedo() }
+        refreshUndoRedo()
+    }
+
+    /** Keeps the Undo/Redo items' labels and enabled state in step with the document history. */
+    private fun refreshUndoRedo() {
+        undoItem.isEnabled = editor.canUndo()
+        redoItem.isEnabled = editor.canRedo()
+        undoItem.text = editor.undoLabel()?.let { "Undo $it" } ?: "Undo"
+        redoItem.text = editor.redoLabel()?.let { "Redo $it" } ?: "Redo"
+    }
 
     fun create(): JMenu {
         return JMenu("Edit").apply {
             mnemonic = KeyEvent.VK_E
 
-            add(createUndoItem())
-            add(createRedoItem())
+            add(undoItem)
+            add(redoItem)
             addSeparator()
             add(createSelectAllItem())
             addSeparator()
@@ -35,58 +58,43 @@ class EditMenu(
             add(createFindItem())
             add(createFindNextItem())
             addSeparator()
-            add(createSaveSelectionItem())
-        }
-    }
-
-    private fun createUndoItem(): JMenuItem {
-        return JMenuItem("Undo", KeyEvent.VK_Z).apply {
-            accelerator = menuShortcut(KeyEvent.VK_Z)
-            addActionListener { doc.undo() }
-        }
-    }
-
-    private fun createRedoItem(): JMenuItem {
-        return JMenuItem("Redo", KeyEvent.VK_Y).apply {
-            accelerator = menuShortcut(KeyEvent.VK_Y)
-            addActionListener { doc.redo() }
+            if (doc is SeqDocument) {
+                add(createSaveSelectionItem())
+            }
         }
     }
 
     private fun createSelectAllItem(): JMenuItem {
         return JMenuItem("Select All", KeyEvent.VK_A).apply {
             accelerator = menuShortcut(KeyEvent.VK_A)
-            addActionListener { doc.selectAll() }
+            addActionListener { editor.selectAll() }
         }
     }
 
     private fun createCopyItem(): JMenuItem {
         return JMenuItem("Copy", KeyEvent.VK_C).apply {
             accelerator = menuShortcut(KeyEvent.VK_C)
-            addActionListener { sequenceView.copySelection() }
+            addActionListener { editor.copySelection() }
         }
     }
 
     private fun createPasteItem(): JMenuItem {
         return JMenuItem("Paste", KeyEvent.VK_V).apply {
             accelerator = menuShortcut(KeyEvent.VK_V)
-            addActionListener { sequenceView.paste() }
+            addActionListener { editor.paste() }
         }
     }
 
     private fun createCutItem(): JMenuItem {
         return JMenuItem("Cut", KeyEvent.VK_X).apply {
             accelerator = menuShortcut(KeyEvent.VK_X)
-            addActionListener {
-                sequenceView.copySelection()
-                sequenceView.deleteSelection()
-            }
+            addActionListener { editor.cutSelection() }
         }
     }
 
     private fun createDeleteItem(): JMenuItem {
         return JMenuItem("Delete", KeyEvent.VK_D).apply {
-            addActionListener { sequenceView.deleteSelection() }
+            addActionListener { editor.deleteSelection() }
         }
     }
 
@@ -94,9 +102,9 @@ class EditMenu(
         return JMenuItem("Find...", KeyEvent.VK_F).apply {
             accelerator = menuShortcut(KeyEvent.VK_F)
             addActionListener {
-                val pattern = JOptionPane.showInputDialog(frame, "Find sequence:", lastPattern ?: "")
+                val pattern = JOptionPane.showInputDialog(frame, "Find:", lastPattern)
                 if (pattern != null && pattern.isNotEmpty()) {
-                    lastPattern = pattern.uppercase()
+                    lastPattern = pattern
                     findNext()
                 }
             }
@@ -118,6 +126,7 @@ class EditMenu(
     }
 
     private fun saveSelectionToLibrary() {
+        if (doc !is SeqDocument) return
         if (!doc.hasSelection || doc.selectionEnd <= doc.selectionStart) {
             JOptionPane.showMessageDialog(frame, "Select a region to save first.")
             return
@@ -138,44 +147,11 @@ class EditMenu(
         prefs.update { it.copy(library = it.library + item) }
     }
 
-    /**
-     * Finds the next occurrence of the last pattern at or after the caret,
-     * wrapping around. Nucleotide sequences are also searched on the reverse
-     * strand, so a pattern given on one strand still matches its complement.
-     */
+    /** Runs the editor's find; shows a dialog when nothing matches. */
     private fun findNext() {
         val pattern = lastPattern ?: return
-        val bases = doc.seq.bases
-        if (bases.isEmpty()) return
-        val from = doc.caret.coerceIn(0, bases.length)
-        val forward = wrapFind(bases, pattern, from)
-        if (forward != null) {
-            reveal(forward, pattern.length)
-            return
+        if (!editor.findNext(pattern)) {
+            JOptionPane.showMessageDialog(frame, "Pattern not found.", "Find", JOptionPane.INFORMATION_MESSAGE)
         }
-        if (doc.seq.kind != org.instagene.core.SeqKind.PROTEIN) {
-            val rc = buildString(pattern.length) {
-                for (i in pattern.indices.reversed()) append(org.instagene.core.Alphabet.complement(pattern[i], doc.seq.kind))
-            }
-            val reverse = wrapFind(bases, rc, from)
-            if (reverse != null) {
-                reveal(reverse, pattern.length)
-                return
-            }
-        }
-        JOptionPane.showMessageDialog(frame, "Pattern not found.", "Find", JOptionPane.INFORMATION_MESSAGE)
-    }
-
-    /** First index of [needle] at or after [from], wrapping to the start when not found. */
-    private fun wrapFind(bases: String, needle: String, from: Int): Int? {
-        val first = bases.indexOf(needle, from)
-        if (first >= 0) return first
-        val second = bases.indexOf(needle, 0)
-        return if (second >= 0) second else null
-    }
-
-    private fun reveal(start: Int, length: Int) {
-        doc.select(start, start + length)
-        sequenceView.revealRange(start, start + length)
     }
 }

@@ -121,7 +121,7 @@ class SeqProject private constructor(
     }
 
     /** [relativePath] with a hard error, for files that must live in the project. */
-    private fun requireRelative(file: File): String? {
+    private fun requireRelative(file: File): String {
         val rel = relativePath(file) ?: throw IllegalArgumentException("'$file' is outside project '${root.path}'")
         return rel
     }
@@ -130,10 +130,30 @@ class SeqProject private constructor(
 
     /** Writes the manifest atomically (temp file + move), creating `.instagene/` as needed. */
     fun save() {
-        val file = manifestFile(root)
+        atomicWrite(manifestFile(root), json.encodeToString(manifest))
+    }
+
+    /** The edit-history file for this project, whether or not it exists yet. */
+    fun historyFile(): File = historyFile(root)
+
+    /** Loads the persisted edit history, falling back to an empty one when it is missing or corrupt. */
+    fun loadHistory(): EditHistory {
+        val file = historyFile(root)
+        if (!file.isFile) return EditHistory()
+        return runCatching { json.decodeFromString<EditHistory>(file.readText()) }
+            .getOrElse { EditHistory() }
+    }
+
+    /** Writes [history] atomically, creating `.instagene/` as needed. */
+    fun saveHistory(history: EditHistory) {
+        atomicWrite(historyFile(root), json.encodeToString(history))
+    }
+
+    /** Writes [text] to [file] via a temp file + atomic move, creating the parent directory as needed. */
+    private fun atomicWrite(file: File, text: String) {
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, ".${file.name}.tmp")
-        tmp.writeText(json.encodeToString(manifest))
+        tmp.writeText(text)
         try {
             Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } catch (_: AtomicMoveNotSupportedException) {
@@ -144,9 +164,13 @@ class SeqProject private constructor(
     companion object {
         const val MANIFEST_DIR = ".instagene"
         const val MANIFEST_NAME = "project.json"
+        const val HISTORY_NAME = "history.json"
 
         /** The manifest file for [root], whether or not it exists yet. */
         fun manifestFile(root: File): File = File(File(root, MANIFEST_DIR), MANIFEST_NAME)
+
+        /** The edit-history file for [root], whether or not it exists yet. */
+        fun historyFile(root: File): File = File(File(root, MANIFEST_DIR), HISTORY_NAME)
 
         /** True when [dir] holds a `.instagene/project.json`. */
         fun isProjectRoot(dir: File): Boolean = manifestFile(dir).isFile

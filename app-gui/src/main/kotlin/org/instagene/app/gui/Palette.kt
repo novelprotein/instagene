@@ -22,6 +22,10 @@ object Palette {
     val CARET: Color get() = if (darkTheme) Color(0x8A, 0xB4, 0xF8) else Color(0x22, 0x44, 0x88)
     val CUT_MARK = Color(0xC0, 0x39, 0x2B)
 
+    /** The theme's accent color (FlatLaf "Component.accentColor"); a link-blue fallback when unset. */
+    val ACCENT: Color
+        get() = UIManager.getColor("Component.accentColor") ?: Color(0x00, 0x66, 0xCC)
+
     private val BASE_COLORS = mapOf(
         'A' to Color(0x2E, 0x8B, 0x57),
         'C' to Color(0x1E, 0x6F, 0xBA),

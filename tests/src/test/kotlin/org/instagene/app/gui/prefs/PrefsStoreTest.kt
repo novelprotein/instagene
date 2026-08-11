@@ -45,6 +45,7 @@ class PrefsStoreTest {
             windowHeight = 768,
             windowMaximized = true,
             recentFiles = listOf("/a/x.fasta", "/b/y.gb"),
+            recentProjects = listOf("/p/proj1", "/p/proj2"),
             customEnzymes = emptyList(),
             enabledEnzymes = listOf("EcoRI", "BamHI"),
             digestFilter = "RI",
