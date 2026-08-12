@@ -10,7 +10,6 @@ import java.nio.file.Files
 import javax.swing.JMenuItem
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
-import javax.swing.JScrollPane
 import javax.swing.JTree
 import javax.swing.SwingUtilities
 import javax.swing.tree.DefaultMutableTreeNode
@@ -51,7 +50,9 @@ class ProjectTreePanel(
             override fun mousePressed(e: MouseEvent) = maybeShowPopup(e)
             override fun mouseReleased(e: MouseEvent) = maybeShowPopup(e)
         })
-        add(JScrollPane(tree), BorderLayout.CENTER)
+        // InstaGeneContent owns the single scroll pane around this panel.  A
+        // second one here creates a double border in some FlatLaf themes.
+        add(tree, BorderLayout.CENTER)
         refresh()
     }
 

@@ -3,6 +3,7 @@ package org.instagene.app.gui
 import org.instagene.core.project.SeqProject
 import java.io.File
 import java.nio.file.Files
+import javax.swing.JScrollPane
 import javax.swing.SwingUtilities
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
@@ -45,6 +46,20 @@ class ProjectTreeTest {
     }
 
     private fun projectTree(content: InstaGeneContent): ProjectTreePanel = content.projectTreePanel
+
+    @Test
+    fun projectTreeUsesOnlyTheBrowserScrollPane() {
+        onEdt {
+            val content = InstaGeneContent()
+            var component: java.awt.Component? = content.projectTreePanel.tree
+            var scrollPaneCount = 0
+            while (component != null) {
+                if (component is JScrollPane) scrollPaneCount++
+                component = component.parent
+            }
+            assertEquals(1, scrollPaneCount, "the file browser must not nest scroll-pane borders")
+        }
+    }
 
     /** The [javax.swing.tree.TreePath] from the tree root down to [node]. */
     private fun pathTo(node: DefaultMutableTreeNode): javax.swing.tree.TreePath {

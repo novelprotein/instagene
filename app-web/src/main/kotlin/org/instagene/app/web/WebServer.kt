@@ -323,7 +323,7 @@ object WebServer {
                 val read = reader.read(buffer)
                 if (read < 0) return out.toString()
                 if (out.length + read > MAX_REQUEST_BYTES) throw RequestTooLarge()
-                out.append(buffer, 0, read)
+                out.appendRange(buffer, 0, read)
             }
         }
     }

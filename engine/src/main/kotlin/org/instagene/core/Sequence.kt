@@ -8,7 +8,9 @@ enum class SeqKind { DNA, RNA, PROTEIN }
 /** Whether a molecule is an open line or a closed circle. */
 enum class Topology { LINEAR, CIRCULAR }
 
+
 /** Which strand of the double helix a coordinate, cut or feature refers to. */
+
 enum class Strand(val sign: Int, val symbol: String) {
     FORWARD(1, "+"),
     REVERSE(-1, "-");
