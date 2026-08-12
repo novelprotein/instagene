@@ -1,12 +1,12 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.file.Prefs
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.PrefsStore
 import org.instagene.app.gui.prefs.UserPrefs
 import org.instagene.app.gui.theme.ThemeManager
-import org.instagene.app.gui.ui.SeqDocument
-import org.instagene.app.gui.ui.SequenceView
-import org.instagene.app.gui.ui.ViewMenu
+import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.tool.SequenceView
+import org.instagene.app.gui.menu.ViewMenu
 import org.instagene.core.Seq
 import java.io.File
 import java.nio.file.Files

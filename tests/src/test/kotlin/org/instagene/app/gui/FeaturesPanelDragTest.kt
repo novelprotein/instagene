@@ -1,6 +1,5 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.ui.InstaGeneContent
 import org.instagene.core.Seq
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent

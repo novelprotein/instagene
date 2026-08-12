@@ -4,7 +4,7 @@ import org.instagene.app.gui.enzyme.EnzymeManagerModel
 import org.instagene.app.gui.enzyme.enzymeDescriptionFor
 import org.instagene.app.gui.enzyme.enzymePool
 import org.instagene.app.gui.enzyme.findEnzyme
-import org.instagene.app.gui.file.Prefs
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.UserPrefs
 import org.instagene.app.gui.prefs.EnzymeOverride
 import org.instagene.core.Enzyme

@@ -1,8 +1,7 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.doc.TextDocument
+import org.instagene.app.gui.document.TextDocument
 import org.instagene.app.gui.edit.EditRecorder
-import org.instagene.app.gui.ui.InstaGeneContent
 import org.instagene.core.project.EditKind
 import org.instagene.core.project.SeqProject
 import java.io.File

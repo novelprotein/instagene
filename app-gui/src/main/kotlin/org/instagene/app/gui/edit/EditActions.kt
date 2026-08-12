@@ -1,8 +1,8 @@
 package org.instagene.app.gui.edit
 
-import org.instagene.app.gui.ui.SeqDocument
-import org.instagene.app.gui.ui.SequenceView
-import org.instagene.app.gui.doc.TextEditorView
+import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.tool.SequenceView
+import org.instagene.app.gui.document.TextEditorView
 import org.instagene.core.Alphabet
 import org.instagene.core.SeqKind
 

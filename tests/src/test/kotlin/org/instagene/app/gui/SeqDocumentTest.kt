@@ -1,6 +1,6 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.ui.SeqDocument
+import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Enzymes
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqIO

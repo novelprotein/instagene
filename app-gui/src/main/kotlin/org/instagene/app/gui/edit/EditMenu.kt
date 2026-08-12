@@ -1,9 +1,9 @@
 package org.instagene.app.gui.edit
 
-import org.instagene.app.gui.file.Prefs
-import org.instagene.app.gui.ui.SeqDocument
-import org.instagene.app.gui.doc.Doc
-import org.instagene.app.gui.ui.menuShortcut
+import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.document.Doc
+import org.instagene.app.gui.menu.menuShortcut
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind

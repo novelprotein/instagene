@@ -1,7 +1,6 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.ui.InstaGeneContent
-import org.instagene.app.gui.ui.ProjectTreePanel
+import org.instagene.app.gui.project.ProjectTreePanel
 import org.instagene.core.project.SeqProject
 import java.io.File
 import java.nio.file.Files

@@ -19,7 +19,7 @@ tasks.register<JavaExec>("runGui") {
     group = "application"
     description = "Runs the Swing desktop front-end directly."
     classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("org.instagene.app.gui.ui.GuiMainKt")
+    mainClass.set("org.instagene.app.gui.GuiMainKt")
     // Genome-scale FASTA files need a large heap; the JVM default (25% of RAM)
     // can be exhausted by multi-GB files. Override with -Pinstagene.heap=4g.
     val heap = providers.gradleProperty("instagene.heap").orNull

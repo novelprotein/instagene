@@ -1,7 +1,7 @@
 package org.instagene.app.gui.edit
 
-import org.instagene.app.gui.doc.Doc
-import org.instagene.app.gui.doc.TextDocument
+import org.instagene.app.gui.document.Doc
+import org.instagene.app.gui.document.TextDocument
 import org.instagene.core.project.EditEntry
 import org.instagene.core.project.EditHistory
 import org.instagene.core.project.EditKind

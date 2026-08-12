@@ -1,7 +1,7 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.ui.FeaturesPanel
-import org.instagene.app.gui.ui.SeqDocument
+import org.instagene.app.gui.tool.FeaturesPanel
+import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Seq
 import org.instagene.core.Strand
 import kotlin.test.Test

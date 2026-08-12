@@ -1,8 +1,7 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.ui.InstaGeneContent
-import org.instagene.app.gui.ui.PlasmidMapPanel
-import org.instagene.app.gui.ui.SeqDocument
+import org.instagene.app.gui.tool.PlasmidMapPanel
+import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.Topology

@@ -1,6 +1,6 @@
 package org.instagene.app.gui.enzyme
 
-import org.instagene.app.gui.file.Prefs
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.Enzyme
 import org.instagene.core.Enzymes
 import org.instagene.app.gui.prefs.UserPrefs

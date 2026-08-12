@@ -1,19 +1,21 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.file.Prefs
-import org.instagene.app.gui.ui.InstaGeneContent
-import org.instagene.app.gui.ui.ViewMenu
+import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.menu.ViewMenu
 import org.instagene.core.Seq
 import org.instagene.core.project.ProjectLayout
 import org.instagene.core.project.SeqProject
 import java.awt.BorderLayout
 import java.awt.FlowLayout
+import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
 import javax.swing.JButton
 import javax.swing.JCheckBoxMenuItem
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
+import javax.swing.plaf.basic.BasicSplitPaneUI
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -58,6 +60,24 @@ class DocumentTabsTest {
             }
         }
         return condition()
+    }
+
+    /** Moves the browser divider and finishes the same way as a user drag. */
+    private fun dragBrowserDividerTo(content: InstaGeneContent, width: Int) {
+        content.projectSplit.dividerLocation = width
+        val divider = (content.projectSplit.ui as BasicSplitPaneUI).divider
+        divider.dispatchEvent(
+            MouseEvent(
+                divider,
+                MouseEvent.MOUSE_RELEASED,
+                System.currentTimeMillis(),
+                0,
+                0,
+                0,
+                1,
+                false,
+            ),
+        )
     }
 
     @Test
@@ -178,12 +198,32 @@ class DocumentTabsTest {
         }
 
         val content = onEdt { InstaGeneContent() }
+        onEdt {
+            content.setSize(1000, 700)
+            content.doLayout()
+        }
         content.openProjectAt(root)
         assertTrue(awaitEdt { content.docTabs.tabCount == 2 }, "project documents were not loaded")
 
         val active = content.activeDocument
         assertEquals("b.gb", active.file?.name)
         assertEquals(3, content.toolTabs.selectedIndex, "project layout tab was not restored")
+        onEdt {
+            content.fileBrowserToggle.doClick()
+            content.projectSplit.doLayout()
+            assertTrue(
+                abs(content.projectSplit.dividerLocation - 400) <= 2,
+                "expanding must restore the project's 40% browser split",
+            )
+
+            content.setSize(1200, 700)
+            content.doLayout()
+            content.projectSplit.doLayout()
+            assertTrue(
+                abs(content.projectSplit.dividerLocation - 400) <= 2,
+                "the project ratio must be converted once, then kept as a fixed width",
+            )
+        }
     }
 
     @Test
@@ -269,7 +309,7 @@ class DocumentTabsTest {
             assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
             assertTrue(content.fileBrowserToggle.isShowing || content.fileBrowserToggle.isVisible)
             assertTrue(content.projectSplit.dividerSize > 0, "expanding must bring the divider back")
-            assertEquals(0.0, content.projectSplit.resizeWeight, "window resizing must not resize the browser")
+            assertEquals(0.0, content.projectSplit.resizeWeight, "the expanded browser must keep a fixed width")
             assertEquals(180, content.projectSplit.dividerLocation, "expanding must restore the saved tree width")
             assertEquals(4, (content.fileBrowserHeader.layout as FlowLayout).hgap)
 
@@ -283,27 +323,76 @@ class DocumentTabsTest {
     }
 
     @Test
-    fun expandedFileBrowserKeepsItsWidthWhenTheWindowIsResized() {
-        onEdt {
+    fun expandedFileBrowserKeepsItsPixelWidthWhenTheWindowIsResized() {
+        val content = onEdt {
             val content = InstaGeneContent()
             content.setSize(900, 600)
             content.doLayout()
             content.fileBrowserToggle.doClick()
             content.projectSplit.doLayout()
 
-            content.projectSplit.dividerLocation = 230
+            dragBrowserDividerTo(content, 230)
             content.projectSplit.doLayout()
             assertEquals(230, content.projectSplit.dividerLocation)
+            assertEquals(0, content.projectSplit.rightComponent.minimumSize.width)
+            content
+        }
+        val initialHeight = onEdt { content.fileBrowserPanel.height }
 
+        onEdt {
             content.setSize(1200, 700)
             content.doLayout()
             content.projectSplit.doLayout()
-            assertEquals(230, content.projectSplit.dividerLocation, "growing the window must not widen the browser")
+        }
+        assertTrue(awaitEdt { content.projectSplit.dividerLocation == 230 })
+        onEdt {
+            assertEquals(230, content.projectSplit.dividerLocation, "growing the window must preserve the browser width")
+            assertTrue(content.fileBrowserPanel.height > initialHeight, "the browser must fill the added height")
 
             content.setSize(760, 500)
             content.doLayout()
             content.projectSplit.doLayout()
-            assertEquals(230, content.projectSplit.dividerLocation, "shrinking the window must not narrow the browser")
+        }
+        assertTrue(awaitEdt { content.projectSplit.dividerLocation == 230 })
+        onEdt {
+            assertEquals(230, content.projectSplit.dividerLocation, "shrinking the window must preserve the browser width")
+            assertTrue(content.fileBrowserPanel.height < initialHeight, "the browser must follow the reduced height")
+
+            // A layout-driven clamp is not a user choice and must not replace
+            // the desired width when space becomes available again.
+            content.projectSplit.dividerLocation = 62
+            content.setSize(1000, 650)
+            content.doLayout()
+            content.projectSplit.doLayout()
+        }
+        assertTrue(awaitEdt { content.projectSplit.dividerLocation == 230 })
+        onEdt {
+            assertEquals(230, content.projectSplit.dividerLocation, "a temporary layout clamp must be restored")
+
+            content.fileBrowserToggle.doClick()
+            content.setSize(1050, 650)
+            content.doLayout()
+            content.projectSplit.doLayout()
+            assertEquals(content.fileBrowserHeader.preferredSize.width, content.projectSplit.dividerLocation)
+
+            content.fileBrowserToggle.doClick()
+            content.projectSplit.doLayout()
+        }
+        onEdt {
+            assertEquals(230, content.projectSplit.dividerLocation, "restoring after a collapsed resize must preserve the browser width")
+
+            // Theme changes replace the UI delegate and its divider. The drag
+            // listener must follow the replacement divider.
+            content.projectSplit.updateUI()
+            dragBrowserDividerTo(content, 280)
+            content.projectSplit.doLayout()
+            content.setSize(1100, 700)
+            content.doLayout()
+            content.projectSplit.doLayout()
+        }
+        assertTrue(awaitEdt { content.projectSplit.dividerLocation == 280 })
+        onEdt {
+            assertEquals(280, content.projectSplit.dividerLocation, "a manually selected width must survive later resizes")
         }
     }
 
