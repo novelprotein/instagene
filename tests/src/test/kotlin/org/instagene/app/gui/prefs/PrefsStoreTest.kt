@@ -47,6 +47,8 @@ class PrefsStoreTest {
             recentFiles = listOf("/a/x.fasta", "/b/y.gb"),
             recentProjects = listOf("/p/proj1", "/p/proj2"),
             customEnzymes = emptyList(),
+            enzymeOverrides = mapOf("ecori" to EnzymeOverride("EcoX", "CCGG", 0, 2)),
+            enzymeDescriptions = mapOf("ecori" to "Useful for routine cloning"),
             enabledEnzymes = listOf("EcoRI", "BamHI"),
             digestFilter = "RI",
             digestCuttersOnly = false,
@@ -60,6 +62,7 @@ class PrefsStoreTest {
                     name = "fwd",
                     bases = "ACGTACGT",
                     context = SavedContext("pUC19", 10, 30, tm = 60.0),
+                    description = "Forward verification primer",
                 ),
                 SavedItem(
                     kind = SavedKind.FRAGMENT,
@@ -75,6 +78,9 @@ class PrefsStoreTest {
         val reloaded = PrefsStore(file).load()
         assertEquals(prefs, reloaded)
         assertEquals(SavedKind.PRIMER, reloaded.library[0].kind)
+        assertEquals("Forward verification primer", reloaded.library[0].description)
+        assertEquals("Useful for routine cloning", reloaded.enzymeDescriptions["ecori"])
+        assertEquals("EcoX", reloaded.enzymeOverrides["ecori"]?.name)
         assertEquals(60.0, reloaded.library[0].context.tm)
         assertEquals(listOf("EcoRI"), reloaded.library[1].context.enzymes)
     }

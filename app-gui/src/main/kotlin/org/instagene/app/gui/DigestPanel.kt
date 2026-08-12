@@ -60,6 +60,7 @@ class DigestPanel(
     private val filterField = JTextField()
     private val cuttersOnly = JCheckBox("Only enzymes that cut", true)
     private val uniqueOnly = JCheckBox("Only unique cutters", false)
+    private val editElementButton = JButton("Edit Element...")
     private val summary = JLabel(" ")
     private val extractButton = JButton("Open fragment as new sequence")
     private val saveFragmentButton = JButton("Save fragment to library")
@@ -67,9 +68,11 @@ class DigestPanel(
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
     private var matches: List<CutSite> = emptyList()
+    private var restoringEnzymeSelection = false
+    private var restoringMatchSelection = false
 
     /** The full catalog (built-in + custom), used for the cut-count scan and lookups. */
-    private var pool: List<Enzyme> = Enzymes.pool(prefs.value.customEnzymes)
+    private var pool: List<Enzyme> = prefs.value.enzymePool()
 
     /** The required-only working set */
     private var enabledPool: List<Enzyme> = Enzymes.enzymesFor(pool, prefs.value.enabledEnzymes)
@@ -105,16 +108,17 @@ class DigestPanel(
         enzymeTable.columnModel.getColumn(0).maxWidth = 30
         enzymeTable.columnModel.getColumn(3).maxWidth = 50
         enzymeTable.selectionModel.addListSelectionListener {
-            if (!it.valueIsAdjusting) {
+            if (!it.valueIsAdjusting && !restoringEnzymeSelection) {
                 showMatchesForSelectedEnzyme()
                 revealFirstSiteOfSelectedEnzyme()
+                refreshEditElementActionState()
             }
         }
 
         matchesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
         matchesTable.rowHeight = 20
         matchesTable.selectionModel.addListSelectionListener {
-            if (!it.valueIsAdjusting) revealSelectedMatch()
+            if (!it.valueIsAdjusting && !restoringMatchSelection) revealSelectedMatch()
         }
 
         fragmentTable.rowHeight = 20
@@ -238,12 +242,17 @@ class DigestPanel(
 
     /** Reacts to a changed catalog or working set (e.g. the Enzyme Manager dialog). */
     private fun onPrefsChanged() {
-        val nextPool = Enzymes.pool(prefs.value.customEnzymes)
+        val nextPool = prefs.value.enzymePool()
         val nextEnabled = Enzymes.enzymesFor(nextPool, prefs.value.enabledEnzymes)
-        if (nextPool == pool && nextEnabled == enabledPool) return
+        if (nextPool == pool && nextEnabled == enabledPool) {
+            rebuildEnzymeTable()
+            return
+        }
         pool = nextPool
         enabledPool = nextEnabled
-        checked.removeAll { it !in enabledPool }
+        val selectedNames = prefs.value.selectedEnzymes.mapTo(HashSet()) { it.lowercase() }
+        checked.clear()
+        checked += enabledPool.filter { it.name.lowercase() in selectedNames }
         countsVersion++ // invalidate any in-flight scan against the old pool
         countsCache = null
         countsStale = false
@@ -260,6 +269,9 @@ class DigestPanel(
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
             add(cuttersOnly)
             add(uniqueOnly)
+            add(editElementButton.apply {
+                addActionListener { editEnzymeElement(enzymeTable.selectedRow) }
+            })
             add(JButton("Clear").apply {
                 addActionListener {
                     checked.clear()
@@ -320,6 +332,8 @@ class DigestPanel(
      * number of cuts descending, so the relevant enzymes are always identified
      * at the top of the table. */
     private fun rebuildEnzymeTable() {
+        val selectedEnzyme = visibleEnzymes.getOrNull(enzymeTable.selectedRow)
+        val selectedMatch = matches.getOrNull(matchesTable.selectedRow)
         val counts = countsCache.orEmpty()
         val needle = filterField.text.trim().lowercase()
         visibleEnzymes = enabledPool.filter { enzyme ->
@@ -334,14 +348,28 @@ class DigestPanel(
         )
         enzymeModel.counts = counts
         enzymeModel.fireTableDataChanged()
-        showMatchesForSelectedEnzyme()
+        restoreEnzymeSelection(selectedEnzyme)
+        showMatchesForSelectedEnzyme(selectedMatch?.takeIf { it.enzyme == selectedEnzyme })
+        refreshEditElementActionState()
+    }
+
+    /** Restores the selected enzyme after a table refresh without revealing the sequence again. */
+    private fun restoreEnzymeSelection(selectedEnzyme: Enzyme?) {
+        val row = selectedEnzyme?.let { selected -> visibleEnzymes.indexOfFirst { it == selected } } ?: -1
+        restoringEnzymeSelection = true
+        try {
+            if (row >= 0) enzymeTable.selectionModel.setSelectionInterval(row, row)
+            else enzymeTable.clearSelection()
+        } finally {
+            restoringEnzymeSelection = false
+        }
     }
 
     /**
      * Lists every individual match of the enzyme selected in the enzyme table,
      * or clears the list when nothing is selected.
      */
-    private fun showMatchesForSelectedEnzyme() {
+    private fun showMatchesForSelectedEnzyme(matchToRestore: CutSite? = null) {
         val row = enzymeTable.selectedRow
         val enzyme = visibleEnzymes.getOrNull(row)
         if (enzyme == null || doc.seq.kind != SeqKind.DNA) {
@@ -353,6 +381,19 @@ class DigestPanel(
         matches = Digest.cutSites(doc.seq, enzyme)
         matchesLabel.text = "Matches for ${enzyme.name} (${matches.size})"
         matchesModel.fireTableDataChanged()
+        restoreMatchSelection(matchToRestore)
+    }
+
+    /** Restores a particular cut site after its match table is rebuilt. */
+    private fun restoreMatchSelection(matchToRestore: CutSite?) {
+        val row = matchToRestore?.let { saved -> matches.indexOfFirst { it == saved } } ?: -1
+        restoringMatchSelection = true
+        try {
+            if (row >= 0) matchesTable.selectionModel.setSelectionInterval(row, row)
+            else matchesTable.clearSelection()
+        } finally {
+            restoringMatchSelection = false
+        }
     }
 
     private fun revealSelectedMatch() {
@@ -404,6 +445,7 @@ class DigestPanel(
         cuttersOnly.isEnabled = enabled
         uniqueOnly.isEnabled = enabled
         enzymeTable.isEnabled = enabled
+        refreshEditElementActionState()
         fragmentTable.isEnabled = enabled
         extractButton.isEnabled = enabled
         saveFragmentButton.isEnabled = enabled
@@ -427,8 +469,35 @@ class DigestPanel(
         if (row >= 0) enzymeTable.selectionModel.setSelectionInterval(row, row)
     }
 
+    /** Exposed for tests: the enzyme currently selected in the displayed table. */
+    fun selectedEnzymeInTable(): Enzyme? = visibleEnzymes.getOrNull(enzymeTable.selectedRow)
+
     /** Exposed for tests: the individual matches listed for the selected enzyme, in order. */
     fun displayedMatches(): List<CutSite> = matches.toList()
+
+    /** Exposed for tests: the individual cut site selected in the matches table. */
+    fun selectedMatchInTable(): CutSite? = matches.getOrNull(matchesTable.selectedRow)
+
+    /** Exposed for tests: selects a displayed individual cut site. */
+    fun selectMatchInTable(site: CutSite) {
+        val row = matches.indexOfFirst { it == site }
+        if (row >= 0) matchesTable.selectionModel.setSelectionInterval(row, row)
+    }
+
+    /** Exposed for tests and the GUI: the saved description for an enzyme row. */
+    fun enzymeDescription(row: Int): String = visibleEnzymes.getOrNull(row)?.let(::descriptionFor).orEmpty()
+
+    /** Saves a user-authored description for the displayed enzyme at [row]. */
+    fun updateEnzymeDescription(row: Int, description: String): Boolean {
+        val enzyme = visibleEnzymes.getOrNull(row) ?: return false
+        val key = enzyme.name.lowercase()
+        prefs.update { current ->
+            val next = current.enzymeDescriptions.toMutableMap()
+            if (description.isBlank()) next.remove(key) else next[key] = description
+            current.copy(enzymeDescriptions = next)
+        }
+        return true
+    }
 
     /** Maps [enzymes] through the panel, keeping tables and the document in sync. */
     fun selectEnzymes(enzymes: List<Enzyme>) {
@@ -436,6 +505,18 @@ class DigestPanel(
         checked.clear()
         checked += enzymes.filter { it in enabledPool }
         applySelection()
+    }
+
+    private fun descriptionFor(enzyme: Enzyme): String = prefs.value.enzymeDescriptionFor(enzyme)
+
+    private fun refreshEditElementActionState() {
+        editElementButton.isEnabled = enzymeTable.isEnabled && enzymeTable.selectedRow in visibleEnzymes.indices
+    }
+
+    /** Opens the visible GUI editor for every editable field of the selected enzyme. */
+    private fun editEnzymeElement(row: Int) {
+        val enzyme = visibleEnzymes.getOrNull(row) ?: return
+        EnzymeElementDialog(prefs, enzyme).isVisible = true
     }
 
     /** Hands the fragment at [row] to [onExtractFragment] as a standalone sequence. */
@@ -537,7 +618,7 @@ class DigestPanel(
     private inner class EnzymeTableModel : AbstractTableModel() {
         var counts: Map<Enzyme, Int> = emptyMap()
 
-        private val columns = arrayOf("", "Enzyme", "Site", "Cuts")
+        private val columns = arrayOf("", "Enzyme", "Site", "Cuts", "Description")
 
         override fun getRowCount(): Int = visibleEnzymes.size
         override fun getColumnCount(): Int = columns.size
@@ -554,7 +635,8 @@ class DigestPanel(
                 0 -> enzyme in checked
                 1 -> enzyme.name
                 2 -> enzyme.notation()
-                else -> (counts[enzyme] ?: 0).toString()
+                3 -> (counts[enzyme] ?: 0).toString()
+                else -> descriptionFor(enzyme)
             }
         }
 

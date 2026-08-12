@@ -13,6 +13,7 @@ import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTable
+import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.table.AbstractTableModel
@@ -35,6 +36,7 @@ class FeaturesPanel(
     private val featureTable = JTable(featuresModel)
     private val addButton = JButton("Add Feature from Selection...")
     private val manualAddButton = JButton("Add Feature Manually...")
+    private val editElementButton = JButton("Edit Element...")
     private val deleteButton = JButton("Delete")
     private val summary = JLabel(" ")
 
@@ -94,6 +96,9 @@ class FeaturesPanel(
         add(manualAddButton.apply {
             addActionListener { manualAddDialog() }
         })
+        add(editElementButton.apply {
+            addActionListener { editFeatureElement(featureTable.selectedRow) }
+        })
         add(deleteButton.apply {
             addActionListener { deleteSelectedFeature() }
         })
@@ -123,6 +128,7 @@ class FeaturesPanel(
         addButton.isEnabled = doc.hasSelection && doc.selectionEnd > doc.selectionStart
         manualAddButton.isEnabled = doc.seq.length > 0
         deleteButton.isEnabled = featureTable.selectedRow in doc.seq.features.indices
+        editElementButton.isEnabled = deleteButton.isEnabled
         val features = doc.seq.features
         summary.text = if (features.isEmpty()) {
             "No features. Select a region and use \"Add Feature from Selection...\", or type coordinates with \"Add Feature Manually...\"."
@@ -147,6 +153,55 @@ class FeaturesPanel(
 
     /** Exposed for tests: whether the Delete button is currently enabled. */
     fun isDeleteEnabled(): Boolean = deleteButton.isEnabled
+
+    /** Exposed for tests: the description associated with the feature at [row]. */
+    fun featureDescription(row: Int): String = doc.seq.features.getOrNull(row)?.notes.orEmpty()
+
+    /** Updates a feature description as an undoable sequence edit. */
+    fun updateFeatureDescription(row: Int, description: String): Boolean {
+        val feature = doc.seq.features.getOrNull(row) ?: return false
+        return updateFeatureElement(
+            row, feature.name, feature.type, feature.start + 1, feature.end, feature.strand, description,
+        ) == null
+    }
+
+    /**
+     * Updates every user-editable feature field. Coordinates are the 1-based,
+     * inclusive values displayed by the GUI; returns an error without changing
+     * the sequence when the replacement is invalid.
+     */
+    fun updateFeatureElement(
+        row: Int,
+        name: String,
+        type: String,
+        start: Int,
+        end: Int,
+        strand: Strand,
+        description: String,
+    ): String? {
+        val previous = doc.seq.features.getOrNull(row) ?: return "Choose a feature to edit."
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return "Feature name cannot be empty."
+        if (start !in 1..doc.seq.length || end !in start..doc.seq.length) {
+            return "Start must be 1-based and End must be >= Start and <= ${doc.seq.length}."
+        }
+        val edited = previous.copy(
+            name = trimmedName,
+            type = type.trim().ifBlank { "misc_feature" },
+            start = start - 1,
+            end = end,
+            strand = strand,
+            notes = description,
+        )
+        doc.mutate("edit feature") { seq ->
+            seq.copy(features = seq.features.mapIndexed { index, feature ->
+                if (index == row) edited else feature
+            }.sortedBy { it.start })
+        }
+        val editedRow = doc.seq.features.indexOf(edited)
+        if (editedRow >= 0) selectFeatureRow(editedRow)
+        return null
+    }
 
     /** Adds a feature over the current editor selection (undoable). */
     fun addFeature(name: String, type: String = "misc_feature", notes: String = "") {
@@ -198,7 +253,7 @@ class FeaturesPanel(
             add(nameField)
             add(JLabel("Type"))
             add(typeField)
-            add(JLabel("Notes"))
+            add(JLabel("Description"))
             add(notesField)
         }
         val start = doc.selectionStart + 1
@@ -237,7 +292,7 @@ class FeaturesPanel(
             add(endField)
             add(JLabel("Strand"))
             add(strandField)
-            add(JLabel("Notes"))
+            add(JLabel("Description"))
             add(notesField)
         }
         val ok = JOptionPane.showConfirmDialog(
@@ -270,6 +325,54 @@ class FeaturesPanel(
         deleteFeature(featureTable.selectedRow)
     }
 
+    /** Opens the visible GUI editor for every editable field of the selected feature. */
+    private fun editFeatureElement(row: Int) {
+        val feature = doc.seq.features.getOrNull(row) ?: return
+        val nameField = JTextField(feature.name, 20)
+        val typeField = JComboBox(TYPES.toTypedArray()).apply {
+            isEditable = true
+            selectedItem = feature.type
+        }
+        val startField = JTextField((feature.start + 1).toString(), 6)
+        val endField = JTextField(feature.end.toString(), 6)
+        val strandField = JComboBox(arrayOf("+", "-")).apply { selectedItem = feature.strand.symbol }
+        val descriptionField = JTextArea(feature.notes, 6, 40).apply { lineWrap = true; wrapStyleWord = true }
+        val form = JPanel(GridLayout(5, 2, 6, 6)).apply {
+            add(JLabel("Name")); add(nameField)
+            add(JLabel("Type")); add(typeField)
+            add(JLabel("Start (1-based)")); add(startField)
+            add(JLabel("End (1-based)")); add(endField)
+            add(JLabel("Strand")); add(strandField)
+        }
+        val ok = JOptionPane.showConfirmDialog(
+            null,
+            JPanel(BorderLayout(0, 8)).apply {
+                add(form, BorderLayout.NORTH)
+                add(JPanel(BorderLayout(0, 4)).apply {
+                    add(JLabel("Description"), BorderLayout.NORTH)
+                    add(JScrollPane(descriptionField), BorderLayout.CENTER)
+                }, BorderLayout.CENTER)
+            },
+            "Edit Feature",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE,
+        )
+        if (ok != JOptionPane.OK_OPTION) return
+        val start = startField.text.trim().toIntOrNull()
+        val end = endField.text.trim().toIntOrNull()
+        val strand = if (strandField.selectedItem == "-") Strand.REVERSE else Strand.FORWARD
+        val error = if (start == null || end == null) {
+            "Start and End must be whole numbers."
+        } else {
+            updateFeatureElement(
+                row, nameField.text, typeField.selectedItem?.toString().orEmpty(), start, end, strand, descriptionField.text,
+            )
+        }
+        if (error != null) {
+            JOptionPane.showMessageDialog(null, error, "Edit Feature", JOptionPane.ERROR_MESSAGE)
+        }
+    }
+
     /** Removes the feature at [row] (undoable). */
     fun deleteFeature(row: Int) {
         val feature = doc.seq.features.getOrNull(row) ?: return
@@ -287,7 +390,7 @@ class FeaturesPanel(
     }
 
     private inner class FeatureTableModel : AbstractTableModel() {
-        private val columns = arrayOf("Name", "Type", "Start", "End", "Strand", "Length")
+        private val columns = arrayOf("Name", "Type", "Start", "End", "Strand", "Length", "Description")
 
         override fun getRowCount(): Int = doc.seq.features.size
         override fun getColumnCount(): Int = columns.size
@@ -301,7 +404,8 @@ class FeaturesPanel(
                 2 -> f.start + 1
                 3 -> f.end
                 4 -> f.strand.symbol
-                else -> f.length
+                5 -> f.length
+                else -> f.notes
             }
         }
     }

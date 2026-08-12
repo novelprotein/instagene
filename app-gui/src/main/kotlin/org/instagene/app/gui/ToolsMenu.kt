@@ -1,7 +1,6 @@
 package org.instagene.app.gui
 
 import org.instagene.core.Enzyme
-import org.instagene.core.Enzymes
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import org.instagene.core.Version
@@ -79,7 +78,7 @@ class ToolsMenu(
     private fun addEnzymeByDialog() {
         val enzymeName = JOptionPane.showInputDialog(null, "Enzyme name:", "BamHI")
         if (enzymeName == null || enzymeName.isBlank()) return
-        val enzyme = Enzymes.find(enzymeName, prefs.value.customEnzymes)
+        val enzyme = prefs.value.findEnzyme(enzymeName)
         if (enzyme != null) {
             digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + enzyme)
         } else {
@@ -92,7 +91,7 @@ class ToolsMenu(
             if (choice == JOptionPane.YES_OPTION) {
                 EnzymeManagerDialog(prefs, initialName = enzymeName).isVisible = true
                 // After the dialog the enzyme may now exist; select it.
-                Enzymes.find(enzymeName, prefs.value.customEnzymes)?.let {
+                prefs.value.findEnzyme(enzymeName)?.let {
                     digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + it)
                 }
             }
@@ -106,7 +105,7 @@ class ToolsMenu(
     }
 
     private fun rebuildCommonEnzymes(menu: JMenu = commonEnzymesMenu) {
-        val pool = Enzymes.pool(prefs.value.customEnzymes)
+        val pool = prefs.value.enzymePool()
         menu.removeAll()
         val categories = pool.groupBy { it.name.first() }.toSortedMap()
         for ((letter, enzymes) in categories) {

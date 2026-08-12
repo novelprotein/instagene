@@ -3,6 +3,17 @@ package org.instagene.app.gui.prefs
 import kotlinx.serialization.Serializable
 import org.instagene.core.Enzyme
 
+/** A per-user replacement for the biochemical fields of one built-in enzyme. */
+@Serializable
+data class EnzymeOverride(
+    val name: String,
+    val site: String,
+    val topCut: Int,
+    val bottomCut: Int,
+) {
+    fun toEnzyme(): Enzyme = Enzyme(name, site, topCut, bottomCut)
+}
+
 /** What kind of molecule a [SavedItem] holds. */
 @Serializable
 enum class SavedKind { PRIMER, FRAGMENT }
@@ -27,6 +38,7 @@ data class SavedItem(
     val name: String,
     val bases: String,
     val context: SavedContext = SavedContext(),
+    val description: String = "",
 ) {
     val length: Int get() = bases.length
 }
@@ -45,6 +57,10 @@ data class UserPrefs(
     val recentFiles: List<String> = emptyList(),
     val recentProjects: List<String> = emptyList(),
     val customEnzymes: List<Enzyme> = emptyList(),
+    /** Built-in enzyme overrides, keyed by the original lowercase built-in name. */
+    val enzymeOverrides: Map<String, EnzymeOverride> = emptyMap(),
+    /** User-authored descriptions for built-in and custom enzymes, keyed by lowercase name. */
+    val enzymeDescriptions: Map<String, String> = emptyMap(),
     val enabledEnzymes: List<String> = emptyList(),
     val digestFilter: String = "",
     val digestCuttersOnly: Boolean = true,

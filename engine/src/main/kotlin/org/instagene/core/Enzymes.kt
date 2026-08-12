@@ -51,6 +51,9 @@ enum class EndType(val label: String) {
     THREE_PRIME_OVERHANG("3' overhang"),
 }
 
+/** Curated, non-UI provenance for a bundled enzyme description. */
+data class BuiltInEnzymeInfo(val description: String, val sourceUrl: String)
+
 /** The commonly stocked cloning enzymes, enough to cover a typical MCS. */
 object Enzymes {
 
@@ -106,6 +109,75 @@ object Enzymes {
         Enzyme("XhoI", "CTCGAG", 1, 5),
         Enzyme("XmaI", "CCCGGG", 1, 5),
     ).sortedBy { it.name.lowercase() }
+
+    /** Individually researched, compact descriptions and their source records. */
+    val BUILTIN_INFO: Map<String, BuiltInEnzymeInfo> = mapOf(
+        "aatii" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/AatII.html"),
+        "acci" to BuiltInEnzymeInfo("A flexible cloning enzyme. CpG methylation can prevent cutting.", "https://www.neb.com/en-us/products/r0161-acci"),
+        "aflii" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/AflII.html"),
+        "agei" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/AgeI.html"),
+        "apai" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/ApaI.html"),
+        "asei" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/AseI.html"),
+        "avrii" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with SpeI, XbaI, and NheI.", "https://rebase.neb.com/rebase/enz/AvrII.html"),
+        "bamhi" to BuiltInEnzymeInfo("A common cloning enzyme with ends compatible with BglII and BclI.", "https://rebase.neb.com/rebase/enz/BamHI.html"),
+        "bcli" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with BamHI. dam methylation prevents cutting.", "https://www.neb.com/en/products/r0160-bcli"),
+        "bglii" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with BamHI and BclI.", "https://rebase.neb.com/rebase/enz/BglII.html"),
+        "bsrgi" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/BsrGI.html"),
+        "bsshii" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/BssHII.html"),
+        "clai" to BuiltInEnzymeInfo("A cloning enzyme. dam or CpG methylation can prevent cutting.", "https://www.neb.com/en/products/r0197-clai"),
+        "dpni" to BuiltInEnzymeInfo("Cuts methylated DNA; useful for removing template plasmid after PCR.", "https://www.neb.com/products/r0176-dpni"),
+        "drai" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/DraI.html"),
+        "eagi" to BuiltInEnzymeInfo("A cloning enzyme. CpG methylation can prevent cutting.", "https://www.neb.com/en/products/r0505-eagi"),
+        "ecori" to BuiltInEnzymeInfo("A common cloning enzyme with ends compatible with MfeI.", "https://rebase.neb.com/rebase/enz/EcoRI.html"),
+        "ecorv" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/EcoRV.html"),
+        "haeiii" to BuiltInEnzymeInfo("A frequent-cutting, blunt-end enzyme for making small DNA fragments.", "https://rebase.neb.com/rebase/enz/HaeIII.html"),
+        "hindiii" to BuiltInEnzymeInfo("A common DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/HindIII.html"),
+        "hpai" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/HpaI.html"),
+        "kpni" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/KpnI.html"),
+        "mfei" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with EcoRI.", "https://rebase.neb.com/rebase/enz/MfeI.html"),
+        "mlui" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/MluI.html"),
+        "naei" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/NaeI.html"),
+        "ncoi" to BuiltInEnzymeInfo("Useful for cloning coding sequences because its site includes a start codon.", "https://rebase.neb.com/rebase/enz/NcoI.html"),
+        "ndei" to BuiltInEnzymeInfo("Useful for cloning coding sequences because its site includes a start codon.", "https://rebase.neb.com/rebase/enz/NdeI.html"),
+        "nhei" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with SpeI, XbaI, and AvrII.", "https://rebase.neb.com/rebase/enz/NheI.html"),
+        "noti" to BuiltInEnzymeInfo("A rare-cutting enzyme for cloning large DNA fragments.", "https://rebase.neb.com/rebase/enz/NotI.html"),
+        "nrui" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/NruI.html"),
+        "paci" to BuiltInEnzymeInfo("A rare-cutting enzyme for cloning large DNA fragments.", "https://rebase.neb.com/rebase/enz/PacI.html"),
+        "pmei" to BuiltInEnzymeInfo("A rare-cutting, blunt-end enzyme for cloning large DNA fragments.", "https://rebase.neb.com/rebase/enz/PmeI.html"),
+        "psti" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/PstI.html"),
+        "pvui" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/PvuI.html"),
+        "pvuii" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/PvuII.html"),
+        "saci" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/SacI.html"),
+        "sacii" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/SacII.html"),
+        "sali" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with XhoI.", "https://rebase.neb.com/rebase/enz/SalI.html"),
+        "sbfi" to BuiltInEnzymeInfo("A rare-cutting enzyme for cloning large DNA fragments.", "https://rebase.neb.com/rebase/enz/SbfI.html"),
+        "scai" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/ScaI.html"),
+        "smai" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/SmaI.html"),
+        "snabi" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/SnaBI.html"),
+        "spei" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with XbaI, NheI, and AvrII.", "https://rebase.neb.com/rebase/enz/SpeI.html"),
+        "sphi" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/SphI.html"),
+        "sspi" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/SspI.html"),
+        "stui" to BuiltInEnzymeInfo("A blunt-end restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/StuI.html"),
+        "xbai" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with SpeI, NheI, and AvrII.", "https://rebase.neb.com/rebase/enz/XbaI.html"),
+        "xhoi" to BuiltInEnzymeInfo("A cloning enzyme with ends compatible with SalI.", "https://rebase.neb.com/rebase/enz/XhoI.html"),
+        "xmai" to BuiltInEnzymeInfo("A standard DNA restriction enzyme for cloning.", "https://rebase.neb.com/rebase/enz/XmaI.html"),
+    )
+
+    /** Convenience view used by the desktop description resolver. */
+    val BUILTIN_DESCRIPTIONS: Map<String, String> = BUILTIN_INFO.mapValues { it.value.description }
+
+    /** A compact explanation suitable for a table cell or enzyme editor. */
+    fun simpleDescription(enzyme: Enzyme, functionalNote: String? = null): String {
+        val ends = when (enzyme.endType) {
+            EndType.BLUNT -> "blunt ends"
+            EndType.FIVE_PRIME_OVERHANG -> "5' sticky ends"
+            EndType.THREE_PRIME_OVERHANG -> "3' sticky ends"
+        }
+        return buildString {
+            append("${enzyme.name} is a DNA restriction enzyme that recognizes ${enzyme.site} and creates $ends.")
+            if (functionalNote != null) append(' ').append(functionalNote)
+        }
+    }
 
     private val byName = ALL.associateBy { it.name.lowercase() }
 

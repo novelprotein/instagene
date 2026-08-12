@@ -48,6 +48,41 @@ class EnzymesTest {
     }
 
     @Test
+    fun everyBuiltinHasAnIndividualShortDescriptionAndSource() {
+        val keys = Enzymes.ALL.map { it.name.lowercase() }.toSet()
+        assertEquals(keys, Enzymes.BUILTIN_DESCRIPTIONS.keys)
+        assertEquals(keys, Enzymes.BUILTIN_INFO.keys)
+        assertEquals(Enzymes.ALL.size, Enzymes.BUILTIN_INFO.values.map { it.sourceUrl }.toSet().size)
+        for (enzyme in Enzymes.ALL) {
+            val key = enzyme.name.lowercase()
+            val description = Enzymes.BUILTIN_DESCRIPTIONS.getValue(key)
+            val info = Enzymes.BUILTIN_INFO.getValue(key)
+            assertTrue(info.sourceUrl.isNotBlank())
+            assertTrue(!info.sourceUrl.contains("alphabetized-list-of-recognition-specificities"))
+            assertTrue(info.sourceUrl.contains("/enz/") || info.sourceUrl.contains("/products/"))
+            assertTrue(description.length in 20..120)
+            assertTrue(!description.contains(enzyme.site))
+        }
+    }
+
+    @Test
+    fun individuallyResearchedFunctionalNotesCoverSpecialMethylationCases() {
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("dpni").contains("template plasmid after PCR"))
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("bcli").contains("dam methylation"))
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("clai").contains("CpG methylation"))
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("eagi").contains("CpG methylation"))
+    }
+
+    @Test
+    fun simpleDescriptionsCallOutPracticalCloningCases() {
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("haeiii").contains("frequent-cutting"))
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("noti").contains("rare-cutting"))
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("bamhi").contains("BglII"))
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("ecori").contains("MfeI"))
+        assertTrue(Enzymes.BUILTIN_DESCRIPTIONS.getValue("ndei").contains("start codon"))
+    }
+
+    @Test
     fun findAndRequireAreCaseInsensitive() {
         assertEquals("BamHI", Enzymes.find(" bamhi ")!!.name)
         assertNull(Enzymes.find("NotAnEnzyme"))

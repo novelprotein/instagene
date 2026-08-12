@@ -1,6 +1,7 @@
 package org.instagene.app.gui
 
 import org.instagene.core.Feature
+import org.instagene.core.Alphabet
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import org.instagene.app.gui.prefs.SavedContext
@@ -20,6 +21,7 @@ import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSpinner
 import javax.swing.JTable
+import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SpinnerNumberModel
@@ -46,11 +48,13 @@ class PrimersPanel(
     private val designButton = JButton("Design primers")
     private val copyButton = JButton("Copy as FASTA")
     private val saveButton = JButton("Save primers to library")
+    private val editElementButton = JButton("Edit Element...")
     private val summary = JLabel(" ")
     private val resultsModel = PrimerTableModel()
     private val resultsTable = JTable(resultsModel)
 
     private var result: Pair<SeqOps.Primer, SeqOps.Primer>? = null
+    private var descriptions: List<String> = listOf("", "")
 
     /** Set once the user types a From/To themselves; selection moves then no longer clobber it. */
     private var rangeEdited = false
@@ -65,6 +69,9 @@ class PrimersPanel(
 
         resultsTable.rowHeight = 20
         resultsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+        resultsTable.selectionModel.addListSelectionListener {
+            if (!it.valueIsAdjusting) refreshEditElementActionState()
+        }
 
         add(buildControls(), BorderLayout.NORTH)
         add(JScrollPane(resultsTable), BorderLayout.CENTER)
@@ -106,6 +113,7 @@ class PrimersPanel(
         }
         if (switched) {
             result = null
+            descriptions = listOf("", "")
             rangeEdited = false
             suppressEditTracking = true
             try {
@@ -146,6 +154,9 @@ class PrimersPanel(
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
             add(copyButton)
             add(saveButton)
+            add(editElementButton.apply {
+                addActionListener { editPrimerElement(resultsTable.selectedRow) }
+            })
             add(Box.createHorizontalStrut(4))
         })
     }
@@ -198,6 +209,7 @@ class PrimersPanel(
             SeqDocument.Reason.SEQUENCE -> {
                 // The amplicon may have moved or changed; stale primers are misleading.
                 result = null
+                descriptions = listOf("", "")
                 autoPopulateAndDesign()
             }
             SeqDocument.Reason.SELECTION -> autoPopulateAndDesign()
@@ -226,6 +238,7 @@ class PrimersPanel(
         } else {
             summary.text = "Set From/To (or select a region) and pick a target Tm, then Design."
         }
+        refreshEditElementActionState()
     }
 
     private fun setInteractive(enabled: Boolean) {
@@ -236,6 +249,7 @@ class PrimersPanel(
         copyButton.isEnabled = enabled
         saveButton.isEnabled = enabled
         resultsTable.isEnabled = enabled
+        refreshEditElementActionState()
     }
 
     /** Exposed for tests: whether primer design is available for the sample type. */
@@ -254,6 +268,7 @@ class PrimersPanel(
         if (from !in 0..doc.seq.length || to !in from..doc.seq.length || from == to) return false
         val tm = (tmSpinner.value as Number).toDouble()
         result = SeqOps.designPrimers(doc.seq, from, to, targetTm = tm)
+        descriptions = listOf("", "")
         resultsModel.fireTableDataChanged()
         refresh()
         return true
@@ -331,8 +346,8 @@ class PrimersPanel(
             tm = tm,
         )
         val items = listOf(
-            SavedItem(SavedKind.PRIMER, pair.first.name, pair.first.bases, context),
-            SavedItem(SavedKind.PRIMER, pair.second.name, pair.second.bases, context),
+            SavedItem(SavedKind.PRIMER, pair.first.name, pair.first.bases, context, descriptions[0]),
+            SavedItem(SavedKind.PRIMER, pair.second.name, pair.second.bases, context, descriptions[1]),
         )
         prefs.update { it.copy(library = it.library + items) }
     }
@@ -352,8 +367,84 @@ class PrimersPanel(
     /** Exposed for tests: the current summary/hint text. */
     fun summaryText(): String = summary.text
 
+    /** Exposed for tests and the GUI: the description for a designed-primer row. */
+    fun primerDescription(row: Int): String = descriptions.getOrNull(row).orEmpty()
+
+    /** Updates the in-panel description for a designed primer. It persists when saved to the Library. */
+    fun updatePrimerDescription(row: Int, description: String): Boolean {
+        val primer = primerAt(row) ?: return false
+        return updatePrimerElement(row, primer.name, primer.bases, description) == null
+    }
+
+    /**
+     * Updates every user-editable field of a designed primer. Length, Tm, and
+     * GC% are recalculated from the replacement sequence. Returns an error
+     * without changing the current result when the input is invalid.
+     */
+    fun updatePrimerElement(row: Int, name: String, bases: String, description: String): String? {
+        if (primerAt(row) == null) return "Choose a primer to edit."
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return "Primer name cannot be empty."
+        val cleanedBases = Alphabet.clean(bases).uppercase()
+        if (cleanedBases.isEmpty()) return "Primer sequence cannot be empty."
+        val invalid = cleanedBases.filter { !Alphabet.isNucleotide(it) || it == '-' }.toSet()
+        if (invalid.isNotEmpty()) return "Primer sequence contains invalid nucleotide character(s): ${invalid.sorted().joinToString(" ")}"
+        val updated = SeqOps.Primer(
+            trimmedName,
+            cleanedBases,
+            SeqOps.meltingTemp(cleanedBases),
+            SeqOps.gcContent(cleanedBases),
+        )
+        result = if (row == 0) result!!.copy(first = updated) else result!!.copy(second = updated)
+        descriptions = descriptions.mapIndexed { index, current -> if (index == row) description else current }
+        resultsModel.fireTableRowsUpdated(row, row)
+        return null
+    }
+
+    private fun primerAt(row: Int): SeqOps.Primer? = when (row) {
+        0 -> result?.first
+        1 -> result?.second
+        else -> null
+    }
+
+    private fun refreshEditElementActionState() {
+        editElementButton.isEnabled = resultsTable.isEnabled && result != null && resultsTable.selectedRow in 0..1
+    }
+
+    /** Opens the visible GUI editor for every editable field of the selected primer. */
+    private fun editPrimerElement(row: Int) {
+        val primer = primerAt(row) ?: return
+        val nameField = JTextField(primer.name, 24)
+        val basesField = JTextArea(primer.bases, 4, 40).apply { lineWrap = true; wrapStyleWord = true }
+        val descriptionField = JTextArea(descriptions[row], 6, 40).apply { lineWrap = true; wrapStyleWord = true }
+        val ok = JOptionPane.showConfirmDialog(
+            null,
+            JPanel(BorderLayout(0, 8)).apply {
+                add(JPanel(BorderLayout(6, 0)).apply {
+                    add(JLabel("Name"), BorderLayout.WEST)
+                    add(nameField, BorderLayout.CENTER)
+                }, BorderLayout.NORTH)
+                add(JPanel().apply {
+                    layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                    add(JLabel("Sequence"))
+                    add(JScrollPane(basesField))
+                    add(Box.createVerticalStrut(6))
+                    add(JLabel("Description"))
+                    add(JScrollPane(descriptionField))
+                }, BorderLayout.CENTER)
+            },
+            "Edit Primer",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE,
+        )
+        if (ok != JOptionPane.OK_OPTION) return
+        updatePrimerElement(row, nameField.text, basesField.text, descriptionField.text)?.let { error ->
+            JOptionPane.showMessageDialog(null, error, "Edit Primer", JOptionPane.ERROR_MESSAGE)
+        }
+    }
+
     private inner class PrimerTableModel : AbstractTableModel() {
-        private val columns = arrayOf("Name", "Sequence", "Length", "Tm", "GC%")
+        private val columns = arrayOf("Name", "Sequence", "Length", "Tm", "GC%", "Description")
 
         override fun getRowCount(): Int = if (result == null) 0 else 2
         override fun getColumnCount(): Int = columns.size
@@ -366,7 +457,8 @@ class PrimersPanel(
                 1 -> primer.bases
                 2 -> primer.bases.length
                 3 -> "%.1f".format(primer.tm)
-                else -> "%.1f".format(primer.gc)
+                4 -> "%.1f".format(primer.gc)
+                else -> descriptions[rowIndex]
             }
         }
     }

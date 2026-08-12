@@ -56,6 +56,47 @@ class FeaturesPanelTest {
         assertTrue(doc.seq.features.isEmpty())
     }
 
+    @Test
+    fun featureDescriptionUpdatesTheVisibleFeatureAndIsUndoable() {
+        val (doc, panel) = panelWithSeq()
+        doc.moveCaret(2)
+        doc.moveCaret(6, extendSelection = true)
+        panel.addFeature("probe")
+
+        assertTrue(panel.updateFeatureDescription(0, "PCR verification target"))
+        assertEquals("PCR verification target", panel.featureDescription(0))
+        assertEquals("PCR verification target", doc.seq.features.single().notes)
+        assertTrue(doc.isDirty)
+
+        doc.undo()
+        assertEquals("", panel.featureDescription(0))
+    }
+
+    @Test
+    fun featureElementEditsEveryVisibleFieldAndResortsTheTable() {
+        val (doc, panel) = panelWithSeq()
+        assertTrue(panel.addFeatureManually("first", "gene", 1, 3))
+        assertTrue(panel.addFeatureManually("second", "gene", 4, 6))
+
+        assertEquals(
+            null,
+            panel.updateFeatureElement(0, "renamed", "CDS", 7, 10, Strand.REVERSE, "edited annotation"),
+        )
+        val edited = doc.seq.features.last()
+        assertEquals("renamed", edited.name)
+        assertEquals("CDS", edited.type)
+        assertEquals(6, edited.start)
+        assertEquals(10, edited.end)
+        assertEquals(Strand.REVERSE, edited.strand)
+        assertEquals("edited annotation", edited.notes)
+
+        val before = doc.seq
+        assertTrue(panel.updateFeatureElement(1, "", "CDS", 1, 3, Strand.FORWARD, "") != null)
+        assertEquals(before, doc.seq)
+        doc.undo()
+        assertEquals(listOf("first", "second"), doc.seq.features.map { it.name })
+    }
+
     // ------------------------------------------------------------ manual add
 
     @Test

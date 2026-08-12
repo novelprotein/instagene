@@ -583,6 +583,119 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun primerDescriptionsAreDisplayedAndSavedToLibrary() {
+        onEdt {
+            val prefs = Prefs()
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT", name = "tgt"))
+            val panel = PrimersPanel(doc, prefs)
+            panel.designAmplicon(0, 24)
+
+            assertTrue(panel.updatePrimerDescription(0, "Forward screening primer"))
+            assertTrue(panel.updatePrimerDescription(1, "Reverse screening primer"))
+            assertEquals("Forward screening primer", panel.primerDescription(0))
+            assertEquals("Reverse screening primer", panel.primerDescription(1))
+
+            panel.savePrimers()
+            assertEquals("Forward screening primer", prefs.value.library[0].description)
+            assertEquals("Reverse screening primer", prefs.value.library[1].description)
+        }
+    }
+
+    @Test
+    fun primerElementEditRecalculatesMetricsAndFeedsLibraryAndFeatureActions() {
+        onEdt {
+            val prefs = Prefs()
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT", name = "tgt"))
+            val panel = PrimersPanel(doc, prefs)
+            panel.designAmplicon(0, 24)
+
+            assertEquals(null, panel.updatePrimerElement(0, "custom_forward", "ACGTACGT", "Hand-tuned primer"))
+            val primers = panel.lastPrimers()!!
+            assertEquals("custom_forward", primers.first.name)
+            assertEquals("ACGTACGT", primers.first.bases)
+            assertEquals(8, primers.first.bases.length)
+            assertEquals(50.0, primers.first.gc)
+            assertTrue(panel.updatePrimerElement(0, "bad", "ACGT!", "") != null)
+            assertEquals("ACGTACGT", panel.lastPrimers()!!.first.bases)
+
+            panel.savePrimers()
+            assertEquals("custom_forward", prefs.value.library[0].name)
+            assertEquals("Hand-tuned primer", prefs.value.library[0].description)
+            assertTrue(panel.addPrimersToFeatures())
+            assertTrue(doc.seq.features.any { it.name == "custom_forward" && it.length == 8 })
+        }
+    }
+
+    @Test
+    fun enzymeDescriptionsAreVisibleAndPersistedInPreferences() {
+        onEdt {
+            val prefs = Prefs().also { it.update { current -> current.copy(digestCuttersOnly = false) } }
+            val panel = DigestPanel(SeqDocument(Seq(bases = "ACGTACGT")), { _: Seq -> }, { _, _ -> }, prefs)
+            val row = panel.displayedEnzymes().indexOfFirst { it.name == "EcoRI" }
+            assertTrue(row >= 0)
+            assertTrue(panel.enzymeDescription(row).contains("MfeI"))
+
+            assertTrue(panel.updateEnzymeDescription(row, "Standard sticky-end cloning enzyme"))
+            assertEquals("Standard sticky-end cloning enzyme", panel.enzymeDescription(row))
+            assertEquals("Standard sticky-end cloning enzyme", prefs.value.enzymeDescriptions["ecori"])
+        }
+    }
+
+    @Test
+    fun digestPanelKeepsSelectedEnzymeAcrossUnrelatedPreferenceRefreshes() {
+        onEdt {
+            val prefs = Prefs().also { it.update { current -> current.copy(digestCuttersOnly = false) } }
+            val panel = DigestPanel(SeqDocument(Seq(bases = "GAATTCGGATCC")), { _: Seq -> }, { _, _ -> }, prefs)
+            val ecoRi = panel.displayedEnzymes().first { it.name == "EcoRI" }
+            panel.selectEnzymeInTable(ecoRi)
+            assertEquals(ecoRi, panel.selectedEnzymeInTable())
+
+            // Tool-tab selection is stored in prefs and must not clear the enzyme row.
+            prefs.update { current -> current.copy(activeTab = 2) }
+
+            assertEquals(ecoRi, panel.selectedEnzymeInTable())
+            assertTrue(panel.displayedMatches().isNotEmpty())
+        }
+    }
+
+    @Test
+    fun digestPanelKeepsSelectedMatchAcrossUnrelatedPreferenceRefreshes() {
+        onEdt {
+            val prefs = Prefs().also { it.update { current -> current.copy(digestCuttersOnly = false) } }
+            val panel = DigestPanel(SeqDocument(Seq(bases = "GAATTCGAATTC")), { _: Seq -> }, { _, _ -> }, prefs)
+            panel.selectEnzymeInTable(panel.displayedEnzymes().first { it.name == "EcoRI" })
+            val secondMatch = panel.displayedMatches()[1]
+            panel.selectMatchInTable(secondMatch)
+            assertEquals(secondMatch, panel.selectedMatchInTable())
+
+            // Tool-tab selection is persisted through prefs and rebuilds both tables.
+            prefs.update { current -> current.copy(activeTab = 2) }
+
+            assertEquals(secondMatch, panel.selectedMatchInTable())
+        }
+    }
+
+    @Test
+    fun editingSelectedEnzymeRefreshesDigestMappingWithReplacementDefinition() {
+        onEdt {
+            val prefs = Prefs().also { it.update { current -> current.copy(digestCuttersOnly = false) } }
+            val doc = SeqDocument(Seq(bases = "GAATTC"))
+            val panel = DigestPanel(doc, { _: Seq -> }, { _, _ -> }, prefs)
+            val ecoRi = panel.displayedEnzymes().first { it.name == "EcoRI" }
+            panel.selectEnzymes(listOf(ecoRi))
+            assertEquals(listOf("EcoRI"), doc.mappedEnzymes.map { it.name })
+
+            val model = EnzymeManagerModel(prefs)
+            assertNull(model.editEnzyme(ecoRi, "EditedRI", "CCGG", 0, 2, true, "Changed site"))
+            model.commit()
+
+            assertEquals(listOf("EditedRI"), doc.mappedEnzymes.map { it.name })
+            assertEquals("CCGG", doc.mappedEnzymes.single().site)
+            assertTrue(doc.cutSites.isEmpty(), "the replacement site should no longer cut GAATTC")
+        }
+    }
+
+    @Test
     fun primersPanelAddsDesignedPrimersToFeatures() {
         onEdt {
             val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT", name = "tgt"))
@@ -640,6 +753,38 @@ class GuiSmokeTest {
             panel.jumpToSource(0)
             assertEquals(2, doc.selectionStart)
             assertEquals(6, doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun libraryPanelShowsAndEditsSavedItemDescriptions() {
+        onEdt {
+            val prefs = Prefs()
+            val doc = SeqDocument(Seq(bases = "ACGTACGT", name = "src"))
+            val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
+            panel.addItem(
+                org.instagene.app.gui.prefs.SavedItem(
+                    kind = SavedKind.PRIMER,
+                    name = "screening_primer",
+                    bases = "ACGT",
+                    context = org.instagene.app.gui.prefs.SavedContext("src", 1, 5),
+                    description = "Original screening primer",
+                )
+            )
+
+            assertEquals("Description", panel.libraryTable.columnModel.getColumn(4).headerValue)
+            assertEquals("Original screening primer", panel.libraryTable.model.getValueAt(0, 4))
+            assertNull(panel.updateLibraryElement(0, "renamed_primer", "ac gt", "Verification primer"))
+
+            val updated = prefs.value.library.single()
+            assertEquals("renamed_primer", updated.name)
+            assertEquals("ACGT", updated.bases)
+            assertEquals("Verification primer", updated.description)
+            assertEquals(org.instagene.app.gui.prefs.SavedContext("src", 1, 5), updated.context)
+            assertEquals("Verification primer", panel.libraryTable.model.getValueAt(0, 4))
+
+            assertNotNull(panel.updateLibraryElement(0, "renamed_primer", "AC?T", "Bad edit"))
+            assertEquals("Verification primer", prefs.value.library.single().description)
         }
     }
 
