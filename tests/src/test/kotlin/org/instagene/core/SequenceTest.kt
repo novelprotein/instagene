@@ -111,7 +111,7 @@ class SequenceTest {
         assertEquals(seq, seq.rotateOrigin(0))
         val rotated = seq.rotateOrigin(3)
         assertEquals("DEFABC", rotated.bases)
-        // [3,5) moves to [0,2); [4,6) ("EF") never wrapped the origin and lands on [1,3).
+        // [3,5) moves to [0,2); [4,6) ("EF") did not wrap the origin and moves to [1,3).
         assertEquals(listOf("keep", "straddle"), rotated.features.map { it.name })
         assertEquals(Feature("keep", start = 0, end = 2), rotated.features.first { it.name == "keep" })
         assertEquals(Feature("straddle", start = 1, end = 3), rotated.features.first { it.name == "straddle" })

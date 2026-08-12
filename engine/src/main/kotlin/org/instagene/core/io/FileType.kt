@@ -3,8 +3,8 @@ package org.instagene.core.io
 import java.io.File
 
 /**
- * The broad kind of a file, used before any parsing happens so a user is never
- * handed a garbage "sequence" made from an image, a PDF or a database dump.
+ * The broad kind of a file, determined before parsing so images, PDFs, and
+ * database dumps are not misidentified as sequences.
  */
 enum class FileType(val displayName: String) {
     /** A FASTA, GenBank or bare-bases file that the parsers understand. */

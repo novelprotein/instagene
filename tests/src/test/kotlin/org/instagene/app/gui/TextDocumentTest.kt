@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.doc.TextDocument
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals

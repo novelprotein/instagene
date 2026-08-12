@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.ui.InstaGeneContent
 import org.instagene.core.Seq
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
@@ -20,7 +21,7 @@ class FeaturesPanelDragTest {
             val view = content.sequenceView
             view.setSize(900, 400)
             view.doLayout()
-            // The sequence may need a compute of basesPerLine from the real font.
+            // Coordinate lookup calculates basesPerLine from the actual font if needed.
             val firstX = view.xCoordinate(0)
             val fifthX = view.xCoordinate(5)
 

@@ -196,7 +196,7 @@ object Enzymes {
     }
 
     /**
-     * The required-only working set: [pool] restricted to the enzymes named in
+     * The active working set: [pool] restricted to the enzymes named in
      * [enabled]. An empty [enabled] list means the whole pool is active.
      */
     fun enzymesFor(pool: List<Enzyme>, enabled: Collection<String>): List<Enzyme> {

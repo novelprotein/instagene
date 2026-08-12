@@ -5,11 +5,9 @@ import java.io.IOException
 /**
  * Thrown when a sequence file or pasted sequence cannot be read or parsed.
  *
- * Unlike the raw [IllegalArgumentException]/[NumberFormatException]/[OutOfMemoryError]
- * family, this is the single, predictable exception the IO layer raises: malformed
- * records, alphabet violations, empty or binary files, truncated GenBank records
- * and unreadable targets all surface as [SeqIOException], so front-ends can catch
- * one type and render the message (with [line] and [cause] when known).
+ * Parsing and I/O code uses this type for malformed records, alphabet violations,
+ * empty input, truncated GenBank records, and unreadable files. Front ends can catch
+ * one exception type and display its message, [line], and [cause].
  */
 class SeqIOException(
     message: String,

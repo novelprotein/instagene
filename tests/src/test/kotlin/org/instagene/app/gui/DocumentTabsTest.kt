@@ -1,5 +1,8 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.file.Prefs
+import org.instagene.app.gui.ui.InstaGeneContent
+import org.instagene.app.gui.ui.ViewMenu
 import org.instagene.core.Seq
 import org.instagene.core.project.ProjectLayout
 import org.instagene.core.project.SeqProject
@@ -200,8 +203,8 @@ class DocumentTabsTest {
         content.openProjectAt(root)
         assertTrue(awaitEdt { content.activeDoc?.file == a })
 
-        // Editing marks the active tab dirty and the title keeps the marker
-        // across a save-less tab switch.
+        // Editing marks the active tab as dirty, and the marker remains after
+        // switching tabs without saving.
         val doc = content.activeDocument
         onEdt { doc.mutate("edit") { it.insertAt(0, "G") } }
         assertTrue(content.tabLabelText(doc).contains("*"))
@@ -266,7 +269,7 @@ class DocumentTabsTest {
             assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
             assertTrue(content.fileBrowserToggle.isShowing || content.fileBrowserToggle.isVisible)
             assertTrue(content.projectSplit.dividerSize > 0, "expanding must bring the divider back")
-            assertEquals(0.15, content.projectSplit.resizeWeight)
+            assertEquals(0.0, content.projectSplit.resizeWeight, "window resizing must not resize the browser")
             assertEquals(180, content.projectSplit.dividerLocation, "expanding must restore the saved tree width")
             assertEquals(4, (content.fileBrowserHeader.layout as FlowLayout).hgap)
 
@@ -276,6 +279,31 @@ class DocumentTabsTest {
             assertEquals(0, content.projectSplit.dividerSize, "minimizing must hide the divider again")
             assertEquals(0.0, content.projectSplit.resizeWeight, "minimizing must drop the resize weight again")
             assertEquals(0, (content.fileBrowserHeader.layout as FlowLayout).hgap, "margins must stay gone")
+        }
+    }
+
+    @Test
+    fun expandedFileBrowserKeepsItsWidthWhenTheWindowIsResized() {
+        onEdt {
+            val content = InstaGeneContent()
+            content.setSize(900, 600)
+            content.doLayout()
+            content.fileBrowserToggle.doClick()
+            content.projectSplit.doLayout()
+
+            content.projectSplit.dividerLocation = 230
+            content.projectSplit.doLayout()
+            assertEquals(230, content.projectSplit.dividerLocation)
+
+            content.setSize(1200, 700)
+            content.doLayout()
+            content.projectSplit.doLayout()
+            assertEquals(230, content.projectSplit.dividerLocation, "growing the window must not widen the browser")
+
+            content.setSize(760, 500)
+            content.doLayout()
+            content.projectSplit.doLayout()
+            assertEquals(230, content.projectSplit.dividerLocation, "shrinking the window must not narrow the browser")
         }
     }
 

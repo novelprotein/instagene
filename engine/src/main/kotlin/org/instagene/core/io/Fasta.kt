@@ -13,7 +13,7 @@ object Fasta {
     /** Default line width for wrapped FASTA output. */
     const val LINE_WIDTH = 60
 
-    /** Every character any of the two alphabets accepts, used to place errors on a line. */
+    /** Every character accepted by either alphabet, used to locate errors within a line. */
     private val ANY_ALPHABET = (Alphabet.NUCLEOTIDES + Alphabet.AMINO_ACIDS).toSet()
 
     /** Parses every record in [text]. Bare sequence text with no header is accepted. */
@@ -22,7 +22,7 @@ object Fasta {
 
     /**
      * Parses every record from [reader], line by line, so large files are never
-     * buffered whole. Each line is cleaned, upper-cased and validated in a single
+     * buffered in its entirety. Each line is cleaned, converted to uppercase, and validated in a single
      * pass into the shared builder, keeping peak memory near one copy of the
      * sequence. Lines are counted 1-based so parse failures point at the line.
      *
@@ -30,8 +30,8 @@ object Fasta {
      * first record's last line, so a multi-contig genome file only ever buffers
      * one contig instead of every record in the file.
      *
-     * When [validateAlphabet] is true a record whose bases contain a character the
-     * detected kind's alphabet rejects fails with a [SeqIOException] naming the
+     * When [validateAlphabet] is true, a record containing a character rejected by
+     * the detected alphabet fails with a [SeqIOException] that names the
      * offending characters and the line where they appeared.
      */
     fun parseAllFrom(
@@ -126,7 +126,7 @@ object Fasta {
                 )
             }
         }
-        // "circular" anywhere in the description is the de-facto convention for plasmid FASTA.
+        // "circular" anywhere in the description is the de facto convention for plasmid FASTA.
         val topology =
             if (description.contains("circular", ignoreCase = true)) Topology.CIRCULAR else Topology.LINEAR
         return Seq(name, bases, kind, topology, emptyList(), description)

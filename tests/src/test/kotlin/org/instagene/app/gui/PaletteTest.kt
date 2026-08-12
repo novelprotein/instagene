@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.theme.Palette
 import java.awt.Color
 import kotlin.test.Test
 import kotlin.test.assertEquals

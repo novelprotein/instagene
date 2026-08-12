@@ -1,5 +1,7 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.ui.FileMenu
+import org.instagene.app.gui.ui.InstaGeneContent
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqIO
 import java.io.BufferedWriter
@@ -12,13 +14,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Regression for "opening a large genome file does not load".
+ * Regression test for a failure to open large genome files.
  *
  * A multi-contig genome FASTA whose total size exceeds the JVM heap must still
  * load, because only the first contig is ever buffered. The file is written to
  * be larger than 2 GB so the old `file.length().toInt()` capacity hint would
- * have overflowed, and larger than a modest heap so buffering every contig
- * would have OOMed. Run with `-Dinstagene.heap=3g` (see build.gradle.kts).
+ * have overflowed. It also exceeds a modest heap, so buffering every contig
+ * would run out of memory. Run with `-Dinstagene.heap=3g` (see build.gradle.kts).
  */
 class LargeGenomeLoadTest {
 
@@ -34,7 +36,7 @@ class LargeGenomeLoadTest {
         }
     }
 
-    /** Writes a [contigs]-record FASTA, each of [basesPerContig] nucleotides, as fast as possible. */
+    /** Writes a FASTA containing [contigs] records of [basesPerContig] nucleotides each. */
     private fun fasta(contigs: Int, basesPerContig: Int): File {
         val file = Files.createTempFile("genome", ".fna").toFile()
         file.deleteOnExit()

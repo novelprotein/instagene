@@ -1,11 +1,31 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.doc.TextDocument
+import org.instagene.app.gui.doc.TextEditorView
+import org.instagene.app.gui.edit.EditMenu
+import org.instagene.app.gui.edit.SequenceEditActions
+import org.instagene.app.gui.edit.TextEditActions
+import org.instagene.app.gui.enzyme.EnzymeManagerModel
+import org.instagene.app.gui.file.Prefs
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
 import org.instagene.app.gui.prefs.SavedKind
+import org.instagene.app.gui.ui.DigestPanel
+import org.instagene.app.gui.ui.FeaturesPanel
+import org.instagene.app.gui.ui.FileMenu
+import org.instagene.app.gui.ui.InfoPanel
+import org.instagene.app.gui.ui.InstaGeneContent
+import org.instagene.app.gui.ui.LibraryPanel
+import org.instagene.app.gui.ui.PlasmidMapPanel
+import org.instagene.app.gui.ui.PrimersPanel
+import org.instagene.app.gui.ui.SeqDocument
+import org.instagene.app.gui.ui.SequenceView
+import org.instagene.app.gui.ui.StatusBar
+import org.instagene.app.gui.ui.ToolsMenu
+import org.instagene.app.gui.ui.ViewMenu
 import java.awt.GraphicsEnvironment
 import java.awt.image.BufferedImage
 import java.io.File
@@ -198,7 +218,7 @@ class GuiSmokeTest {
             val content = InstaGeneContent(null)
             assertNotNull(content.menuBar)
             assertTrue(content.componentCount > 0)
-            // Pack/layout then paint the whole editor off-screen
+            // Lay out and paint the entire editor off-screen.
             content.setSize(1200, 800)
             content.doLayout()
             paintComponent(content, 1200, 800)
@@ -352,24 +372,28 @@ class GuiSmokeTest {
     @Test
     fun plasmidMapPaintsCircularAndLinearProtein() {
         onEdt {
-            val circular = SeqDocument(Seq(
-                bases = "GAATTCCGTACGAATTCGGTAC",
-                topology = Topology.CIRCULAR,
-                features = listOf(
-                    Feature("ampR", start = 2, end = 8),
-                    Feature("ori", start = 6, end = 12),
-                    Feature("gfp", start = 10, end = 18),
-                ),
-            ))
+            val circular = SeqDocument(
+                Seq(
+                    bases = "GAATTCCGTACGAATTCGGTAC",
+                    topology = Topology.CIRCULAR,
+                    features = listOf(
+                        Feature("ampR", start = 2, end = 8),
+                        Feature("ori", start = 6, end = 12),
+                        Feature("gfp", start = 10, end = 18),
+                    ),
+                )
+            )
             val map = PlasmidMapPanel(circular)
             assertTrue(map.circularCheckbox.isSelected)
             paintComponent(map, 500, 500)
 
-            val protein = SeqDocument(Seq(
-                bases = "MEEKLPFG",
-                kind = SeqKind.PROTEIN,
-                features = listOf(Feature("sig", start = 0, end = 3)),
-            ))
+            val protein = SeqDocument(
+                Seq(
+                    bases = "MEEKLPFG",
+                    kind = SeqKind.PROTEIN,
+                    features = listOf(Feature("sig", start = 0, end = 3)),
+                )
+            )
             val proteinMap = PlasmidMapPanel(protein)
             assertFalse(proteinMap.circularCheckbox.isEnabled)
             paintComponent(proteinMap, 500, 300)
@@ -425,10 +449,12 @@ class GuiSmokeTest {
     @Test
     fun featuresPanelListsAddsAndDeletes() {
         onEdt {
-            val doc = SeqDocument(Seq(
-                bases = "ACGTACGTACGT",
-                features = listOf(Feature("cds", start = 0, end = 6)),
-            ))
+            val doc = SeqDocument(
+                Seq(
+                    bases = "ACGTACGTACGT",
+                    features = listOf(Feature("cds", start = 0, end = 6)),
+                )
+            )
             var revealed: Pair<Int, Int>? = null
             val panel = FeaturesPanel(doc) { s, e -> revealed = s to e }
             assertEquals(1, doc.seq.features.size)
@@ -567,7 +593,7 @@ class GuiSmokeTest {
 
             panel.typeRangeForTest(1, 10)
             doc.select(15, 20)
-            // A manual range is user intent; selection moves must not clobber it.
+            // A manual range represents user intent and must survive selection changes.
             assertEquals("1" to "10", panel.rangeFields())
         }
     }

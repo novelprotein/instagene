@@ -1,5 +1,8 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.ui.FileMenu
+import org.instagene.app.gui.ui.InstaGeneContent
+import org.instagene.app.gui.ui.SeqDocument
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.Topology
@@ -22,7 +25,7 @@ import org.junit.jupiter.api.TestMethodOrder
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class FileMenuTest {
 
-    /** Writes a FASTA with [bases] of random-ish, deterministic nucleotide data. */
+    /** Writes a FASTA containing [bases] of deterministic pseudorandom nucleotide data. */
     private fun largeFasta(name: String, bases: Int): File {
         val alphabet = "ACGT"
         val sb = StringBuilder()
@@ -82,7 +85,7 @@ class FileMenuTest {
 
         menu.loadFromFile(file)
 
-        // The load runs on a worker thread and lands on the EDT; poll for it.
+        // The load runs on a worker thread and completes on the EDT; poll for it.
         assertTrue(
             awaitEdt { doc.file == file && doc.seq.length == expected },
             "Large file was not loaded within the timeout (length=${doc.seq.length})",
@@ -131,8 +134,8 @@ class FileMenuTest {
             "70 Mbp genome was not loaded within the timeout (length=${content.doc.seq.length})",
         )
         assertFalse(content.doc.isDirty)
-        // The parse streams and the per-panel refreshes are cheap, so the load
-        // lands in seconds rather than minutes.
+        // Streaming parsing and inexpensive panel refreshes let the load complete
+        // in seconds rather than minutes.
         assertTrue(
             System.currentTimeMillis() - start < 60_000,
             "Loading a 70 Mbp genome took too long to apply on the EDT",
@@ -199,8 +202,8 @@ class FileMenuTest {
         assertEquals(original.description, reloaded.seq.description)
         assertEquals(original.bases, reloaded.seq.bases)
         assertEquals(Topology.CIRCULAR, reloaded.seq.topology)
-        // GenBank supplies the feature name as a label qualifier.  The parser
-        // now preserves that source qualifier in addition to the convenience
+        // GenBank supplies the feature name as a label qualifier. The parser
+        // preserves that original qualifier in addition to the convenience
         // `name` field used by the UI.
         assertEquals(
             original.features.map { it.copy(qualifiers = mapOf("label" to listOf(it.name))) },

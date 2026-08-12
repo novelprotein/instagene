@@ -1,0 +1,162 @@
+package org.instagene.app.gui.edit
+
+import org.instagene.app.gui.file.Prefs
+import org.instagene.app.gui.ui.SeqDocument
+import org.instagene.app.gui.doc.Doc
+import org.instagene.app.gui.ui.menuShortcut
+import org.instagene.app.gui.prefs.SavedContext
+import org.instagene.app.gui.prefs.SavedItem
+import org.instagene.app.gui.prefs.SavedKind
+import java.awt.event.KeyEvent
+import javax.swing.JFrame
+import javax.swing.JMenu
+import javax.swing.JMenuItem
+import javax.swing.JOptionPane
+import javax.swing.KeyStroke
+
+class EditMenu(
+    private val frame: JFrame?,
+    private val doc: Doc,
+    private val editor: EditActions,
+    private val prefs: Prefs = Prefs(),
+) {
+
+    private val undoItem = JMenuItem("Undo", KeyEvent.VK_Z).apply {
+        accelerator = menuShortcut(KeyEvent.VK_Z)
+        addActionListener { editor.undo() }
+    }
+
+    private val redoItem = JMenuItem("Redo", KeyEvent.VK_Y).apply {
+        accelerator = menuShortcut(KeyEvent.VK_Y)
+        addActionListener { editor.redo() }
+    }
+
+    private var lastPattern: String? = null
+
+    init {
+        doc.addDocListener { refreshUndoRedo() }
+        refreshUndoRedo()
+    }
+
+    /** Keeps the Undo/Redo items' labels and enabled state in step with the document history. */
+    private fun refreshUndoRedo() {
+        undoItem.isEnabled = editor.canUndo()
+        redoItem.isEnabled = editor.canRedo()
+        undoItem.text = editor.undoLabel()?.let { "Undo $it" } ?: "Undo"
+        redoItem.text = editor.redoLabel()?.let { "Redo $it" } ?: "Redo"
+    }
+
+    fun create(): JMenu {
+        return JMenu("Edit").apply {
+            mnemonic = KeyEvent.VK_E
+
+            add(undoItem)
+            add(redoItem)
+            addSeparator()
+            add(createSelectAllItem())
+            addSeparator()
+            add(createCopyItem())
+            add(createPasteItem())
+            add(createCutItem())
+            add(createDeleteItem())
+            addSeparator()
+            add(createFindItem())
+            add(createFindNextItem())
+            addSeparator()
+            if (doc is SeqDocument) {
+                add(createSaveSelectionItem())
+            }
+        }
+    }
+
+    private fun createSelectAllItem(): JMenuItem {
+        return JMenuItem("Select All", KeyEvent.VK_A).apply {
+            accelerator = menuShortcut(KeyEvent.VK_A)
+            addActionListener { editor.selectAll() }
+        }
+    }
+
+    private fun createCopyItem(): JMenuItem {
+        return JMenuItem("Copy", KeyEvent.VK_C).apply {
+            accelerator = menuShortcut(KeyEvent.VK_C)
+            addActionListener { editor.copySelection() }
+        }
+    }
+
+    private fun createPasteItem(): JMenuItem {
+        return JMenuItem("Paste", KeyEvent.VK_V).apply {
+            accelerator = menuShortcut(KeyEvent.VK_V)
+            addActionListener { editor.paste() }
+        }
+    }
+
+    private fun createCutItem(): JMenuItem {
+        return JMenuItem("Cut", KeyEvent.VK_X).apply {
+            accelerator = menuShortcut(KeyEvent.VK_X)
+            addActionListener { editor.cutSelection() }
+        }
+    }
+
+    private fun createDeleteItem(): JMenuItem {
+        return JMenuItem("Delete", KeyEvent.VK_D).apply {
+            addActionListener { editor.deleteSelection() }
+        }
+    }
+
+    private fun createFindItem(): JMenuItem {
+        return JMenuItem("Find...", KeyEvent.VK_F).apply {
+            accelerator = menuShortcut(KeyEvent.VK_F)
+            addActionListener {
+                val pattern = JOptionPane.showInputDialog(frame, "Find:", lastPattern)
+                if (pattern != null && pattern.isNotEmpty()) {
+                    lastPattern = pattern
+                    findNext()
+                }
+            }
+        }
+    }
+
+    private fun createFindNextItem(): JMenuItem {
+        return JMenuItem("Find Next", KeyEvent.VK_F3).apply {
+            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0)
+            addActionListener { findNext() }
+        }
+    }
+
+    /** Stores the current selection in the library, tagged with its source range. */
+    private fun createSaveSelectionItem(): JMenuItem {
+        return JMenuItem("Save Selection to Library...").apply {
+            addActionListener { saveSelectionToLibrary() }
+        }
+    }
+
+    private fun saveSelectionToLibrary() {
+        if (doc !is SeqDocument) return
+        if (!doc.hasSelection || doc.selectionEnd <= doc.selectionStart) {
+            JOptionPane.showMessageDialog(frame, "Select a region to save first.")
+            return
+        }
+        val start = doc.selectionStart
+        val end = doc.selectionEnd
+        val item = SavedItem(
+            kind = SavedKind.FRAGMENT,
+            name = "${doc.seq.name}_${start + 1}-$end",
+            bases = doc.selectedBases,
+            context = SavedContext(
+                sourceName = doc.seq.name,
+                start = start,
+                end = end,
+                enzymes = doc.mappedEnzymes.map { it.name },
+            ),
+        )
+        prefs.update { it.copy(library = it.library + item) }
+    }
+
+    /** Runs the editor's find; shows a dialog when nothing matches. */
+    private fun findNext() {
+        val pattern = lastPattern ?: return
+        if (!editor.findNext(pattern)) {
+            JOptionPane.showMessageDialog(frame, "Pattern not found.", "Find", JOptionPane.INFORMATION_MESSAGE)
+        }
+    }
+}

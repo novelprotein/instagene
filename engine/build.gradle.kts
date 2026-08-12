@@ -1,11 +1,8 @@
 plugins {
-    // Apply the shared build logic from a convention plugin.
-    // The shared code is located in `buildSrc/src/main/kotlin/kotlin-jvm.gradle.kts`.
     id("buildsrc.convention.kotlin-jvm")
-    // Apply Kotlin Serialization plugin from `gradle/libs.versions.toml`.
     alias(libs.plugins.kotlinPluginSerialization)
     // Upgrade the Java plugin (applied by kotlin("jvm")) to java-library so
-    // consumers get proper `api`/`implementation` separation, a sources jar and
+    // consumers get explicit `api`/`implementation` separation, a sources JAR, and
     // a Maven publication for GitHub Packages.
     `java-library`
     `maven-publish`

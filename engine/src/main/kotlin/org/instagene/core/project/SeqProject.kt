@@ -97,8 +97,8 @@ class SeqProject private constructor(
 
     /**
      * Resolves [rel] against [root]. Returns null when [rel] escapes the
-     * project (absolute, or containing `..`) so a hostile manifest cannot be
-     * pointed at files outside the folder.
+     * project (absolute or containing `..`), preventing a hostile manifest from
+     * pointing to files outside the folder.
      */
     fun resolvePath(rel: String): File? {
         if (rel.isBlank()) return null
@@ -182,7 +182,7 @@ class SeqProject private constructor(
          */
         fun open(root: File): SeqProject = SeqProject(root)
 
-        /** Same as [open]: any folder can be a project, created lazily on [SeqProject.save]. */
+        /** Creates an in-memory project for [root]; files are written only when [SeqProject.save] is called. */
         fun create(root: File): SeqProject = SeqProject(root)
     }
 }

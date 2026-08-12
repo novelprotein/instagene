@@ -1,5 +1,7 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.file.Prefs
+import org.instagene.app.gui.ui.InstaGeneContent
 import org.instagene.core.project.SeqProject
 import java.io.File
 import java.nio.file.Files
@@ -10,8 +12,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * The welcome panel lists the most recent files and projects (missing entries
- * skipped) and re-opens them on click.
+ * The welcome panel lists recent files and projects, skips missing entries,
+ * and opens an entry when it is clicked.
  */
 class WelcomePanelTest {
 

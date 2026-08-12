@@ -19,9 +19,9 @@ tasks.register<JavaExec>("runGui") {
     group = "application"
     description = "Runs the Swing desktop front-end directly."
     classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("org.instagene.app.gui.GuiMainKt")
-    // Genome-scale FASTA files need a big heap; the JVM default (25% of RAM)
-    // OOMs silently on multi-GB files. Override with -Pinstagene.heap=4g.
+    mainClass.set("org.instagene.app.gui.ui.GuiMainKt")
+    // Genome-scale FASTA files need a large heap; the JVM default (25% of RAM)
+    // can be exhausted by multi-GB files. Override with -Pinstagene.heap=4g.
     val heap = providers.gradleProperty("instagene.heap").orNull
         ?: providers.systemProperty("instagene.heap").orNull
         ?: "8g"
@@ -62,7 +62,7 @@ tasks.jpackage {
 
     // jpackage links a runtime image with the JDK it runs on; pin it to the
     // same toolchain as the rest of the build so it cannot fall back to a
-    // random JAVA_HOME (e.g. a headless JDK without unneeded modules).
+    // different JAVA_HOME (for example, a runtime without packaging modules).
     javaLauncher = javaToolchains.launcherFor {
         languageVersion.set(JavaLanguageVersion.of(21))
     }
@@ -90,8 +90,8 @@ tasks.jpackage {
     val useMacOpts = providers.zip(jpackageType, osIs("mac")) { t, isMac ->
         t in setOf("DMG", "PKG") || (t == "DEFAULT" && isMac)
     }
-    // jpackage validates per-type: deb takes --linux-deb-maintainer, rpm takes
-    // --linux-rpm-license-type, so the two Linux groups must not mix.
+    // jpackage validates each package type: DEB accepts --linux-deb-maintainer,
+    // while RPM accepts --linux-rpm-license-type, so these groups must not mix.
     val useDebOpts = providers.zip(jpackageType, osIs("linux")) { t, isLinux ->
         t == "DEB" || (t == "DEFAULT" && isLinux)
     }

@@ -32,8 +32,8 @@ enum class EditKind {
  * [doc] is the document the event concerns, as the project-relative path when
  * the document lives under the project root and as the file/display name
  * otherwise (project-level events leave it null). [label] is a short
- * human-readable summary of the change ("rename", "replace 12 bases") and
- * [detail] an optional secondary line ("4361 -> 4349 bp", "pMini.gb").
+ * human-readable summary of the change ("rename", "replace 12 bases"), while
+ * [detail] is an optional secondary line ("4361 -> 4349 bp", "pMini.gb").
  *
  * Content edits carry a [snapshotSeq] (sequence documents) or [snapshotText]
  * (text documents): the full document state right after the edit, kept only

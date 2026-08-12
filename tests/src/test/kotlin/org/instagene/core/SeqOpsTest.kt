@@ -27,7 +27,7 @@ class SeqOpsTest {
         assertEquals("MA", SeqOps.translateBases(seq.bases, stopAtFirstStop = true))
         assertEquals("WP", SeqOps.translateBases(seq.bases, frame = 1).take(2)) // frame 1: TGG CCT AAT -> W P N
         assertFailsWith<IllegalArgumentException> { SeqOps.translate(seq, frame = 3) }
-        // Trailing partial codon ignored
+        // A trailing partial codon is ignored.
         assertEquals("M", SeqOps.translateBases("ATGAA"))
     }
 
@@ -96,8 +96,8 @@ class SeqOpsTest {
 
     @Test
     fun findCircularWrap() {
-        val seq = Seq(bases = "TTCAAAG", topology = Topology.CIRCULAR) // wraps: AAG + TTC = AAGTTC?
-        // Site GAATTC wrapping: last bases + first. Use EcoRI spanning origin: ...G | AATTC...
+        val seq = Seq(bases = "TTCAAAG", topology = Topology.CIRCULAR)
+        // The EcoRI site spans the origin: ...G | AATTC...
         val wrap = Seq(bases = "AATTCXXXG", topology = Topology.CIRCULAR)
         val hits = SeqOps.find(wrap, "GAATTC")
         assertEquals(1, hits.size)
@@ -122,8 +122,8 @@ class SeqOpsTest {
         val seq = Seq(name = "short", bases = "CGTACCCCCCCCCCCCCCCCCCGTAC")
         val (_, rev) = SeqOps.designPrimers(seq, 3, 12, targetTm = 60.0)
         assertTrue(rev.bases.length in 9..12)
-        // rev.bases is the reverse-complement of bases `start.start+len`, so its
-        // forward-strand coordinates must stay >= start.
+        // rev.bases is the reverse complement of `[start, start + length)`, so
+        // its forward-strand coordinates must remain at or beyond start.
         val revLen = rev.bases.length
         assertTrue(revLen <= 12 - 3)
     }

@@ -1,5 +1,7 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.ui.FeaturesPanel
+import org.instagene.app.gui.ui.SeqDocument
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import javax.swing.SwingUtilities
@@ -9,22 +11,23 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The Features tab row selection must survive the reveal round trip: clicking
- * a row reveals it in the editor, which moves the document selection, which
- * must not clear the just-made table selection, or the Delete button can never
- * be enabled.
+ * A Features tab row selection must survive the reveal round trip. Clicking a
+ * row reveals it in the editor and changes the document selection, but must not
+ * clear the table selection or disable the Delete button.
  */
 class FeaturesPanelSelectionTest {
 
     private fun panelWithFeatures(): Pair<SeqDocument, FeaturesPanel> {
-        val doc = SeqDocument(Seq(
-            bases = "ACGTACGTACGT",
-            features = listOf(
-                Feature("f0", "misc_feature", 0, 2),
-                Feature("f1", "misc_feature", 4, 6),
-                Feature("f2", "misc_feature", 8, 10),
-            ),
-        ))
+        val doc = SeqDocument(
+            Seq(
+                bases = "ACGTACGTACGT",
+                features = listOf(
+                    Feature("f0", "misc_feature", 0, 2),
+                    Feature("f1", "misc_feature", 4, 6),
+                    Feature("f2", "misc_feature", 8, 10),
+                ),
+            )
+        )
         return doc to FeaturesPanel(doc) { _, _ -> }
     }
 
@@ -37,8 +40,8 @@ class FeaturesPanelSelectionTest {
             panel.selectFeatureRow(1)
             assertTrue(panel.isDeleteEnabled(), "delete must be enabled right after the click")
 
-            // refresh() is what the document listener runs when the reveal
-            // moves the editor selection: it must keep the row selected.
+            // The document listener calls refresh() after reveal changes the editor
+            // selection, so refresh() must preserve the selected row.
             panel.refresh()
             assertEquals(1, panel.selectedFeatureRow())
             assertTrue(panel.isDeleteEnabled())

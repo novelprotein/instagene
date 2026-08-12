@@ -33,8 +33,8 @@ object GenBank {
 
     /**
      * Parses one GenBank record from [reader], line by line, so a large genome
-     * flat file is never buffered whole. The record's sequence is accumulated
-     * in a single builder; the LOCUS/FEATURES headers stay cheap.
+     * flat file is never buffered in its entirety. The record's sequence is
+     * accumulated in a single builder, while the LOCUS and FEATURES data remain small.
      */
     fun parseFrom(reader: Reader, defaultName: String = "sequence"): Seq {
         var name = defaultName

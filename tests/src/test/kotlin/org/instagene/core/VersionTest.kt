@@ -7,7 +7,7 @@ class VersionTest {
 
     @Test
     fun versionIsSemverLike() {
-        // A release is exactly `1.0`; development builds append the git commit: `1.0+abc1234`.
+        // Releases use plain SemVer; development builds append the Git commit as build metadata.
         assertTrue(Regex("""\d+(\.\d+)+(\+[\w-]+)?""").matches(Version.VERSION), "got '${Version.VERSION}'")
     }
 }

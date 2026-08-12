@@ -51,7 +51,7 @@ object SeqIO {
      * Reads a file without ever buffering the whole thing in memory. The format
      * is found from the first non-blank line: GenBank streams through its text
      * parser, while FASTA reads the first record line by line and stops there,
-     * so a multi-contig genome file never materialises more than one contig.
+     * so only one contig from a multi-contig genome is held in memory.
      */
     fun read(file: File): Seq {
         try {
@@ -71,7 +71,10 @@ object SeqIO {
         }
     }
 
-    /** Reads every record from [file]: FASTA records stream one at a time, GenBank records split at record terminators. */
+    /**
+     * Reads every record from [file], streaming FASTA records individually and
+     * splitting GenBank records at their terminators.
+     */
     fun readAll(file: File): List<Seq> {
         try {
             val firstLine = firstNonBlankLine(file)
@@ -89,8 +92,8 @@ object SeqIO {
 
     /**
      * Streams the FASTA once to count the bases in the first record, so the
-     * second pass can preallocate exactly: peak memory stays at one record and
-     * a multi-GB multi-contig file never over-allocates for contig one.
+     * second pass can preallocate the exact capacity. Peak memory stays near one
+     * record, and a multi-GB, multi-contig file does not over-allocate for its first contig.
      */
     private fun firstFastaRecordCapacityHint(file: File): Int {
         var count = 0L

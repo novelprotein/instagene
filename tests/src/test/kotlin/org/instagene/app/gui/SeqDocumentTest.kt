@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.ui.SeqDocument
 import org.instagene.core.Enzymes
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqIO
@@ -55,8 +56,7 @@ class SeqDocumentTest {
 
         doc.mutate("again") { it.insertAt(0, "G") }
         doc.undo()
-        // redo stack cleared by new mutate after undo of "again"... wait:
-        // after mutate again, redo was cleared. undo restores TTAAAA.
+        // Undo restores the state before "again", and redo reapplies that edit.
         assertEquals("TTAAAA", doc.seq.bases)
         doc.redo()
         assertEquals("GTTAAAA", doc.seq.bases)
@@ -156,7 +156,7 @@ class SeqDocumentTest {
         doc.addListener { _, reason -> reasons += reason }
         doc.loadSequence(Seq(bases = "TTTT"), File("x.fa"))
         assertEquals("TTTT", doc.seq.bases)
-        // One notification at end of batch
+        // The batch emits one notification for its final state.
         assertEquals(1, reasons.size)
     }
 }

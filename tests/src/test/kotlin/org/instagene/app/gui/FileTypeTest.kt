@@ -1,13 +1,16 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.file.FileTypes
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The open-file dialog must offer sequence files only; everything else stays
- * a project fallback (text notes, images, PDFs) reachable via the project tree. */
+/**
+ * The open-file dialog offers only sequence files. Text notes, images, and PDFs
+ * remain accessible through the project tree.
+ */
 class FileTypeTest {
 
     @Test

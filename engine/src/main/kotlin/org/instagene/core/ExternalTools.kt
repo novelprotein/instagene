@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
  *
  * [argsTemplate] may contain the placeholders `{in}` (path to a temporary FASTA
  * holding the current sequence) and `{out}` (path the tool should write to).
- * When neither appears the FASTA is piped in on stdin instead.
+ * When neither appears, the FASTA is piped to standard input instead.
  */
 data class ExternalTool(
     val id: String,
@@ -23,7 +23,7 @@ data class ExternalTool(
     val producesOutFile: Boolean = argsTemplate.any { it.contains("{out}") },
 )
 
-/** The outcome of running a [tool]: the command executed, its exit code and captured output, and the file it wrote when it produced one. */
+/** The command, exit code, captured output, and optional file produced by running [tool]. */
 data class ToolResult(
     val tool: ExternalTool,
     val command: String,
@@ -158,8 +158,8 @@ object ExternalTools {
     /**
      * Runs [tool] over [seq].
      *
-     * [placeholders] fills template slots such as `{pattern}` or `{other}`;
-     * [extraArgs] is appended verbatim, so a caller can expose a free-text
+     * [placeholders] fill template slots such as `{pattern}` or `{other}`;
+     * [extraArgs] are appended verbatim, so a caller can expose a free-text
      * argument box. Never throws for a non-zero exit — inspect [ToolResult].
      */
     fun run(

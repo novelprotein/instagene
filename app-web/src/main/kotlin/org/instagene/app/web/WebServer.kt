@@ -55,8 +55,8 @@ object WebServer {
      * (used by tests).
      *
      * The default host is the loopback interface, so the server is reachable
-     * only from this machine — use `0.0.0.0` (e.g. `--share`) to serve the
-     * whole network. The web front-end opens only through this explicit call,
+     * only from this machine. Use `0.0.0.0` (for example, through `--share`) to
+     * listen on all network interfaces. The server starts only through this call
      * and at most once per JVM — a second call while a server is running is
      * rejected.
      */

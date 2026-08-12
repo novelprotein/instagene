@@ -92,7 +92,7 @@ object SeqOps {
         bases.uppercase().groupingBy { it }.eachCount().toSortedMap()
 
     /**
-     * Melting temperature in degrees C.
+     * Melting temperature in degrees Celsius.
      *
      * Uses the Wallace rule below 14 nt and the salt-adjusted GC formula above it —
      * both are the rule-of-thumb formulas used at the bench.
@@ -137,7 +137,10 @@ object SeqOps {
             }
         }
 
-    /** Molecular weight of [seq] in daltons: residue sums, plus water for proteins, minus the 5' phosphate for single-stranded nucleic acids. */
+    /**
+     * Molecular weight of [seq] in daltons, including water for proteins and
+     * the free 5' phosphate correction for linear single-stranded nucleic acids.
+     */
     fun molecularWeightDaltons(seq: Seq): Double = when (seq.kind) {
         SeqKind.PROTEIN -> {
             var residues = 0.0

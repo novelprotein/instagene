@@ -1,7 +1,13 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.file.Prefs
 import org.instagene.app.gui.prefs.PrefsStore
 import org.instagene.app.gui.prefs.UserPrefs
+import org.instagene.app.gui.theme.ThemeManager
+import org.instagene.app.gui.ui.SeqDocument
+import org.instagene.app.gui.ui.SequenceView
+import org.instagene.app.gui.ui.ViewMenu
+import org.instagene.core.Seq
 import java.io.File
 import java.nio.file.Files
 import javax.swing.SwingUtilities
@@ -58,7 +64,7 @@ class ThemeManagerTest {
         // Selecting a theme via the View menu persists it to disk.
         onEdt {
             val prefs = Prefs(PrefsStore(file))
-            val doc = SeqDocument(org.instagene.core.Seq(bases = "ACGT"))
+            val doc = SeqDocument(Seq(bases = "ACGT"))
             val view = SequenceView(doc)
             val themes = ViewMenu(doc, view, prefs).create()
             val themeMenu = themes.menuComponents.filterIsInstance<javax.swing.JMenu>().first { it.text == "Theme" }

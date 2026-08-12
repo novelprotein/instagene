@@ -23,8 +23,8 @@ data class ProjectLayout(
  *
  * [openDocs] holds the open documents as forward-slash paths relative to the
  * project root, in tab order. [activeDoc] is the path of the selected tab (may
- * be null when no document is active). Only file-backed documents are recorded:
- * unsaved, untitled documents cannot be reopened and are prompted for on close.
+ * be null when no document is active). Only file-backed documents are recorded.
+ * Untitled documents cannot be reopened, so the user is prompted to save them on close.
  */
 @Serializable
 data class ProjectManifest(

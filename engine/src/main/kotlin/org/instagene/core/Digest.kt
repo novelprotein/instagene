@@ -52,7 +52,10 @@ data class Fragment(
 
     val end: Int get() = start + length
 
-    /** Wraps this fragment as a linear DNA [Seq] carrying its features; the default name derives from [sourceName] and the coordinates. */
+    /**
+     * Converts this fragment to a linear DNA [Seq] with its features. The default
+     * name is derived from [sourceName] and the fragment coordinates.
+     */
     fun toSeq(name: String = "${sourceName}_${start + 1}-$end"): Seq =
         Seq(name, bases, SeqKind.DNA, Topology.LINEAR, features)
 

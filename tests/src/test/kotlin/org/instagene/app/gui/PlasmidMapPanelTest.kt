@@ -1,5 +1,9 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.ui.InstaGeneContent
+import org.instagene.app.gui.ui.PlasmidMapPanel
+import org.instagene.app.gui.ui.SeqDocument
+import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.Topology
 import java.awt.event.InputEvent
@@ -44,9 +48,9 @@ class PlasmidMapPanelTest {
     }
 
     /**
-     * Screen point for [position] on the 400 bp circular map: the same centre
-     * and the same integer division `paintComponent` uses, at a 150 px radius
-     * which always lands inside the ring.
+     * Returns the screen point for [position] on the 400 bp circular map, using
+     * the same centre and integer division as `paintComponent`. A 150 px radius
+     * places the point inside the ring.
      */
     private fun point(canvas: JPanel, position: Int): Pair<Int, Int> {
         val cx = canvas.width / 2
@@ -71,6 +75,45 @@ class PlasmidMapPanelTest {
         canvas.dispatchEvent(
             MouseEvent(canvas, MouseEvent.MOUSE_RELEASED, 0, InputEvent.BUTTON1_DOWN_MASK, p.first, p.second, 1, false, MouseEvent.BUTTON1)
         )
+    }
+
+    private fun renderMap(seq: Seq, width: Int, height: Int): BufferedImage {
+        val map = PlasmidMapPanel(SeqDocument(seq))
+        map.setSize(width, height)
+        map.doLayout()
+        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+        val graphics = image.createGraphics()
+        try {
+            map.paint(graphics)
+        } finally {
+            graphics.dispose()
+        }
+        return image
+    }
+
+    private fun imagesDiffer(first: BufferedImage, second: BufferedImage): Boolean {
+        for (y in 0 until first.height) {
+            for (x in 0 until first.width) {
+                if (first.getRGB(x, y) != second.getRGB(x, y)) return true
+            }
+        }
+        return false
+    }
+
+    /** Renaming only one feature must change pixels if that feature has a visible label. */
+    private fun assertEveryFeatureIsLabelled(seq: Seq, width: Int, height: Int) {
+        val original = renderMap(seq, width, height)
+        seq.features.indices.forEach { renamedIndex ->
+            val renamed = seq.copy(
+                features = seq.features.mapIndexed { index, feature ->
+                    if (index == renamedIndex) feature.copy(name = "renamed-$renamedIndex") else feature
+                }
+            )
+            assertTrue(
+                imagesDiffer(original, renderMap(renamed, width, height)),
+                "feature $renamedIndex did not have a visible label",
+            )
+        }
     }
 
     @Test
@@ -155,6 +198,36 @@ class PlasmidMapPanelTest {
 
             assertFalse(content.doc.selectionEnd > content.doc.selectionStart + 1)
             assertEquals(200, content.doc.selectionStart)
+        }
+    }
+
+    @Test
+    fun everyCircularFeatureHasAVisibleLabelOnACompactMap() {
+        SwingUtilities.invokeAndWait {
+            val features = listOf(
+                Feature("alpha", start = 10, end = 12),
+                Feature("beta", start = 70, end = 72),
+                Feature("", type = "rep_origin", start = 120, end = 122),
+                Feature("delta", start = 195, end = 198),
+                Feature("epsilon", start = 250, end = 253),
+                Feature("zeta", start = 251, end = 254),
+            )
+            assertEveryFeatureIsLabelled(circular.copy(features = features), 340, 300)
+        }
+    }
+
+    @Test
+    fun everyLinearFeatureHasAVisibleLabelOnACompactMap() {
+        SwingUtilities.invokeAndWait {
+            val features = listOf(
+                Feature("alpha", start = 10, end = 12),
+                Feature("beta", start = 70, end = 72),
+                Feature("", type = "promoter", start = 120, end = 122),
+                Feature("delta", start = 195, end = 198),
+                Feature("epsilon", start = 250, end = 253),
+                Feature("zeta", start = 251, end = 254),
+            )
+            assertEveryFeatureIsLabelled(circular.copy(topology = Topology.LINEAR, features = features), 360, 240)
         }
     }
 }

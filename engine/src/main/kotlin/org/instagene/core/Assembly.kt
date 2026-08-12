@@ -93,7 +93,7 @@ object Assembly {
 
     // ------------------------------------------------------------ plasmid builder
 
-    /** The outcome of a plasmid build: the closed [plasmid], the vector and insert fragments it came from, and the progress log. */
+    /** The completed [plasmid], its vector and insert fragments, and the progress log. */
     data class BuildResult(
         val plasmid: Seq,
         val vectorFragment: Fragment,
@@ -175,7 +175,7 @@ object Assembly {
 
     // ------------------------------------------------------------ Gibson assembly
 
-    /** The outcome of a Gibson assembly: the assembled [product], the overlap lengths joined on, and the progress log. */
+    /** The assembled [product], the overlap length at each junction, and the progress log. */
     data class GibsonResult(val product: Seq, val overlaps: List<Int>, val log: List<String>)
 
     /**

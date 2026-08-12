@@ -1,5 +1,8 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.doc.TextDocument
+import org.instagene.app.gui.edit.EditRecorder
+import org.instagene.app.gui.ui.InstaGeneContent
 import org.instagene.core.project.EditKind
 import org.instagene.core.project.SeqProject
 import java.io.File
@@ -11,9 +14,9 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * The Edit History feature end to end: the recorder coalesces text typing runs,
- * sequence edits/undo/redo/saves are logged, everything persists write-through
- * to `.instagene/history.json`, and the History tab renders it newest first.
+ * End-to-end coverage for Edit History. The recorder coalesces typing runs;
+ * logs sequence edits, undo, redo, and save operations; immediately writes the
+ * log to `.instagene/history.json`; and renders the newest entries first.
  */
 class EditHistoryTest {
 
