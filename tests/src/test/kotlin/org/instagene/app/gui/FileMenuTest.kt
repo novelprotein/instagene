@@ -199,6 +199,12 @@ class FileMenuTest {
         assertEquals(original.description, reloaded.seq.description)
         assertEquals(original.bases, reloaded.seq.bases)
         assertEquals(Topology.CIRCULAR, reloaded.seq.topology)
-        assertEquals(original.features, reloaded.seq.features)
+        // GenBank supplies the feature name as a label qualifier.  The parser
+        // now preserves that source qualifier in addition to the convenience
+        // `name` field used by the UI.
+        assertEquals(
+            original.features.map { it.copy(qualifiers = mapOf("label" to listOf(it.name))) },
+            reloaded.seq.features,
+        )
     }
 }

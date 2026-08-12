@@ -231,6 +231,16 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun digestPanelDisposesItsBackgroundWorkers() {
+        onEdt {
+            val panel = DigestPanel(SeqDocument(Seq(bases = "ACGT")), { _: Seq -> }, { _, _ -> })
+            assertFalse(panel.isDisposed())
+            panel.dispose()
+            assertTrue(panel.isDisposed())
+        }
+    }
+
+    @Test
     fun circularCheckboxReflectsTopologyAndIsUndoable() {
         onEdt {
             val doc = SeqDocument(Seq(bases = "NNNGAATTCNNN"))
@@ -805,6 +815,21 @@ class GuiSmokeTest {
             assertEquals(1, panel.libraryTable.rowCount)
             panel.deleteSelected(0)
             assertEquals(0, prefs.value.library.size)
+        }
+    }
+
+    @Test
+    fun libraryPanelDeleteRemovesOnlyTheSelectedDuplicate() {
+        onEdt {
+            val prefs = Prefs()
+            val doc = SeqDocument(Seq(bases = "ACGT"))
+            val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
+            val duplicate = org.instagene.app.gui.prefs.SavedItem(SavedKind.FRAGMENT, "frag", "AAAA")
+            panel.addItem(duplicate)
+            panel.addItem(duplicate)
+            panel.deleteSelected(0)
+            assertEquals(1, prefs.value.library.size)
+            assertEquals(duplicate, prefs.value.library.single())
         }
     }
 

@@ -56,6 +56,21 @@ class WebServerTest {
     }
 
     @Test
+    fun rejectsOversizedRequestBodies() {
+        val server = WebServer.start(0)
+        try {
+            val base = "http://localhost:${server.address.port}"
+            val request = HttpRequest.newBuilder(URI("$base/api/open"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("x".repeat(4 * 1024 * 1024 + 1)))
+                .build()
+            assertEquals(413, statusOf(request))
+        } finally {
+            WebServer.stop()
+        }
+    }
+
+    @Test
     fun openIgnoresArbitraryPathAndNeverReadsFiles() {
         val server = WebServer.start(0)
         try {

@@ -206,8 +206,10 @@ class LibraryPanel(
 
     /** Removes the item at [row] from the library. */
     fun deleteSelected(row: Int) {
-        val item = prefs.value.library.getOrNull(row) ?: return
-        prefs.update { it.copy(library = it.library - item) }
+        if (row !in prefs.value.library.indices) return
+        // List subtraction uses structural equality and would remove every
+        // identical saved item. A table action must remove exactly its row.
+        prefs.update { current -> current.copy(library = current.library.filterIndexed { index, _ -> index != row }) }
     }
 
     private inner class LibraryTableModel : AbstractTableModel() {

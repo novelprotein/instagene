@@ -1,6 +1,7 @@
 package org.instagene.core.project
 
 import java.io.File
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -97,6 +98,20 @@ class ProjectModelTest {
             project.resolvePath("sub/file.fasta"),
         )
         root.deleteRecursively()
+    }
+
+    @Test
+    fun resolvePathRefusesSymlinkEscapes() {
+        val root = tempRoot()
+        val outside = File.createTempFile("instagene-outside", ".fasta")
+        try {
+            val link = File(root, "outside-link")
+            Files.createSymbolicLink(link.toPath(), outside.toPath())
+            assertNull(SeqProject.open(root).resolvePath("outside-link"))
+        } finally {
+            outside.delete()
+            root.deleteRecursively()
+        }
     }
 
     @Test

@@ -14,6 +14,7 @@ import org.instagene.core.Version
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
 import java.io.File
+import java.io.IOException
 import kotlin.math.roundToInt
 
 /**
@@ -37,6 +38,9 @@ object Cli {
             1
         } catch (e: org.instagene.core.io.SeqIOException) {
             System.err.println(Colors.red("instagene: ${e.message}", colors))
+            1
+        } catch (e: IOException) {
+            System.err.println(Colors.red("instagene: ${e.message ?: "I/O error"}", colors))
             1
         } catch (e: IllegalArgumentException) {
             System.err.println(Colors.red("instagene: ${e.message}", colors))

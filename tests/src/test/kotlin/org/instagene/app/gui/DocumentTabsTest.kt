@@ -125,6 +125,23 @@ class DocumentTabsTest {
     }
 
     @Test
+    fun documentTabsDoNotReserveSpaceBeforeToolTabs() {
+        onEdt {
+            val content = InstaGeneContent()
+            content.newDocument()
+            content.setSize(1000, 700)
+            content.doLayout()
+            content.docTabs.doLayout()
+
+            val tabBounds = content.docTabs.ui.getTabBounds(content.docTabs, 0)
+            assertTrue(
+                content.docTabs.height <= tabBounds.y + tabBounds.height + 1,
+                "document tabs must only occupy their tab strip, not an empty content margin",
+            )
+        }
+    }
+
+    @Test
     fun openingTheSameFileReusesItsTab() {
         val file = Files.createTempFile("seq", ".fasta").toFile()
         file.writeText(">seq\nACGTACGT\n")

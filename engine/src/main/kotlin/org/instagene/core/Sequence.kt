@@ -151,7 +151,8 @@ data class Seq(
 
     /**
      * Rotates a circular sequence so that position [newOrigin] becomes position 0.
-     * Features that would straddle the new origin are dropped from the wrap point.
+     * Features crossing the new origin are represented as two spans, matching
+     * the GenBank convention for origin-wrapping annotations.
      */
     fun rotateOrigin(newOrigin: Int): Seq {
         require(isCircular) { "Only circular sequences have a movable origin" }
@@ -159,13 +160,16 @@ data class Seq(
         val o = Math.floorMod(newOrigin, length)
         if (o == 0) return this
         val rotated = bases.substring(o) + bases.substring(0, o)
-        val moved = features.mapNotNull { f ->
+        val moved = features.flatMap { f ->
             val s = f.start - o
             val e = f.end - o
             when {
-                s >= 0 -> f.copy(start = s, end = e)
-                e <= 0 -> f.copy(start = s + length, end = e + length)
-                else -> null // straddles the new origin
+                s >= 0 -> listOf(f.copy(start = s, end = e))
+                e <= 0 -> listOf(f.copy(start = s + length, end = e + length))
+                else -> listOf(
+                    f.copy(start = 0, end = e),
+                    f.copy(start = s + length, end = length),
+                )
             }
         }
         return copy(bases = rotated, features = moved.sortedBy { it.start })

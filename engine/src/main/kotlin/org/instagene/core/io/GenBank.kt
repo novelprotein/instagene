@@ -42,19 +42,22 @@ object GenBank {
         var topology = Topology.LINEAR
         var kind = SeqKind.DNA
         val features = ArrayList<Feature>()
+        val metadata = LinkedHashMap<String, String>()
         val bases = StringBuilder()
 
         var section = ""
         var pendingLocation: String? = null
         var pendingType = ""
-        val qualifiers = LinkedHashMap<String, String>()
+        val qualifiers = LinkedHashMap<String, MutableList<String>>()
+        var lastQualifier: String? = null
+        var pendingMetadata: String? = null
 
         fun flushFeature() {
             val loc = pendingLocation ?: return
             pendingLocation = null
             val strand = if (loc.contains("complement")) Strand.REVERSE else Strand.FORWARD
-            val label = qualifiers["label"] ?: qualifiers["gene"] ?: qualifiers["product"]
-            ?: qualifiers["note"] ?: pendingType
+            val label = qualifiers["label"]?.firstOrNull() ?: qualifiers["gene"]?.firstOrNull()
+                ?: qualifiers["product"]?.firstOrNull() ?: qualifiers["note"]?.firstOrNull() ?: pendingType
             for ((start, end) in parseLocations(loc)) {
                 features += Feature(
                     name = label,
@@ -62,10 +65,12 @@ object GenBank {
                     start = start,
                     end = end,
                     strand = strand,
-                    notes = qualifiers["note"].orEmpty(),
+                    notes = qualifiers["note"]?.joinToString("\n").orEmpty(),
+                    qualifiers = qualifiers.mapValues { (_, values) -> values.toList() },
                 )
             }
             qualifiers.clear()
+            lastQualifier = null
         }
 
         reader.useLines { lines ->
@@ -79,20 +84,24 @@ object GenBank {
                         if (parts.size > 1) name = parts[1]
                         if (line.contains("circular", ignoreCase = true)) topology = Topology.CIRCULAR
                         if (Regex("\\bRNA\\b").containsMatchIn(line)) kind = SeqKind.RNA
+                        pendingMetadata = null
                     }
 
                     line.startsWith("DEFINITION") -> {
                         section = "DEFINITION"
                         description = line.removePrefix("DEFINITION").trim()
+                        pendingMetadata = null
                     }
 
                     line.startsWith("FEATURES") -> {
                         section = "FEATURES"
+                        pendingMetadata = null
                     }
 
                     line.startsWith("ORIGIN") -> {
                         flushFeature()
                         section = "ORIGIN"
+                        pendingMetadata = null
                     }
 
                     line.startsWith("//") -> {
@@ -111,13 +120,22 @@ object GenBank {
                                 flushFeature()
                                 pendingType = line.substring(5, 21).trim()
                                 pendingLocation = line.substring(21).trim()
+                                lastQualifier = null
                             }
 
                             isQualifier -> {
                                 val body = trimmed.removePrefix("/")
                                 val key = body.substringBefore('=')
                                 val value = body.substringAfter('=', "").trim().trim('"')
-                                qualifiers[key] = value
+                                qualifiers.getOrPut(key) { ArrayList() } += value
+                                lastQualifier = key
+                            }
+
+                            lastQualifier != null -> {
+                                // GenBank permits quoted qualifier values to wrap
+                                // onto indented continuation lines.
+                                val values = qualifiers.getValue(lastQualifier!!)
+                                values[values.lastIndex] += trimmed.trim('"')
                             }
 
                             qualifiers.isEmpty() -> {
@@ -134,7 +152,37 @@ object GenBank {
                         if (line.startsWith(" ")) {
                             description += " " + line.trim()
                         } else {
-                            section = ""
+                            val key = line.take(12).trim()
+                            if (key.isNotEmpty()) {
+                                pendingMetadata = key
+                                metadata[key] = line.drop(12).trim()
+                                section = "HEADER"
+                            } else {
+                                section = ""
+                            }
+                        }
+                    }
+
+                    line.firstOrNull()?.isWhitespace() == false -> {
+                        val key = line.take(12).trim()
+                        if (key.isNotEmpty()) {
+                            pendingMetadata = key
+                            metadata[key] = line.drop(12).trim()
+                            section = "HEADER"
+                        }
+                    }
+
+                    section == "HEADER" && pendingMetadata != null -> {
+                        // ORGANISM is the one standard header subfield which is
+                        // indented even though it starts a new value, not a
+                        // continuation of SOURCE.
+                        if (line.startsWith("  ORGANISM")) {
+                            val key = "ORGANISM"
+                            pendingMetadata = key
+                            metadata[key] = line.removePrefix("  ORGANISM").trim()
+                        } else {
+                            val key = pendingMetadata
+                            metadata[key] = metadata[key].orEmpty() + " " + line.trim()
                         }
                     }
                 }
@@ -155,6 +203,7 @@ object GenBank {
                 if (end > f.start) f.copy(end = end) else null
             }.sortedBy { it.start },
             description = description,
+            metadata = metadata,
         )
     }
 
@@ -181,20 +230,41 @@ object GenBank {
             )
         )
         append("DEFINITION  ${seq.description.ifBlank { seq.name }}\n")
-        append("ACCESSION   .\n")
-        append("SOURCE      InstaGene\n")
-        append("  ORGANISM  synthetic construct\n")
+        val metadata = seq.metadata.filterKeys { it !in setOf("LOCUS", "DEFINITION", "FEATURES", "ORIGIN") }
+        appendHeaderField("ACCESSION", metadata["ACCESSION"] ?: ".")
+        metadata.filterKeys { it != "ACCESSION" }.forEach { (key, value) -> appendHeaderField(key, value) }
+        if ("SOURCE" !in metadata) append("SOURCE      InstaGene\n")
+        if ("ORGANISM" !in metadata) append("  ORGANISM  synthetic construct\n")
         append("FEATURES             Location/Qualifiers\n")
         for (f in seq.features.sortedBy { it.start }) {
             val range = "${f.start + 1}..${f.end}"
             val location = if (f.strand == Strand.REVERSE) "complement($range)" else range
             append("     %-16s%s\n".format(f.type.take(15), location))
-            append("                     /label=\"${f.name}\"\n")
-            if (f.notes.isNotBlank()) append("                     /note=\"${f.notes}\"\n")
+            val qualifiers = if (f.qualifiers.isEmpty()) {
+                buildMap {
+                    put("label", listOf(f.name))
+                    if (f.notes.isNotBlank()) put("note", listOf(f.notes))
+                }
+            } else f.qualifiers
+            qualifiers.forEach { (key, values) ->
+                if (values.isEmpty()) append("                     /$key\n")
+                values.forEach { value -> appendQualifier(key, value) }
+            }
         }
         append("ORIGIN\n")
         append(origin(seq.bases))
         append("//\n")
+    }
+
+    /** Writes a header value on its own line, avoiding malformed embedded newlines. */
+    private fun StringBuilder.appendHeaderField(key: String, value: String) {
+        append(key.take(12).padEnd(12)).append(' ').append(value.replace('\n', ' ')).append('\n')
+    }
+
+    /** Writes a quoted qualifier with embedded quotes escaped for a GenBank flat file. */
+    private fun StringBuilder.appendQualifier(key: String, value: String) {
+        append("                     /").append(key).append("=\"")
+            .append(value.replace("\"", "\"\"").replace('\n', ' ')).append("\"\n")
     }
 
     /** The classic 60-per-line, 10-per-block ORIGIN body. */

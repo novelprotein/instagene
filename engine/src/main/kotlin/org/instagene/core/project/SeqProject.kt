@@ -49,7 +49,7 @@ class SeqProject private constructor(
 
     /** Opens [file] (which must live under [root]) in tab order, without duplicating it. */
     fun addDocument(file: File) {
-        val rel = requireRelative(file) ?: return
+        val rel = requireRelative(file)
         if (rel in manifest.openDocs) return
         manifest = manifest.copy(openDocs = manifest.openDocs + rel)
     }
@@ -69,7 +69,7 @@ class SeqProject private constructor(
 
     /** Removes [file] from the open set; does not touch the file on disk. */
     fun removeDocument(file: File) {
-        val rel = requireRelative(file) ?: return
+        val rel = requireRelative(file)
         manifest = manifest.copy(openDocs = manifest.openDocs.filter { it != rel })
         if (manifest.activeDoc == rel) {
             manifest = manifest.copy(activeDoc = null)
@@ -102,16 +102,16 @@ class SeqProject private constructor(
      */
     fun resolvePath(rel: String): File? {
         if (rel.isBlank()) return null
-        val candidate = File(root, rel).normalize()
-        val base = root.absoluteFile.normalize()
-        val path = candidate.absoluteFile.normalize().path
+        val candidate = File(root, rel).normalize().canonicalFile
+        val base = root.canonicalFile
+        val path = candidate.path
         return if (path == base.path || path.startsWith(base.path + File.separator)) candidate else null
     }
 
     /** The forward-slash path of [file] relative to [root], or null when it is outside the project. */
     fun relativePath(file: File): String? {
-        val base = root.absoluteFile.normalize()
-        val abs = file.absoluteFile.normalize()
+        val base = root.canonicalFile
+        val abs = file.canonicalFile
         val path = abs.path
         return if (path == base.path || path.startsWith(base.path + File.separator)) {
             base.toPath().relativize(abs.toPath()).toString().replace(File.separatorChar, '/')

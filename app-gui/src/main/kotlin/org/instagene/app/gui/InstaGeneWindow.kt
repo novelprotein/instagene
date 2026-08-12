@@ -97,4 +97,9 @@ class InstaGeneWindow(
         }
         prefs.save()
     }
+
+    override fun dispose() {
+        content.dispose()
+        super.dispose()
+    }
 }

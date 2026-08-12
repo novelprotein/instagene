@@ -97,8 +97,19 @@ class DigestPanel(
         Executors.newFixedThreadPool(countThreads) { r -> Thread(r).apply { isDaemon = true } }
 
     companion object {
-        private val countThreads = maxOf(2, Runtime.getRuntime().availableProcessors())
+        // A panel may exist for every open document.  Using every host CPU for
+        // each one exhausts threads on high-core workstations, while four
+        // workers already keeps the independent enzyme scans responsive.
+        private val countThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
     }
+
+    /** Releases the background cut-count workers owned by this panel. */
+    fun dispose() {
+        countPool.shutdownNow()
+    }
+
+    /** Exposed for lifecycle tests. */
+    fun isDisposed(): Boolean = countPool.isShutdown
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)

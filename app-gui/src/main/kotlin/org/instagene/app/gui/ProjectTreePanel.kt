@@ -6,6 +6,7 @@ import java.awt.Font
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
+import java.nio.file.Files
 import javax.swing.JMenuItem
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
@@ -172,7 +173,9 @@ class ProjectTreePanel(
         for (file in entries) {
             val node = DefaultMutableTreeNode(file)
             parent.add(node)
-            if (file.isDirectory) addChildren(node, file)
+            // Do not follow directory links: they can escape the project or
+            // form a cycle and make a recursive refresh never terminate.
+            if (file.isDirectory && !Files.isSymbolicLink(file.toPath())) addChildren(node, file)
         }
     }
 

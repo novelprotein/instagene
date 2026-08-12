@@ -106,5 +106,24 @@ tasks.register("verifySeparation") {
 }
 
 tasks.named("check") {
-    dependsOn("verifySeparation")
+    dependsOn("verifySeparation", "verifySourceHygiene")
+}
+
+/** Fails CI when unfinished review markers reach production sources. */
+tasks.register("verifySourceHygiene") {
+    group = "verification"
+    description = "Rejects unfinished TODO/FIXME markers in production Kotlin sources."
+    val productionSources = layout.projectDirectory.asFileTree.matching {
+        include("engine/src/main/**/*.kt", "app-*/src/main/**/*.kt")
+    }
+    inputs.files(productionSources)
+    doLast {
+        val markers = listOf("TODO", "FIXME")
+        val findings = productionSources.files.flatMap { file ->
+            file.readLines().mapIndexedNotNull { index, line ->
+                markers.firstOrNull { marker -> line.contains(marker) }?.let { "$file:${index + 1}: $it" }
+            }
+        }
+        check(findings.isEmpty()) { "Source hygiene failure:\n${findings.joinToString("\n")}" }
+    }
 }

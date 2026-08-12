@@ -268,6 +268,11 @@ class InstaGeneContent(
         rebuildMenuBar()
     }
 
+    /** Releases resources held by shared panels when the containing window closes. */
+    fun dispose() {
+        digestPanel.dispose()
+    }
+
     // ------------------------------------------------------------- documents
 
     /** Opens a fresh empty sequence in a new tab. */
@@ -496,7 +501,11 @@ class InstaGeneContent(
             docTabs.removeAll()
             tabLabels.clear()
             hub.openDocuments.forEach { doc ->
-                docTabs.addTab("", JPanel())
+                // Document tabs only provide the project-tab strip; the shared
+                // editor below owns all document content. A normal empty panel
+                // has a non-zero preferred height, which leaves a visible gap
+                // before the tool tabs.
+                docTabs.addTab("", zeroSizeTabContent())
                 docTabs.setTabComponentAt(docTabs.tabCount - 1, tabComponentFor(doc))
             }
             val index = if (active != null) hub.indexOf(active) else 0
@@ -504,6 +513,13 @@ class InstaGeneContent(
         } finally {
             inSync = false
         }
+    }
+
+    /** A tab content placeholder that cannot reserve vertical space below the tab strip. */
+    private fun zeroSizeTabContent(): JPanel = object : JPanel() {
+        override fun getPreferredSize(): Dimension = Dimension(0, 0)
+        override fun getMinimumSize(): Dimension = Dimension(0, 0)
+        override fun getMaximumSize(): Dimension = Dimension(0, 0)
     }
 
     /** The label-and-close-button component shown on [doc]'s tab. */

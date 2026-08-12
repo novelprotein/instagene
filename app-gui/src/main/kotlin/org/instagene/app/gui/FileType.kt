@@ -68,5 +68,5 @@ object FileTypes {
 
     /** The first 8 KiB of [file], or an empty string when it cannot be read. */
     private fun peek(file: File): String =
-        runCatching { file.inputStream().use { it.readBytes().decodeToString() } }.getOrDefault("")
+        runCatching { file.inputStream().use { it.readNBytes(8 * 1024).decodeToString() } }.getOrDefault("")
 }

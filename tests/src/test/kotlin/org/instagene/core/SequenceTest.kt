@@ -96,7 +96,7 @@ class SequenceTest {
     }
 
     @Test
-    fun rotateOriginDropsStraddlers() {
+    fun rotateOriginSplitsStraddlers() {
         val seq = Seq(
             bases = "ABCDEF",
             topology = Topology.CIRCULAR,
@@ -115,11 +115,13 @@ class SequenceTest {
         assertEquals(listOf("keep", "straddle"), rotated.features.map { it.name })
         assertEquals(Feature("keep", start = 0, end = 2), rotated.features.first { it.name == "keep" })
         assertEquals(Feature("straddle", start = 1, end = 3), rotated.features.first { it.name == "straddle" })
-        // A feature that really wraps the new origin is dropped.
+        // A feature crossing the new origin is retained as two spans.
         val wrapping = seq.rotateOrigin(4)
         assertEquals("EFABCD", wrapping.bases)
-        assertEquals(listOf("straddle"), wrapping.features.map { it.name })
-        assertEquals(Feature("straddle", start = 0, end = 2), wrapping.features.single())
+        assertEquals(listOf("keep", "straddle", "keep"), wrapping.features.map { it.name })
+        assertEquals(Feature("keep", start = 0, end = 1), wrapping.features[0])
+        assertEquals(Feature("straddle", start = 0, end = 2), wrapping.features[1])
+        assertEquals(Feature("keep", start = 5, end = 6), wrapping.features[2])
     }
 
     @Test

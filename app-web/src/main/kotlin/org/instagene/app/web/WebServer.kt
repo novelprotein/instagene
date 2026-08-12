@@ -24,6 +24,8 @@ import kotlin.math.roundToInt
 object WebServer {
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private const val MAX_REQUEST_BYTES = 4 * 1024 * 1024
+    private class RequestTooLarge : IllegalArgumentException("Request body exceeds 4 MiB")
 
     /** `/api/open` request: open a bundled [sample] or parse pasted [text]. */
     @Serializable
@@ -108,6 +110,8 @@ object WebServer {
 
                 else -> respondJson(exchange, 404, """{"error":"Not found"}""")
             }
+        } catch (e: RequestTooLarge) {
+            respondJson(exchange, 413, json.encodeToString(OpResult("", error = e.message)))
         } catch (e: Exception) {
             respondJson(exchange, 500, json.encodeToString(OpResult("", error = "Server error: ${e.message}")))
         }
@@ -121,6 +125,8 @@ object WebServer {
     private fun handleOpen(exchange: HttpExchange) {
         val req = try {
             json.decodeFromString<OpenRequest>(readBody(exchange))
+        } catch (e: RequestTooLarge) {
+            throw e
         } catch (e: Exception) {
             respondJson(exchange, 400, """{"error":"Bad request: ${e.message}"}""")
             return
@@ -138,6 +144,8 @@ object WebServer {
     private fun handleOp(exchange: HttpExchange) {
         val req = try {
             json.decodeFromString<OpRequest>(readBody(exchange))
+        } catch (e: RequestTooLarge) {
+            throw e
         } catch (e: Exception) {
             respondJson(exchange, 400, """{"error":"Bad request: ${e.message}"}""")
             return
@@ -304,6 +312,19 @@ object WebServer {
         exchange.responseBody.use { it.write(bytes) }
     }
 
-    private fun readBody(exchange: HttpExchange): String =
-        exchange.requestBody.reader(Charsets.UTF_8).readText()
+    private fun readBody(exchange: HttpExchange): String {
+        if (exchange.requestHeaders.getFirst("Content-Length")?.toLongOrNull()?.let { it > MAX_REQUEST_BYTES } == true) {
+            throw RequestTooLarge()
+        }
+        exchange.requestBody.reader(Charsets.UTF_8).use { reader ->
+            val out = StringBuilder()
+            val buffer = CharArray(8 * 1024)
+            while (true) {
+                val read = reader.read(buffer)
+                if (read < 0) return out.toString()
+                if (out.length + read > MAX_REQUEST_BYTES) throw RequestTooLarge()
+                out.append(buffer, 0, read)
+            }
+        }
+    }
 }

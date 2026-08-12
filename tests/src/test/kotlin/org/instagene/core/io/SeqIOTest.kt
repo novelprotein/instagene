@@ -80,7 +80,9 @@ class SeqIOTest {
             assertEquals(original.description, reloaded.description)
             assertEquals(original.bases, reloaded.bases)
             assertEquals(Topology.CIRCULAR, reloaded.topology)
-            assertEquals(original.features, reloaded.features)
+            assertEquals(original.features.map { it.copy(qualifiers = mapOf("label" to listOf(it.name)).let { qualifiers ->
+                if (it.notes.isBlank()) qualifiers else qualifiers + ("note" to listOf(it.notes))
+            }) }, reloaded.features)
         } finally {
             dir.deleteRecursively()
         }
@@ -146,6 +148,29 @@ class SeqIOTest {
             assertEquals("chr1", seq.name)
             assertEquals(7, seq.length)
             assertEquals("GATTACA", seq.bases)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun readAllParsesMultipleGenBankRecords() {
+        val dir = createTempDirectory("instagene-test").toFile()
+        try {
+            val file = File(dir, "records.gb")
+            file.writeText(
+                """
+                LOCUS       first                    4 bp    DNA     linear
+                ORIGIN
+                        1 atgc
+                //
+                LOCUS       second                   4 bp    DNA     linear
+                ORIGIN
+                        1 gcat
+                //
+                """.trimIndent()
+            )
+            assertEquals(listOf("first", "second"), SeqIO.readAll(file).map { it.name })
         } finally {
             dir.deleteRecursively()
         }

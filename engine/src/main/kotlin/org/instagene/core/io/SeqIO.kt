@@ -5,6 +5,7 @@ import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import java.io.File
+import java.io.IOException
 
 /** The sequence file formats InstaGene reads and writes. */
 enum class SeqFormat(val displayName: String, val extensions: List<String>) {
@@ -53,24 +54,36 @@ object SeqIO {
      * so a multi-contig genome file never materialises more than one contig.
      */
     fun read(file: File): Seq {
-        val firstLine = firstNonBlankLine(file)
-        return if (firstLine.startsWith("LOCUS")) {
-            file.bufferedReader().use { GenBank.parseFrom(it, file.nameWithoutExtension) }
-        } else {
-            val hint = firstFastaRecordCapacityHint(file)
-            file.bufferedReader().use {
-                Fasta.parseAllFrom(it, file.nameWithoutExtension, hint, stopAfterFirstRecord = true)
-            }.firstOrNull() ?: throw IllegalArgumentException("No sequence found in ${file.name}")
+        try {
+            val firstLine = firstNonBlankLine(file)
+            return if (firstLine.startsWith("LOCUS")) {
+                file.bufferedReader().use { GenBank.parseFrom(it, file.nameWithoutExtension) }
+            } else {
+                val hint = firstFastaRecordCapacityHint(file)
+                file.bufferedReader().use {
+                    Fasta.parseAllFrom(it, file.nameWithoutExtension, hint, stopAfterFirstRecord = true)
+                }.firstOrNull() ?: throw SeqIOException("No sequence found in ${file.name}")
+            }
+        } catch (e: SeqIOException) {
+            throw e
+        } catch (e: IOException) {
+            throw SeqIOException("Cannot read ${file.name}: ${e.message ?: "I/O error"}", cause = e)
         }
     }
 
     /** Reads every record from [file]: FASTA records stream one at a time, GenBank records split at record terminators. */
     fun readAll(file: File): List<Seq> {
-        val firstLine = firstNonBlankLine(file)
-        return if (firstLine.startsWith("LOCUS")) {
-            splitGenBankRecords(file.readText()).map { GenBank.parse(it, file.nameWithoutExtension) }
-        } else {
-            file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
+        try {
+            val firstLine = firstNonBlankLine(file)
+            return if (firstLine.startsWith("LOCUS")) {
+                readGenBankRecords(file)
+            } else {
+                file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
+            }
+        } catch (e: SeqIOException) {
+            throw e
+        } catch (e: IOException) {
+            throw SeqIOException("Cannot read ${file.name}: ${e.message ?: "I/O error"}", cause = e)
         }
     }
 
@@ -134,6 +147,7 @@ object SeqIO {
         return Seq(name, bases, kind, Topology.LINEAR)
     }
 
+    /** Splits in-memory GenBank text for [parseAll]; file reads use [readGenBankRecords]. */
     private fun splitGenBankRecords(text: String): List<String> {
         val records = ArrayList<String>()
         val current = StringBuilder()
@@ -145,6 +159,23 @@ object SeqIO {
             }
         }
         if (current.isNotBlank()) records += current.toString()
+        return records
+    }
+
+    /** Buffers and parses one GenBank record at a time, never the whole file. */
+    private fun readGenBankRecords(file: File): List<Seq> {
+        val records = ArrayList<Seq>()
+        val current = StringBuilder()
+        file.bufferedReader().useLines { lines ->
+            for (line in lines) {
+                current.append(line).append('\n')
+                if (line.startsWith("//")) {
+                    records += GenBank.parse(current.toString(), file.nameWithoutExtension)
+                    current.setLength(0)
+                }
+            }
+        }
+        if (current.isNotBlank()) records += GenBank.parse(current.toString(), file.nameWithoutExtension)
         return records
     }
 

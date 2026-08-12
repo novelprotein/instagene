@@ -80,6 +80,36 @@ class GenBankTest {
         assertTrue(parsed.features.any { it.name == "cds" && it.strand == Strand.REVERSE })
     }
 
+    @Test
+    fun roundTripPreservesFeatureQualifiersAndRecordMetadata() {
+        val original = Seq(
+            name = "annotated",
+            bases = "ATGCATGC",
+            features = listOf(
+                Feature("gene", "CDS", 0, 8, qualifiers = mapOf("gene" to listOf("gene"), "note" to listOf("first", "second"))),
+            ),
+            metadata = mapOf("ACCESSION" to "ABC123", "COMMENT" to "kept"),
+        )
+        val parsed = GenBank.parse(GenBank.write(original))
+        assertEquals("ABC123", parsed.metadata["ACCESSION"])
+        assertEquals("kept", parsed.metadata["COMMENT"])
+        assertEquals(listOf("first", "second"), parsed.features.single().qualifiers["note"])
+    }
+
+    @Test
+    fun roundTripKeepsSourceAndOrganismAsSeparateMetadataFields() {
+        val original = Seq(
+            name = "metadata",
+            bases = "ACGT",
+            metadata = mapOf("SOURCE" to "human", "ORGANISM" to "Homo sapiens"),
+        )
+
+        val parsed = GenBank.parse(GenBank.write(original))
+
+        assertEquals("human", parsed.metadata["SOURCE"])
+        assertEquals("Homo sapiens", parsed.metadata["ORGANISM"])
+    }
+
 @Test
     fun featuresBeyondLengthAreClipped() {
         val gb = """
