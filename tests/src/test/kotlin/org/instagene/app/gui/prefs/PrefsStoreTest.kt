@@ -1,5 +1,7 @@
 package org.instagene.app.gui.prefs
 
+import org.instagene.core.SeqKind
+import org.instagene.core.Strand
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -8,7 +10,7 @@ import kotlin.test.assertTrue
 
 /**
  * PrefsStore round-trips [UserPrefs] to disk atomically, tolerates missing or
- * corrupt files, and stores the library of saved primers/fragments.
+ * corrupt files, and stores the library of saved primers, fragments, and features.
  */
 class PrefsStoreTest {
 
@@ -70,6 +72,19 @@ class PrefsStoreTest {
                     bases = "NNN",
                     context = SavedContext("x", 0, 3, enzymes = listOf("EcoRI")),
                 ),
+                SavedItem(
+                    kind = SavedKind.FEATURE,
+                    name = "rev_gene",
+                    bases = "AUGC",
+                    context = SavedContext("rna_source", 4, 8),
+                    description = "Conserved reverse-strand gene",
+                    sequenceKind = SeqKind.RNA,
+                    feature = SavedFeatureMetadata(
+                        type = "gene",
+                        strand = Strand.REVERSE,
+                        qualifiers = mapOf("gene" to listOf("revA"), "pseudo" to listOf("")),
+                    ),
+                ),
             ),
         )
         store.save(prefs)
@@ -83,6 +98,36 @@ class PrefsStoreTest {
         assertEquals("EcoX", reloaded.enzymeOverrides["ecori"]?.name)
         assertEquals(60.0, reloaded.library[0].context.tm)
         assertEquals(listOf("EcoRI"), reloaded.library[1].context.enzymes)
+        assertEquals(SavedKind.FEATURE, reloaded.library[2].kind)
+        assertEquals(SeqKind.RNA, reloaded.library[2].sequenceKind)
+        assertEquals(Strand.REVERSE, reloaded.library[2].feature?.strand)
+        assertEquals("gene", reloaded.library[2].feature?.type)
+        assertEquals(listOf("revA"), reloaded.library[2].feature?.qualifiers?.get("gene"))
+    }
+
+    @Test
+    fun legacyPrimerAndFragmentEntriesLoadWithNewDefaults() {
+        val file = tempFile()
+        file.writeText(
+            """
+            {
+              "library": [
+                { "kind": "PRIMER", "name": "legacy_primer", "bases": "ACGT" },
+                {
+                  "kind": "FRAGMENT",
+                  "name": "legacy_fragment",
+                  "bases": "TTAA",
+                  "context": { "sourceName": "old", "start": 1, "end": 5 }
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        val library = PrefsStore(file).load().library
+        assertEquals(listOf(SavedKind.PRIMER, SavedKind.FRAGMENT), library.map { it.kind })
+        assertTrue(library.all { it.sequenceKind == SeqKind.DNA })
+        assertTrue(library.all { it.feature == null })
     }
 
     @Test

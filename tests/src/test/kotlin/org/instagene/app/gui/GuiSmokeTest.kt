@@ -24,9 +24,11 @@ import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.tool.SequenceView
 import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
+import java.awt.Container
 import java.awt.GraphicsEnvironment
 import java.awt.image.BufferedImage
 import java.io.File
+import javax.swing.JCheckBox
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JScrollPane
@@ -72,6 +74,16 @@ class GuiSmokeTest {
         } finally {
             g.dispose()
         }
+    }
+
+    private fun <T : java.awt.Component> descendants(root: java.awt.Component, type: Class<T>): List<T> {
+        val found = ArrayList<T>()
+        fun visit(component: java.awt.Component) {
+            if (type.isInstance(component)) found += type.cast(component)
+            if (component is Container) component.components.forEach(::visit)
+        }
+        visit(root)
+        return found
     }
 
     /** Pumps the EDT until the digest panel's cut-count scan has landed. */
@@ -160,6 +172,22 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun proteinSelectionCannotBeSavedToTheNucleotideLibrary() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "MEEP", kind = SeqKind.PROTEIN))
+            val view = SequenceView(doc)
+            val prefs = Prefs()
+            val editMenu = EditMenu(null, doc, SequenceEditActions(view, doc), prefs).create()
+
+            doc.selectAll()
+            val saveSelection = menuItem(editMenu, "Save Selection to Library...")
+            assertFalse(saveSelection.isEnabled)
+            saveSelection.doClick()
+            assertTrue(prefs.value.library.isEmpty())
+        }
+    }
+
+    @Test
     fun textEditMenuDrivesTheTextEditor() {
         onEdt {
             val doc = TextDocument("hello")
@@ -224,6 +252,32 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun savingAFeatureUpdatesTheSharedLibraryPanelImmediately() {
+        onEdt {
+            val prefs = Prefs()
+            val content = InstaGeneContent(null, prefs = prefs)
+            try {
+                val feature = Feature(
+                    name = "saved promoter",
+                    type = "promoter",
+                    start = 1,
+                    end = 5,
+                    strand = org.instagene.core.Strand.REVERSE,
+                )
+                content.openSequence(Seq(name = "source", bases = "AACCGG", features = listOf(feature)))
+                content.featuresPanel.selectFeatureRow(0)
+
+                assertTrue(content.featuresPanel.saveSelectedFeature())
+                assertEquals(1, content.libraryPanel.libraryTable.rowCount)
+                assertEquals("Feature", content.libraryPanel.libraryTable.model.getValueAt(0, 0))
+                assertEquals("saved promoter", content.libraryPanel.libraryTable.model.getValueAt(0, 1))
+            } finally {
+                content.dispose()
+            }
+        }
+    }
+
+    @Test
     fun viewZoomControls() {
         onEdt {
             val doc = SeqDocument(Seq(bases = "ACGT"))
@@ -242,9 +296,15 @@ class GuiSmokeTest {
             val protein = SeqDocument(Seq(bases = "MEEKLF", kind = SeqKind.PROTEIN))
             val rna = SeqDocument(Seq(bases = "ACGUACGU", kind = SeqKind.RNA))
             val dna = SeqDocument(Seq(bases = "ACGTACGT"))
-            assertFalse(DigestPanel(protein, {}, { _, _ -> }).isDigestEnabled())
-            assertFalse(DigestPanel(rna, {}, { _, _ -> }).isDigestEnabled())
-            assertTrue(DigestPanel(dna, {}, { _, _ -> }).isDigestEnabled())
+            val proteinPanel = DigestPanel(protein, {}, { _, _ -> })
+            val rnaPanel = DigestPanel(rna, {}, { _, _ -> })
+            val dnaPanel = DigestPanel(dna, {}, { _, _ -> })
+            assertFalse(proteinPanel.isDigestEnabled())
+            assertFalse(rnaPanel.isDigestEnabled())
+            assertTrue(dnaPanel.isDigestEnabled())
+            assertFalse(proteinPanel.areFragmentActionsEnabled())
+            assertFalse(rnaPanel.areFragmentActionsEnabled())
+            assertFalse(dnaPanel.areFragmentActionsEnabled(), "DNA with no selected enzymes has no fragment action target")
         }
     }
 
@@ -413,17 +473,122 @@ class GuiSmokeTest {
     }
 
     @Test
-    fun fragmentExtractionProducesLinearizedFragment() {
+    fun fragmentTableSelectsAResultAndItsActionsUseThatExactFragment() {
         onEdt {
-            val seq = Seq(bases = "NNNGAATTCNNN", topology = Topology.CIRCULAR)
+            val seq = Seq(name = "digest", bases = "AAAGAATTCCCGAATTCTTT")
             val doc = SeqDocument(seq)
+            val prefs = Prefs()
             var extracted: Seq? = null
-            val digest = DigestPanel(doc, { s -> extracted = s }, { _, _ -> })
+            val digest = DigestPanel(doc, { s -> extracted = s }, { _, _ -> }, prefs)
+
+            assertTrue(digest.displayedFragments().isEmpty())
+            assertNull(digest.selectedFragmentInTable())
+            assertFalse(digest.areFragmentActionsEnabled())
+
             digest.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
-            digest.extractFragment(0)
+
+            val fragments = digest.displayedFragments()
+            assertTrue(fragments.size >= 2)
+            assertEquals(fragments.first(), digest.selectedFragmentInTable())
+            assertTrue(digest.areFragmentActionsEnabled())
+
+            val chosen = fragments[1]
+            digest.selectFragmentInTable(chosen)
+            digest.openSelectedFragment()
             assertNotNull(extracted)
-            assertEquals(seq.length, extracted.length)
+            assertEquals(chosen.bases, extracted.bases)
             assertEquals(Topology.LINEAR, extracted.topology)
+
+            digest.saveSelectedFragment()
+            val saved = prefs.value.library.single()
+            assertEquals(SavedKind.FRAGMENT, saved.kind)
+            assertEquals(chosen.bases, saved.bases)
+            assertEquals(seq.name, saved.context.sourceName)
+            assertEquals(chosen.start, saved.context.start)
+            assertEquals(chosen.end, saved.context.end)
+            assertEquals(listOf("EcoRI"), saved.context.enzymes)
+            assertTrue(digest.summaryText().contains("Saved"))
+            assertTrue(digest.summaryText().contains("Library"))
+
+            // Recomputing the same digest must retain the user's chosen row.
+            digest.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
+            assertEquals(chosen, digest.selectedFragmentInTable())
+
+            digest.selectEnzymes(emptyList())
+            assertTrue(digest.displayedFragments().isEmpty())
+            assertNull(digest.selectedFragmentInTable())
+            assertFalse(digest.areFragmentActionsEnabled())
+        }
+    }
+
+    @Test
+    fun digestUseCheckboxDrivesFragmentsThroughTheRealTableEditor() {
+        onEdt {
+            val prefs = Prefs().apply { update { it.copy(digestCuttersOnly = false) } }
+            val digest = DigestPanel(
+                SeqDocument(Seq(name = "digest", bases = "AAAGAATTCCCGAATTCTTT")),
+                {},
+                { _, _ -> },
+                prefs,
+            )
+            val table = descendants(digest, javax.swing.JTable::class.java).single {
+                it.columnCount >= 2 && it.getColumnName(0) == "Use" && it.getColumnName(1) == "Enzyme"
+            }
+            var ecoRow = digest.displayedEnzymes().indexOfFirst { it.name == "EcoRI" }
+            assertTrue(ecoRow >= 0)
+            assertEquals(Boolean::class.javaObjectType, table.getColumnClass(0))
+            assertNotNull(table.getDefaultEditor(table.getColumnClass(0)))
+            val renderer = table.getCellRenderer(ecoRow, 0).getTableCellRendererComponent(
+                table,
+                table.getValueAt(ecoRow, 0),
+                false,
+                false,
+                ecoRow,
+                0,
+            )
+            assertTrue(renderer is JCheckBox)
+
+            assertTrue(table.editCellAt(ecoRow, 0))
+            val enableEditor = table.editorComponent as? JCheckBox ?: fail("Use cell must use a checkbox editor")
+            assertFalse(enableEditor.isSelected)
+            enableEditor.doClick()
+
+            assertEquals(listOf("EcoRI"), digest.selectedEnzymes().map { it.name })
+            assertTrue(digest.displayedFragments().size >= 2)
+            assertEquals(digest.displayedFragments().first(), digest.selectedFragmentInTable())
+            assertTrue(digest.areFragmentActionsEnabled())
+
+            ecoRow = digest.displayedEnzymes().indexOfFirst { it.name == "EcoRI" }
+            assertTrue(table.editCellAt(ecoRow, 0))
+            val disableEditor = table.editorComponent as? JCheckBox ?: fail("Use cell must use a checkbox editor")
+            assertTrue(disableEditor.isSelected)
+            disableEditor.doClick()
+
+            assertTrue(digest.selectedEnzymes().isEmpty())
+            assertTrue(digest.displayedFragments().isEmpty())
+            assertFalse(digest.areFragmentActionsEnabled())
+            digest.dispose()
+        }
+    }
+
+    @Test
+    fun openingAFragmentActivatesItsDocumentOnTheSequenceTab() {
+        onEdt {
+            val content = InstaGeneContent(null, prefs = Prefs())
+            try {
+                content.openSequence(Seq(name = "digest", bases = "AAAGAATTCCCGAATTCTTT"))
+                content.toolTabs.selectedIndex = content.toolTabs.indexOfTab("Enzyme")
+                content.digestPanel.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
+                val fragment = content.digestPanel.selectedFragmentInTable() ?: fail("Expected a selected fragment")
+
+                content.digestPanel.openSelectedFragment()
+
+                assertEquals("Sequence", content.toolTabs.getTitleAt(content.toolTabs.selectedIndex))
+                assertEquals(fragment.bases, content.activeDocument.seq.bases)
+                assertEquals(Topology.LINEAR, content.activeDocument.seq.topology)
+            } finally {
+                content.dispose()
+            }
         }
     }
 
@@ -539,12 +704,37 @@ class GuiSmokeTest {
         onEdt {
             val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
             val panel = PrimersPanel(doc)
-            panel.designAmplicon(0, 24)
+            panel.typeRangeForTest(1, 20)
+            assertTrue(panel.design())
             assertNotNull(panel.lastPrimers())
+            assertTrue(panel.areResultActionsEnabled())
 
-            // Editing the sequence invalidates the designed pair.
+            // Editing the sequence invalidates the designed pair even after the
+            // user has taken ownership of the range fields.
             doc.mutate("edit") { it.insertAt(0, "G") }
             assertNull(panel.lastPrimers())
+            assertFalse(panel.areResultActionsEnabled())
+        }
+    }
+
+    @Test
+    fun primersPanelInvalidatesPairWhenDesignInputsChange() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
+            val panel = PrimersPanel(doc)
+            assertNotNull(panel.lastPrimers())
+            assertTrue(panel.areResultActionsEnabled())
+
+            panel.typeRangeForTest(2, 20)
+            assertNull(panel.lastPrimers())
+            assertFalse(panel.areResultActionsEnabled())
+
+            assertTrue(panel.design())
+            assertNotNull(panel.lastPrimers())
+            val targetTm = descendants(panel, javax.swing.JSpinner::class.java).single()
+            targetTm.value = (targetTm.value as Double) + 0.5
+            assertNull(panel.lastPrimers())
+            assertFalse(panel.areResultActionsEnabled())
         }
     }
 
@@ -580,6 +770,11 @@ class GuiSmokeTest {
             assertNull(panel.lastPrimers())
             assertEquals("1" to "24000", panel.rangeFields())
             assertTrue(panel.summaryText().contains("too large", ignoreCase = true))
+            assertFalse(panel.areResultActionsEnabled())
+
+            panel.designAmplicon(0, 24)
+            assertNotNull(panel.lastPrimers())
+            assertTrue(panel.areResultActionsEnabled())
         }
     }
 
@@ -613,6 +808,8 @@ class GuiSmokeTest {
             assertEquals(0, library[0].context.start)
             assertEquals(24, library[0].context.end)
             assertNotNull(library[0].context.tm)
+            assertTrue(library.all { it.sequenceKind == doc.seq.kind })
+            assertTrue(panel.summaryText().contains("Saved 2 primers"))
         }
     }
 
@@ -741,6 +938,8 @@ class GuiSmokeTest {
             assertTrue(panel.addPrimersToFeatures())
             var primers = doc.seq.features.filter { it.type == "primer_bind" }
             assertEquals(2, primers.size)
+            assertNotNull(panel.lastPrimers())
+            assertTrue(panel.areResultActionsEnabled())
 
             val fwd = primers.first { it.name == pair.first.name }
             val rev = primers.first { it.name == pair.second.name }

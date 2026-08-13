@@ -1,12 +1,20 @@
 package org.instagene.app.gui.tool
 
+import org.instagene.app.gui.TableLabels
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.prefs.SavedContext
+import org.instagene.app.gui.prefs.SavedFeatureMetadata
+import org.instagene.app.gui.prefs.SavedItem
+import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.core.Feature
+import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
 import javax.swing.BorderFactory
+import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
@@ -27,6 +35,7 @@ import javax.swing.table.AbstractTableModel
  */
 class FeaturesPanel(
     initial: SeqDocument,
+    private val prefs: Prefs = Prefs(),
     private val onReveal: (Int, Int) -> Unit,
 ) : JPanel(BorderLayout(0, 6)) {
 
@@ -39,11 +48,15 @@ class FeaturesPanel(
     private val addButton = JButton("Add Feature from Selection...")
     private val manualAddButton = JButton("Add Feature Manually...")
     private val editElementButton = JButton("Edit Element...")
+    private val saveFeatureButton = JButton("Save feature to library")
     private val deleteButton = JButton("Delete")
     private val summary = JLabel(" ")
 
     private val rowSelectionListener = ListSelectionListener {
-        if (!it.valueIsAdjusting) revealSelectedFeature()
+        if (!it.valueIsAdjusting) {
+            revealSelectedFeature()
+            refreshSelectionState()
+        }
     }
 
     init {
@@ -90,18 +103,26 @@ class FeaturesPanel(
         refresh()
     }
 
-    private fun buildButtons(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
-        add(addButton.apply {
-            addActionListener { addFeatureDialog() }
+    private fun buildButtons(): JPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
+            add(addButton.apply {
+                addActionListener { addFeatureDialog() }
+            })
+            add(manualAddButton.apply {
+                addActionListener { manualAddDialog() }
+            })
         })
-        add(manualAddButton.apply {
-            addActionListener { manualAddDialog() }
-        })
-        add(editElementButton.apply {
-            addActionListener { editFeatureElement(featureTable.selectedRow) }
-        })
-        add(deleteButton.apply {
-            addActionListener { deleteSelectedFeature() }
+        add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
+            add(editElementButton.apply {
+                addActionListener { editFeatureElement(featureTable.selectedRow) }
+            })
+            add(saveFeatureButton.apply {
+                addActionListener { saveSelectedFeature() }
+            })
+            add(deleteButton.apply {
+                addActionListener { deleteSelectedFeature() }
+            })
         })
     }
 
@@ -130,6 +151,7 @@ class FeaturesPanel(
         manualAddButton.isEnabled = doc.seq.length > 0
         deleteButton.isEnabled = featureTable.selectedRow in doc.seq.features.indices
         editElementButton.isEnabled = deleteButton.isEnabled
+        saveFeatureButton.isEnabled = savableFeature(featureTable.selectedRow) != null
         val features = doc.seq.features
         summary.text = if (features.isEmpty()) {
             "No features. Select a region and use \"Add Feature from Selection...\", or type coordinates with \"Add Feature Manually...\"."
@@ -149,11 +171,22 @@ class FeaturesPanel(
 
     /** Exposed for tests: selects the row at [row] as a mouse click would. */
     fun selectFeatureRow(row: Int) {
-        featureTable.selectionModel.setSelectionInterval(row, row)
+        if (row in doc.seq.features.indices) {
+            featureTable.selectionModel.setSelectionInterval(row, row)
+        } else {
+            featureTable.clearSelection()
+        }
+        refreshSelectionState()
     }
 
     /** Exposed for tests: whether the Delete button is currently enabled. */
     fun isDeleteEnabled(): Boolean = deleteButton.isEnabled
+
+    /** Exposed for tests: whether the selected feature can be saved to the Library. */
+    fun isSaveFeatureEnabled(): Boolean = saveFeatureButton.isEnabled
+
+    /** Exposed for tests: the current summary or confirmation text. */
+    fun summaryText(): String = summary.text
 
     /** Exposed for tests: the description associated with the feature at [row]. */
     fun featureDescription(row: Int): String = doc.seq.features.getOrNull(row)?.notes.orEmpty()
@@ -164,6 +197,47 @@ class FeaturesPanel(
         return updateFeatureElement(
             row, feature.name, feature.type, feature.start + 1, feature.end, feature.strand, description,
         ) == null
+    }
+
+    /**
+     * Saves the feature at [row] with its exact source bases and annotation metadata.
+     * Invalid, empty, out-of-range, and protein features are left unchanged.
+     */
+    fun saveFeature(row: Int): Boolean {
+        val feature = savableFeature(row) ?: return false
+        val bases = doc.seq.sub(feature.start, feature.end)
+        if (bases.isEmpty()) return false
+        val item = SavedItem(
+            kind = SavedKind.FEATURE,
+            name = feature.name,
+            bases = bases,
+            context = SavedContext(
+                sourceName = doc.seq.name,
+                start = feature.start,
+                end = feature.end,
+            ),
+            description = feature.notes,
+            sequenceKind = doc.seq.kind,
+            feature = SavedFeatureMetadata(
+                type = feature.type,
+                strand = feature.strand,
+                qualifiers = feature.qualifiers,
+            ),
+        )
+        prefs.update { it.copy(library = it.library + item) }
+        summary.text = "Saved ${item.name} to Library."
+        return true
+    }
+
+    /** Saves the feature currently selected in the table to the Library. */
+    fun saveSelectedFeature(): Boolean = saveFeature(featureTable.selectedRow)
+
+    private fun savableFeature(row: Int): Feature? {
+        if (doc.seq.kind == SeqKind.PROTEIN) return null
+        val feature = doc.seq.features.getOrNull(row) ?: return null
+        return feature.takeIf {
+            it.start >= 0 && it.end > it.start && it.end <= doc.seq.length
+        }
     }
 
     /**
@@ -391,7 +465,15 @@ class FeaturesPanel(
     }
 
     private inner class FeatureTableModel : AbstractTableModel() {
-        private val columns = arrayOf("Name", "Type", "Start", "End", "Strand", "Length", "Description")
+        private val columns = arrayOf(
+            TableLabels.NAME,
+            TableLabels.TYPE,
+            TableLabels.START,
+            TableLabels.END,
+            TableLabels.STRAND,
+            TableLabels.LENGTH,
+            TableLabels.DESCRIPTION,
+        )
 
         override fun getRowCount(): Int = doc.seq.features.size
         override fun getColumnCount(): Int = columns.size
@@ -405,7 +487,7 @@ class FeaturesPanel(
                 2 -> f.start + 1
                 3 -> f.end
                 4 -> f.strand.symbol
-                5 -> f.length
+                5 -> TableLabels.length(f.length, doc.seq.kind)
                 else -> f.notes
             }
         }

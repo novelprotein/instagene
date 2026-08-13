@@ -7,6 +7,7 @@ import org.instagene.app.gui.menu.menuShortcut
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
+import org.instagene.core.SeqKind
 import java.awt.event.KeyEvent
 import javax.swing.JFrame
 import javax.swing.JMenu
@@ -126,12 +127,14 @@ class EditMenu(
     /** Stores the current selection in the library, tagged with its source range. */
     private fun createSaveSelectionItem(): JMenuItem {
         return JMenuItem("Save Selection to Library...").apply {
+            isEnabled = (doc as? SeqDocument)?.seq?.kind != SeqKind.PROTEIN
             addActionListener { saveSelectionToLibrary() }
         }
     }
 
     private fun saveSelectionToLibrary() {
         if (doc !is SeqDocument) return
+        if (doc.seq.kind == SeqKind.PROTEIN) return
         if (!doc.hasSelection || doc.selectionEnd <= doc.selectionStart) {
             JOptionPane.showMessageDialog(frame, "Select a region to save first.")
             return
@@ -148,6 +151,7 @@ class EditMenu(
                 end = end,
                 enzymes = doc.mappedEnzymes.map { it.name },
             ),
+            sequenceKind = doc.seq.kind,
         )
         prefs.update { it.copy(library = it.library + item) }
     }

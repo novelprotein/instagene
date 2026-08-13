@@ -2,6 +2,8 @@ package org.instagene.app.gui.prefs
 
 import kotlinx.serialization.Serializable
 import org.instagene.core.Enzyme
+import org.instagene.core.SeqKind
+import org.instagene.core.Strand
 
 /** A per-user replacement for the biochemical fields of one built-in enzyme. */
 @Serializable
@@ -16,10 +18,18 @@ data class EnzymeOverride(
 
 /** What kind of molecule a [SavedItem] holds. */
 @Serializable
-enum class SavedKind { PRIMER, FRAGMENT }
+enum class SavedKind { PRIMER, FRAGMENT, FEATURE }
+
+/** Annotation details retained when a sequence feature is saved to the library. */
+@Serializable
+data class SavedFeatureMetadata(
+    val type: String = "misc_feature",
+    val strand: Strand = Strand.FORWARD,
+    val qualifiers: Map<String, List<String>> = emptyMap(),
+)
 
 /**
- * Where a saved primer or fragment came from, so it can be restored via a
+ * Where a saved library item came from, so it can be restored via a
  * "jump to source" action when the originating sequence is still open.
  */
 @Serializable
@@ -31,7 +41,7 @@ data class SavedContext(
     val enzymes: List<String> = emptyList(),
 )
 
-/** A reusable primer or restriction fragment kept in the library. */
+/** A reusable primer, restriction fragment, or annotated feature kept in the library. */
 @Serializable
 data class SavedItem(
     val kind: SavedKind,
@@ -39,6 +49,8 @@ data class SavedItem(
     val bases: String,
     val context: SavedContext = SavedContext(),
     val description: String = "",
+    val sequenceKind: SeqKind = SeqKind.DNA,
+    val feature: SavedFeatureMetadata? = null,
 ) {
     val length: Int get() = bases.length
 }

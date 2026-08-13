@@ -256,17 +256,23 @@ class InstaGeneContent(
         textEditorView = TextEditorView(TextDocument())
         digestPanel = DigestPanel(
             initial,
-            { seq -> openSequence(seq) },
+            { seq ->
+                openSequence(seq)
+                toolTabs.selectedIndex = toolTabs.indexOfTab("Sequence")
+            },
             { start, end -> sequenceView.revealRange(start, end) },
             prefs,
         )
         plasmidMapPanel = PlasmidMapPanel(initial).apply {
             onSelect = { start, end -> sequenceView.revealRange(start, end) }
         }
-        featuresPanel = FeaturesPanel(initial) { start, end -> sequenceView.revealRange(start, end) }
+        featuresPanel = FeaturesPanel(initial, prefs) { start, end -> sequenceView.revealRange(start, end) }
         primersPanel = PrimersPanel(initial, prefs)
         infoPanel = InfoPanel(initial) { openFile() }
-        libraryPanel = LibraryPanel(prefs, initial, sequenceView) { seq -> openSequence(seq) }
+        libraryPanel = LibraryPanel(prefs, initial, sequenceView) { seq ->
+            openSequence(seq)
+            toolTabs.selectedIndex = toolTabs.indexOfTab("Sequence")
+        }
         statusBar = StatusBar(initial, sequenceView)
         editHistoryPanel = EditHistoryPanel(editRecorder)
 

@@ -2,7 +2,11 @@ package org.instagene.app.gui
 
 import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.prefs.SavedKind
+import org.instagene.core.Feature
 import org.instagene.core.Seq
+import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -147,5 +151,55 @@ class FeaturesPanelTest {
         assertFalse(panel.addFeatureManually("inverted", "misc_feature", 5, 4))
         assertFalse(panel.addFeatureManually("pastEnd", "misc_feature", 1, doc.seq.length + 1))
         assertTrue(doc.seq.features.isEmpty())
+    }
+
+    @Test
+    fun selectedFeatureSavesExactSequenceAndAnnotationToLibrary() {
+        val prefs = Prefs()
+        val feature = Feature(
+            name = "rev_gene",
+            type = "gene",
+            start = 2,
+            end = 8,
+            strand = Strand.REVERSE,
+            notes = "reverse target",
+            qualifiers = mapOf("gene" to listOf("revA")),
+        )
+        val doc = SeqDocument(Seq(name = "source", bases = "AACCGGUUAACC", kind = SeqKind.RNA, features = listOf(feature)))
+        val panel = FeaturesPanel(doc, prefs) { _, _ -> }
+
+        assertEquals(0, panel.selectedFeatureRow())
+        assertTrue(panel.isSaveFeatureEnabled())
+        panel.selectFeatureRow(-1)
+        assertFalse(panel.isSaveFeatureEnabled())
+        panel.selectFeatureRow(0)
+        assertTrue(panel.isSaveFeatureEnabled())
+        assertTrue(panel.saveSelectedFeature())
+
+        val saved = prefs.value.library.single()
+        assertEquals(SavedKind.FEATURE, saved.kind)
+        assertEquals("CCGGUU", saved.bases)
+        assertEquals(SeqKind.RNA, saved.sequenceKind)
+        assertEquals("source", saved.context.sourceName)
+        assertEquals(2, saved.context.start)
+        assertEquals(8, saved.context.end)
+        assertEquals("reverse target", saved.description)
+        assertEquals("gene", saved.feature?.type)
+        assertEquals(Strand.REVERSE, saved.feature?.strand)
+        assertEquals(listOf("revA"), saved.feature?.qualifiers?.get("gene"))
+        assertTrue(panel.summaryText().contains("Saved rev_gene"))
+    }
+
+    @Test
+    fun proteinFeatureCannotBeSavedToNucleotideLibrary() {
+        val prefs = Prefs()
+        val doc = SeqDocument(
+            Seq(bases = "MEEP", kind = SeqKind.PROTEIN, features = listOf(Feature("domain", start = 0, end = 4)))
+        )
+        val panel = FeaturesPanel(doc, prefs) { _, _ -> }
+        panel.selectFeatureRow(0)
+        assertFalse(panel.isSaveFeatureEnabled())
+        assertFalse(panel.saveSelectedFeature())
+        assertTrue(prefs.value.library.isEmpty())
     }
 }

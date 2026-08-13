@@ -1,35 +1,42 @@
 package org.instagene.app.gui.tool
 
+import org.instagene.app.gui.TableLabels
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.prefs.SavedContext
+import org.instagene.app.gui.prefs.SavedFeatureMetadata
+import org.instagene.app.gui.prefs.SavedItem
+import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.core.Alphabet
+import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
+import org.instagene.core.Strand
 import org.instagene.core.Topology
-import org.instagene.app.gui.prefs.SavedItem
 import java.awt.BorderLayout
 import java.awt.FlowLayout
+import java.awt.GridLayout
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
-import javax.swing.BorderFactory
 import javax.swing.JButton
+import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTable
-import javax.swing.ListSelectionModel
 import javax.swing.JTextArea
 import javax.swing.JTextField
+import javax.swing.ListSelectionModel
+import javax.swing.SwingUtilities
 import javax.swing.table.AbstractTableModel
 
 /**
- * The Library: reusable primers and fragments saved from the primer designer,
- * the digest panel or the Edit menu. Each entry remembers where it came from,
- * so it can be inserted at the caret, copied, opened as a sequence or traced
- * back to its source region.
+ * Reusable primers, restriction fragments, and annotated features. Library
+ * entries can be created here or saved from the corresponding analysis panel.
  */
 class LibraryPanel(
     private val prefs: Prefs,
@@ -38,12 +45,13 @@ class LibraryPanel(
     private val onOpenSeq: (Seq) -> Unit,
 ) : JPanel(BorderLayout(0, 6)) {
 
-    /** The document used as the source context, rebound when the active tab changes. */
+    /** The document used as the insertion and source-jump context. */
     private var doc = initial
 
     private val libraryModel = LibraryTableModel()
     val libraryTable = JTable(libraryModel)
     private val summary = JLabel(" ")
+    private val addItemButton = JButton("Add Item…")
     private val insertButton = JButton("Insert at caret")
     private val copyButton = JButton("Copy")
     private val openButton = JButton("Open as sequence")
@@ -60,6 +68,7 @@ class LibraryPanel(
             if (!it.valueIsAdjusting) updateActionState()
         }
 
+        addItemButton.addActionListener { showAddItemDialog() }
         insertButton.addActionListener { insertSelected(libraryTable.selectedRow) }
         copyButton.addActionListener { copySelected(libraryTable.selectedRow) }
         openButton.addActionListener { openSelected(libraryTable.selectedRow) }
@@ -82,67 +91,207 @@ class LibraryPanel(
     fun bindDocument(newDoc: SeqDocument) {
         if (newDoc === doc) return
         doc = newDoc
+        sequenceView.bindDocument(newDoc)
+        updateActionState()
     }
 
-    private fun buildHeader(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
-        add(JLabel("Saved primers and fragments"))
+    private fun buildHeader(): JPanel = JPanel(BorderLayout(8, 0)).apply {
+        add(JLabel("Saved primers, fragments, and features"), BorderLayout.WEST)
+        add(addItemButton, BorderLayout.EAST)
     }
 
-    private fun buildActions(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
-        add(insertButton)
-        add(copyButton)
-        add(openButton)
-        add(jumpButton)
-        add(editElementButton)
-        add(deleteButton)
+    private fun buildActions(): JPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
+            add(insertButton)
+            add(copyButton)
+            add(openButton)
+        })
+        add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
+            add(jumpButton)
+            add(editElementButton)
+            add(deleteButton)
+        })
+        add(JPanel(BorderLayout()).apply {
+            border = BorderFactory.createEmptyBorder(0, 6, 0, 6)
+            add(summary, BorderLayout.WEST)
+        })
     }
 
     private fun updateActionState() {
-        val hasRow = libraryTable.selectedRow in 0 until libraryModel.rowCount
-        insertButton.isEnabled = hasRow
+        val item = prefs.value.library.getOrNull(libraryTable.selectedRow)
+        val hasRow = item != null
+        insertButton.isEnabled = hasRow && doc.seq.kind != SeqKind.PROTEIN
         copyButton.isEnabled = hasRow
         openButton.isEnabled = hasRow
-        jumpButton.isEnabled = hasRow
+        jumpButton.isEnabled = item?.context?.sourceName?.isNotBlank() == true
         editElementButton.isEnabled = hasRow
         deleteButton.isEnabled = hasRow
         summary.text = if (libraryModel.rowCount == 0) {
-            "Save primers or fragments from the Primers and Enzyme tabs, or Edit > Save Selection to Library."
+            "Add an item here, or save one from the Primers, Enzyme, or Features tab."
         } else {
             "${libraryModel.rowCount} saved item(s)."
         }
     }
 
-    /** Inserts the saved bases at the caret, replacing any selection. */
+    /**
+     * Inserts the saved bases at the caret, replacing any selection. Features
+     * add their annotation in the same undoable document mutation.
+     */
     fun insertSelected(row: Int) {
         val item = prefs.value.library.getOrNull(row) ?: return
-        sequenceView.insertBases(item.bases)
+        if (doc.seq.kind == SeqKind.PROTEIN) return
+        val bases = normalizeNucleotides(item.bases, doc.seq.kind)
+        if (bases.isEmpty()) return
+
+        val start = doc.selectionStart
+        val end = doc.selectionEnd
+        if (item.kind != SavedKind.FEATURE) {
+            doc.mutate("insert library item") { seq ->
+                if (end > start) seq.replaceRange(start, end, bases) else seq.insertAt(start, bases)
+            }
+            doc.moveCaret(start + bases.length)
+            return
+        }
+
+        val metadata = item.feature ?: SavedFeatureMetadata()
+        val annotation = Feature(
+            name = item.name,
+            type = metadata.type,
+            start = start,
+            end = start + bases.length,
+            strand = metadata.strand,
+            notes = item.description,
+            qualifiers = metadata.qualifiers,
+        )
+        doc.mutate("insert library feature") { seq ->
+            val inserted = if (end > start) {
+                seq.replaceRange(start, end, bases)
+            } else {
+                seq.insertAt(start, bases)
+            }
+            inserted.withFeature(annotation)
+        }
+        doc.moveCaret(start + bases.length)
     }
 
-    /** Adds [item] to the library (used by the save entry points and tests). */
+    /** Adds a prebuilt item to the library (used by other save entry points and tests). */
     fun addItem(item: SavedItem) {
         prefs.update { it.copy(library = it.library + item) }
     }
 
     /**
-     * Replaces every user-editable field of a library item while retaining its
-     * kind and source context. Returns a validation error without saving it.
+     * Validates and adds a context-free item created in this panel. Whitespace
+     * and sequence numbering are ignored, and T/U is normalized to [sequenceKind].
+     * Returns a user-facing validation error, or null after saving.
      */
-    fun updateLibraryElement(row: Int, name: String, bases: String, description: String): String? {
-        if (prefs.value.library.getOrNull(row) == null) return "Choose a library item to edit."
+    fun addLibraryItem(
+        kind: SavedKind,
+        name: String,
+        sequenceKind: SeqKind,
+        bases: String,
+        description: String = "",
+        featureType: String = "misc_feature",
+        strand: Strand = Strand.FORWARD,
+    ): String? {
+        if (sequenceKind == SeqKind.PROTEIN) return "Library items must use a DNA or RNA molecule."
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) return "Library item name cannot be empty."
-        val cleanedBases = Alphabet.clean(bases).uppercase()
-        if (cleanedBases.isEmpty()) return "Library sequence cannot be empty."
-        val invalid = cleanedBases.filter { !Alphabet.isNucleotide(it) || it == '-' }.toSet()
-        if (invalid.isNotEmpty()) {
-            return "Library sequence contains invalid nucleotide character(s): ${invalid.sorted().joinToString(" ")}"
+        val normalized = validateAndNormalizeBases(bases, sequenceKind) ?: return sequenceError(bases)
+        val feature = if (kind == SavedKind.FEATURE) {
+            SavedFeatureMetadata(
+                type = featureType.trim().ifBlank { "misc_feature" },
+                strand = strand,
+                qualifiers = emptyMap(),
+            )
+        } else {
+            null
+        }
+        val item = SavedItem(
+            kind = kind,
+            name = trimmedName,
+            bases = normalized,
+            context = SavedContext(),
+            description = description,
+            sequenceKind = sequenceKind,
+            feature = feature,
+        )
+        prefs.update { it.copy(library = it.library + item) }
+        val newRow = prefs.value.library.lastIndex
+        if (newRow >= 0) {
+            libraryTable.setRowSelectionInterval(newRow, newRow)
+            libraryTable.scrollRectToVisible(libraryTable.getCellRect(newRow, 0, true))
+        }
+        summary.text = "Added ${item.name} to Library."
+        return null
+    }
+
+    /**
+     * Replaces every user-editable field while retaining the item's kind and
+     * source context. Existing feature qualifiers are also retained.
+     */
+    fun updateLibraryElement(
+        row: Int,
+        name: String,
+        bases: String,
+        description: String,
+        sequenceKind: SeqKind? = null,
+        featureType: String? = null,
+        strand: Strand? = null,
+    ): String? {
+        val previous = prefs.value.library.getOrNull(row) ?: return "Choose a library item to edit."
+        val selectedKind = sequenceKind ?: previous.sequenceKind
+        if (selectedKind == SeqKind.PROTEIN) return "Library items must use a DNA or RNA molecule."
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return "Library item name cannot be empty."
+        val normalized = validateAndNormalizeBases(bases, selectedKind) ?: return sequenceError(bases)
+        val metadata = if (previous.kind == SavedKind.FEATURE) {
+            val current = previous.feature ?: SavedFeatureMetadata()
+            current.copy(
+                type = featureType?.trim()?.ifBlank { "misc_feature" } ?: current.type,
+                strand = strand ?: current.strand,
+            )
+        } else {
+            null
         }
         prefs.update { current ->
             current.copy(library = current.library.mapIndexed { index, item ->
-                if (index == row) item.copy(name = trimmedName, bases = cleanedBases, description = description) else item
+                if (index == row) {
+                    item.copy(
+                        name = trimmedName,
+                        bases = normalized,
+                        description = description,
+                        sequenceKind = selectedKind,
+                        feature = metadata,
+                    )
+                } else {
+                    item
+                }
             })
         }
+        if (row in prefs.value.library.indices) libraryTable.setRowSelectionInterval(row, row)
+        summary.text = "Updated $trimmedName."
         return null
+    }
+
+    private fun validateAndNormalizeBases(raw: String, kind: SeqKind): String? {
+        val cleaned = Alphabet.clean(raw).uppercase()
+        if (cleaned.isEmpty()) return null
+        if (cleaned.any { !Alphabet.isNucleotide(it) || it == '-' }) return null
+        return normalizeNucleotides(cleaned, kind)
+    }
+
+    private fun sequenceError(raw: String): String {
+        val cleaned = Alphabet.clean(raw).uppercase()
+        if (cleaned.isEmpty()) return "Library sequence cannot be empty."
+        val invalid = cleaned.filter { !Alphabet.isNucleotide(it) || it == '-' }.toSet()
+        return "Library sequence contains invalid nucleotide character(s): ${invalid.sorted().joinToString(" ")}"
+    }
+
+    private fun normalizeNucleotides(bases: String, kind: SeqKind): String = when (kind) {
+        SeqKind.RNA -> bases.uppercase().replace('T', 'U')
+        SeqKind.DNA -> bases.uppercase().replace('U', 'T')
+        SeqKind.PROTEIN -> bases.uppercase()
     }
 
     private fun copySelected(row: Int) {
@@ -152,22 +301,136 @@ class LibraryPanel(
 
     private fun openSelected(row: Int) {
         val item = prefs.value.library.getOrNull(row) ?: return
-        onOpenSeq(Seq(item.name, item.bases, SeqKind.DNA, Topology.LINEAR))
+        val metadata = item.feature
+        val features = if (item.kind == SavedKind.FEATURE) {
+            listOf(
+                Feature(
+                    name = item.name,
+                    type = metadata?.type ?: "misc_feature",
+                    start = 0,
+                    end = item.bases.length,
+                    strand = metadata?.strand ?: Strand.FORWARD,
+                    notes = item.description,
+                    qualifiers = metadata?.qualifiers ?: emptyMap(),
+                )
+            )
+        } else {
+            emptyList()
+        }
+        onOpenSeq(
+            Seq(
+                name = item.name,
+                bases = normalizeNucleotides(item.bases, item.sequenceKind),
+                kind = item.sequenceKind,
+                topology = Topology.LINEAR,
+                features = features,
+                description = item.description,
+            )
+        )
     }
 
-    /** Opens the visible editor for the selected saved primer or fragment. */
+    private fun showAddItemDialog() {
+        val kindField = JComboBox(SavedKind.entries.toTypedArray())
+        val moleculeField = JComboBox(arrayOf(SeqKind.DNA, SeqKind.RNA)).apply {
+            selectedItem = doc.seq.kind.takeIf { it != SeqKind.PROTEIN } ?: SeqKind.DNA
+        }
+        val nameField = JTextField(24)
+        val basesField = JTextArea(5, 40).apply { lineWrap = true; wrapStyleWord = true }
+        val descriptionField = JTextArea(4, 40).apply { lineWrap = true; wrapStyleWord = true }
+        val featureTypeLabel = JLabel("Feature type")
+        val featureTypeField = JTextField("misc_feature", 20)
+        val strandLabel = JLabel("Strand")
+        val strandField = JComboBox(Strand.entries.toTypedArray())
+        val details = JPanel(GridLayout(0, 2, 6, 6)).apply {
+            add(JLabel("Kind"))
+            add(kindField)
+            add(JLabel("Name"))
+            add(nameField)
+            add(JLabel("Molecule"))
+            add(moleculeField)
+            add(featureTypeLabel)
+            add(featureTypeField)
+            add(strandLabel)
+            add(strandField)
+        }
+        val form = JPanel(BorderLayout(0, 8)).apply {
+            add(details, BorderLayout.NORTH)
+            add(JPanel().apply {
+                layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                add(JLabel("Sequence"))
+                add(JScrollPane(basesField))
+                add(Box.createVerticalStrut(6))
+                add(JLabel("Description"))
+                add(JScrollPane(descriptionField))
+            }, BorderLayout.CENTER)
+        }
+        fun updateFeatureControls() {
+            val visible = kindField.selectedItem == SavedKind.FEATURE
+            featureTypeLabel.isVisible = visible
+            featureTypeField.isVisible = visible
+            strandLabel.isVisible = visible
+            strandField.isVisible = visible
+            form.revalidate()
+            SwingUtilities.getWindowAncestor(form)?.pack()
+        }
+        kindField.addActionListener { updateFeatureControls() }
+        updateFeatureControls()
+
+        while (true) {
+            val result = JOptionPane.showConfirmDialog(
+                null,
+                form,
+                "Add Library Item",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE,
+            )
+            if (result != JOptionPane.OK_OPTION) return
+            val error = addLibraryItem(
+                kind = kindField.selectedItem as SavedKind,
+                name = nameField.text,
+                sequenceKind = moleculeField.selectedItem as SeqKind,
+                bases = basesField.text,
+                description = descriptionField.text,
+                featureType = featureTypeField.text,
+                strand = strandField.selectedItem as Strand,
+            )
+            if (error == null) return
+            JOptionPane.showMessageDialog(null, error, "Add Library Item", JOptionPane.ERROR_MESSAGE)
+        }
+    }
+
+    /** Opens the visible editor for the selected library item. */
     private fun editSelected(row: Int) {
         val item = prefs.value.library.getOrNull(row) ?: return
         val nameField = JTextField(item.name, 24)
+        val moleculeField = JComboBox(arrayOf(SeqKind.DNA, SeqKind.RNA)).apply {
+            selectedItem = item.sequenceKind.takeIf { it != SeqKind.PROTEIN } ?: SeqKind.DNA
+        }
         val basesField = JTextArea(item.bases, 4, 40).apply { lineWrap = true; wrapStyleWord = true }
         val descriptionField = JTextArea(item.description, 6, 40).apply { lineWrap = true; wrapStyleWord = true }
+        val metadata = item.feature ?: SavedFeatureMetadata()
+        val featureTypeField = item.takeIf { it.kind == SavedKind.FEATURE }
+            ?.let { JTextField(metadata.type, 20) }
+        val strandField = item.takeIf { it.kind == SavedKind.FEATURE }
+            ?.let { JComboBox(Strand.entries.toTypedArray()).apply { selectedItem = metadata.strand } }
+        val details = JPanel(GridLayout(0, 2, 6, 6)).apply {
+            add(JLabel("Kind"))
+            add(JLabel(displayKind(item.kind)))
+            add(JLabel("Name"))
+            add(nameField)
+            add(JLabel("Molecule"))
+            add(moleculeField)
+            if (item.kind == SavedKind.FEATURE) {
+                add(JLabel("Feature type"))
+                add(featureTypeField)
+                add(JLabel("Strand"))
+                add(strandField)
+            }
+        }
         val result = JOptionPane.showConfirmDialog(
             null,
             JPanel(BorderLayout(0, 8)).apply {
-                add(JPanel(BorderLayout(6, 0)).apply {
-                    add(JLabel("Name"), BorderLayout.WEST)
-                    add(nameField, BorderLayout.CENTER)
-                }, BorderLayout.NORTH)
+                add(details, BorderLayout.NORTH)
                 add(JPanel().apply {
                     layout = BoxLayout(this, BoxLayout.Y_AXIS)
                     add(JLabel("Sequence"))
@@ -182,7 +445,15 @@ class LibraryPanel(
             JOptionPane.PLAIN_MESSAGE,
         )
         if (result != JOptionPane.OK_OPTION) return
-        updateLibraryElement(row, nameField.text, basesField.text, descriptionField.text)?.let { error ->
+        updateLibraryElement(
+            row = row,
+            name = nameField.text,
+            bases = basesField.text,
+            description = descriptionField.text,
+            sequenceKind = moleculeField.selectedItem as SeqKind,
+            featureType = featureTypeField?.text,
+            strand = strandField?.selectedItem as? Strand,
+        )?.let { error ->
             JOptionPane.showMessageDialog(null, error, "Edit Library Item", JOptionPane.ERROR_MESSAGE)
         }
     }
@@ -191,10 +462,14 @@ class LibraryPanel(
     fun jumpToSource(row: Int) {
         val item = prefs.value.library.getOrNull(row) ?: return
         val context = item.context
+        if (context.sourceName.isBlank()) return
         val source = doc.seq.name
-        val inBounds = context.start in 0..doc.seq.length && context.end in context.start..doc.seq.length
-        if (context.sourceName.isNotEmpty() && context.sourceName == source && inBounds) {
-            sequenceView.revealRange(context.start, context.end)
+        val linearRange = context.start in 0..doc.seq.length && context.end in context.start..doc.seq.length
+        val wrappingRange = doc.seq.isCircular && context.start in 0 until doc.seq.length &&
+            context.end > doc.seq.length && context.end - context.start <= doc.seq.length
+        if (context.sourceName == source && (linearRange || wrappingRange)) {
+            if (wrappingRange) sequenceView.revealRange(0, doc.seq.length)
+            else sequenceView.revealRange(context.start, context.end)
         } else {
             JOptionPane.showMessageDialog(
                 null,
@@ -206,16 +481,20 @@ class LibraryPanel(
         }
     }
 
-    /** Removes the item at [row] from the library. */
+    /** Removes exactly the item at [row], including when duplicate values exist. */
     fun deleteSelected(row: Int) {
         if (row !in prefs.value.library.indices) return
-        // List subtraction uses structural equality and would remove every
-        // identical saved item. A table action must remove exactly its row.
         prefs.update { current -> current.copy(library = current.library.filterIndexed { index, _ -> index != row }) }
     }
 
     private inner class LibraryTableModel : AbstractTableModel() {
-        private val columns = arrayOf("Kind", "Name", "Length", "Source", "Description")
+        private val columns = arrayOf(
+            TableLabels.KIND,
+            TableLabels.NAME,
+            TableLabels.LENGTH,
+            TableLabels.SOURCE,
+            TableLabels.DESCRIPTION,
+        )
 
         override fun getRowCount(): Int = prefs.value.library.size
         override fun getColumnCount(): Int = columns.size
@@ -225,12 +504,16 @@ class LibraryPanel(
             val item = prefs.value.library[rowIndex]
             val context = item.context
             return when (columnIndex) {
-                0 -> item.kind.name.lowercase()
+                0 -> displayKind(item.kind)
                 1 -> item.name
-                2 -> "${item.length} bp"
-                3 -> "${context.sourceName} ${context.start + 1}..${context.end}"
+                2 -> TableLabels.length(item.length, item.sequenceKind)
+                3 -> if (context.sourceName.isBlank()) "—" else "${context.sourceName} ${context.start + 1}..${context.end}"
                 else -> item.description
             }
         }
     }
+
+    private fun displayKind(kind: SavedKind): String =
+        kind.name.lowercase().replaceFirstChar { it.uppercase() }
+
 }

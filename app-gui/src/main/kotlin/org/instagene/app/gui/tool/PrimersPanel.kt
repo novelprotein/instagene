@@ -1,5 +1,6 @@
 package org.instagene.app.gui.tool
 
+import org.instagene.app.gui.TableLabels
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.Feature
@@ -89,6 +90,8 @@ class PrimersPanel(
 
         tmSpinner.addChangeListener {
             prefs.update { it.copy(primerDefaultTm = (tmSpinner.value as Number).toDouble()) }
+            clearResult()
+            refresh()
         }
 
         fromField.document.addDocumentListener(editListener())
@@ -138,6 +141,16 @@ class PrimersPanel(
     private fun markEdited() {
         if (suppressEditTracking) return
         rangeEdited = true
+        clearResult()
+        refresh()
+    }
+
+    /** Invalidates a pair whose sequence, range, or target Tm no longer matches the controls. */
+    private fun clearResult() {
+        if (result == null && descriptions.all { it.isEmpty() }) return
+        result = null
+        descriptions = listOf("", "")
+        resultsModel.fireTableDataChanged()
     }
 
     /** Set during programmatic field writes so they are not taken for manual edits. */
@@ -211,9 +224,8 @@ class PrimersPanel(
         when (reason) {
             SeqDocument.Reason.SEQUENCE -> {
                 // The amplicon may have moved or changed; stale primers are misleading.
-                result = null
-                descriptions = listOf("", "")
-                autoPopulateAndDesign()
+                clearResult()
+                if (rangeEdited) refresh() else autoPopulateAndDesign()
             }
             SeqDocument.Reason.SELECTION -> autoPopulateAndDesign()
             else -> {}
@@ -241,7 +253,7 @@ class PrimersPanel(
         } else {
             summary.text = "Set From/To (or select a region) and pick a target Tm, then Design."
         }
-        refreshEditElementActionState()
+        refreshResultActionState()
     }
 
     private fun setInteractive(enabled: Boolean) {
@@ -249,10 +261,10 @@ class PrimersPanel(
         toField.isEnabled = enabled
         tmSpinner.isEnabled = enabled
         designButton.isEnabled = enabled
-        copyButton.isEnabled = enabled
-        saveButton.isEnabled = enabled
+        copyButton.isEnabled = enabled && result != null
+        saveButton.isEnabled = enabled && result != null
         resultsTable.isEnabled = enabled
-        refreshEditElementActionState()
+        refreshResultActionState()
     }
 
     /** Exposed for tests: whether primer design is available for the sample type. */
@@ -318,6 +330,7 @@ class PrimersPanel(
     fun addPrimersToFeatures(): Boolean {
         val pair = result ?: return false
         if (doc.seq.kind == SeqKind.PROTEIN) return false
+        val savedDescriptions = descriptions
         val (from, to) = toRange()
         val fwd = Feature(pair.first.name, "primer_bind", from, from + pair.first.bases.length)
         val rev = Feature(pair.second.name, "primer_bind", to - pair.second.bases.length, to)
@@ -328,6 +341,13 @@ class PrimersPanel(
             if (rev.name.lowercase() !in existing) next = next.withFeature(rev)
             next
         }
+        // Adding annotations does not change the designed oligos or their input
+        // range. The document listener conservatively invalidates all sequence
+        // changes, so restore this still-current result for Copy/Save.
+        result = pair
+        descriptions = savedDescriptions
+        resultsModel.fireTableDataChanged()
+        refresh()
         return true
     }
 
@@ -349,10 +369,25 @@ class PrimersPanel(
             tm = tm,
         )
         val items = listOf(
-            SavedItem(SavedKind.PRIMER, pair.first.name, pair.first.bases, context, descriptions[0]),
-            SavedItem(SavedKind.PRIMER, pair.second.name, pair.second.bases, context, descriptions[1]),
+            SavedItem(
+                SavedKind.PRIMER,
+                pair.first.name,
+                pair.first.bases,
+                context,
+                descriptions[0],
+                sequenceKind = doc.seq.kind,
+            ),
+            SavedItem(
+                SavedKind.PRIMER,
+                pair.second.name,
+                pair.second.bases,
+                context,
+                descriptions[1],
+                sequenceKind = doc.seq.kind,
+            ),
         )
         prefs.update { it.copy(library = it.library + items) }
+        summary.text = "Saved ${items.size} primers to Library."
     }
 
     /** Exposed for tests: the last designed pair, or null. */
@@ -369,6 +404,9 @@ class PrimersPanel(
 
     /** Exposed for tests: the current summary/hint text. */
     fun summaryText(): String = summary.text
+
+    /** Whether Copy and Save have a designed primer pair to act on. */
+    fun areResultActionsEnabled(): Boolean = copyButton.isEnabled && saveButton.isEnabled
 
     /** Exposed for tests and the GUI: the description for a designed-primer row. */
     fun primerDescription(row: Int): String = descriptions.getOrNull(row).orEmpty()
@@ -414,6 +452,13 @@ class PrimersPanel(
         editElementButton.isEnabled = resultsTable.isEnabled && result != null && resultsTable.selectedRow in 0..1
     }
 
+    private fun refreshResultActionState() {
+        val hasResult = resultsTable.isEnabled && result != null
+        copyButton.isEnabled = hasResult
+        saveButton.isEnabled = hasResult
+        refreshEditElementActionState()
+    }
+
     /** Opens the visible GUI editor for every editable field of the selected primer. */
     private fun editPrimerElement(row: Int) {
         val primer = primerAt(row) ?: return
@@ -447,7 +492,14 @@ class PrimersPanel(
     }
 
     private inner class PrimerTableModel : AbstractTableModel() {
-        private val columns = arrayOf("Name", "Sequence", "Length", "Tm", "GC%", "Description")
+        private val columns = arrayOf(
+            TableLabels.NAME,
+            TableLabels.SEQUENCE,
+            TableLabels.LENGTH,
+            "Melting temperature",
+            "GC content",
+            TableLabels.DESCRIPTION,
+        )
 
         override fun getRowCount(): Int = if (result == null) 0 else 2
         override fun getColumnCount(): Int = columns.size
@@ -458,9 +510,9 @@ class PrimersPanel(
             return when (columnIndex) {
                 0 -> primer.name
                 1 -> primer.bases
-                2 -> primer.bases.length
-                3 -> "%.1f".format(primer.tm)
-                4 -> "%.1f".format(primer.gc)
+                2 -> TableLabels.length(primer.bases.length, SeqKind.RNA)
+                3 -> TableLabels.meltingTemperature(primer.tm)
+                4 -> TableLabels.gcContent(primer.gc)
                 else -> descriptions[rowIndex]
             }
         }

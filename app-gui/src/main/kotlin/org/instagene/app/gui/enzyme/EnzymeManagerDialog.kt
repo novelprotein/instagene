@@ -1,5 +1,6 @@
 package org.instagene.app.gui.enzyme
 
+import org.instagene.app.gui.TableLabels
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.Enzyme
 import java.awt.BorderLayout
@@ -45,7 +46,11 @@ class EnzymeManagerDialog(
     init {
         enzymeTable.rowHeight = 20
         enzymeTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-        enzymeTable.columnModel.getColumn(0).maxWidth = 30
+        enzymeTable.columnModel.getColumn(0).apply {
+            minWidth = 44
+            maxWidth = 44
+            preferredWidth = 44
+        }
         enzymeTable.columnModel.getColumn(4).maxWidth = 70
         model.addListener { tableModel.fireTableDataChanged() }
 
@@ -130,7 +135,13 @@ class EnzymeManagerDialog(
 
     private class EnzymeTableModel(private val model: EnzymeManagerModel) : AbstractTableModel() {
 
-        private val columns = arrayOf("", "Enzyme", "Site", "Cuts", "Source")
+        private val columns = arrayOf(
+            TableLabels.USE,
+            TableLabels.ENZYME,
+            TableLabels.RECOGNITION_SITE,
+            TableLabels.CUT_COUNT,
+            TableLabels.ORIGIN,
+        )
 
         fun enzymeAt(row: Int): Enzyme = model.pool[row]
 
@@ -138,7 +149,7 @@ class EnzymeManagerDialog(
         override fun getColumnCount(): Int = columns.size
         override fun getColumnName(column: Int): String = columns[column]
         override fun getColumnClass(columnIndex: Int): Class<*> =
-            if (columnIndex == 0) Boolean::class.java else String::class.java
+            if (columnIndex == 0) Boolean::class.javaObjectType else String::class.java
         override fun isCellEditable(rowIndex: Int, columnIndex: Int): Boolean = columnIndex == 0
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
