@@ -19,6 +19,8 @@ class DigestTest {
         assertEquals(4, site.topCut) // 3 + 1
         assertEquals(8, site.bottomCut) // 3 + 5
         assertEquals(Strand.FORWARD, site.strand)
+        assertEquals("AATT", Digest.stickyEnd(seq, site).overhang)
+        assertEquals(EndType.FIVE_PRIME_OVERHANG, Digest.stickyEnd(seq, site).type)
         val frags = Digest.digest(seq, listOf(eco))
         val overhangs = frags.flatMap { listOf(it.leftEnd.overhang, it.rightEnd.overhang) }.filter { it.isNotEmpty() }
         assertTrue(overhangs.any { it.equals("AATT", ignoreCase = true) })

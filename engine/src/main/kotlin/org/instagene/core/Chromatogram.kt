@@ -63,7 +63,35 @@ object ChromatogramReader {
         val dataSize: Int,
         val dataOffset: Int,
         val inlineData: ByteArray,
-    )
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as Entry
+
+            if (number != other.number) return false
+            if (elementSize != other.elementSize) return false
+            if (elementCount != other.elementCount) return false
+            if (dataSize != other.dataSize) return false
+            if (dataOffset != other.dataOffset) return false
+            if (tag != other.tag) return false
+            if (!inlineData.contentEquals(other.inlineData)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = number
+            result = 31 * result + elementSize
+            result = 31 * result + elementCount
+            result = 31 * result + dataSize
+            result = 31 * result + dataOffset
+            result = 31 * result + tag.hashCode()
+            result = 31 * result + inlineData.contentHashCode()
+            return result
+        }
+    }
 
     private fun directory(bytes: ByteArray): List<Entry> {
         val root = int(bytes, 26)

@@ -1,22 +1,9 @@
 package org.instagene.app.gui.dialog
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.core.Alignment
-import org.instagene.core.AlignmentParameters
-import org.instagene.core.Enzymes
-import org.instagene.core.EnzymeAnalysis
-import org.instagene.core.GelLane
-import org.instagene.core.MolecularCalculators
-import org.instagene.core.SequenceIdentity
-import org.instagene.core.VirtualGel
+import org.instagene.core.*
 import org.instagene.core.io.SeqIO
-import java.awt.BorderLayout
-import java.io.File
-import javax.swing.JFileChooser
-import javax.swing.JFrame
-import javax.swing.JOptionPane
-import javax.swing.JScrollPane
-import javax.swing.JTextArea
+import javax.swing.*
 
 /** Small, reusable Swing front ends for the engine parity workflows. */
 object AnalysisDialogs {
@@ -77,7 +64,7 @@ object AnalysisDialogs {
         showText(frame, "Virtual Gel", text)
     }
 
-    fun showDiagnostic(frame: JFrame?, doc: SeqDocument, enzymes: List<org.instagene.core.Enzyme>) {
+    fun showDiagnostic(frame: JFrame?, doc: SeqDocument, enzymes: List<Enzyme>) {
         if (enzymes.isEmpty()) {
             JOptionPane.showMessageDialog(frame, "Tick at least one enzyme first.", "Diagnostic Site", JOptionPane.INFORMATION_MESSAGE)
             return

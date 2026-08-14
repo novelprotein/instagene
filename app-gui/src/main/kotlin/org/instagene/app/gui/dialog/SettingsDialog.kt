@@ -1,19 +1,8 @@
 package org.instagene.app.gui.dialog
 
 import org.instagene.app.gui.prefs.Prefs
-import java.awt.BorderLayout
 import java.awt.GridLayout
-import javax.swing.BorderFactory
-import javax.swing.JCheckBox
-import javax.swing.JComboBox
-import javax.swing.JDialog
-import javax.swing.JFrame
-import javax.swing.JLabel
-import javax.swing.JOptionPane
-import javax.swing.JPanel
-import javax.swing.JSpinner
-import javax.swing.JTabbedPane
-import javax.swing.SpinnerNumberModel
+import javax.swing.*
 
 /** Persisted general/analysis/file settings corresponding to ApE's Settings dialog. */
 object SettingsDialog {

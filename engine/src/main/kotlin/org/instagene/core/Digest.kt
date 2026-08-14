@@ -276,6 +276,8 @@ object Digest {
     }
 
     /** The end produced at [site]: the overhang is the span between the two cuts. */
+    fun stickyEnd(seq: Seq, site: CutSite): StickyEnd = endFor(seq, site)
+
     private fun endFor(seq: Seq, site: CutSite): StickyEnd {
         val len = site.enzyme.overhangLength
         if (len == 0) return StickyEnd(EndType.BLUNT, "", site.enzyme.name)

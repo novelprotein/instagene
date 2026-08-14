@@ -1,12 +1,6 @@
 package org.instagene.core
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.*
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -86,8 +80,17 @@ class NcbiClient(
         )
         val result = json.parseToJsonElement(summaryText).jsonObject["result"]?.jsonObject
             ?: error("NCBI summary response did not contain result")
+        val summaries = result.entries.mapNotNull { (key, value) ->
+            val record = value as? JsonObject ?: return@mapNotNull null
+            key to record
+        }
         val hits = ids.mapNotNull { id ->
-            val record = result[id]?.jsonObject ?: return@mapNotNull null
+            val record = summaries.firstOrNull { (key, summary) ->
+                key == id ||
+                    summary.string("accessionversion") == id ||
+                    summary.string("caption") == id ||
+                    summary.string("uid") == id
+            }?.second ?: return@mapNotNull null
             NcbiHit(
                 accession = record.string("accessionversion") ?: record.string("caption") ?: id,
                 title = record.string("title").orEmpty(),

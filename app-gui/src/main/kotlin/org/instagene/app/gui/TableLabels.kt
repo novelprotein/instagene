@@ -8,6 +8,7 @@ object TableLabels {
     const val USE = "Use"
     const val ENZYME = "Enzyme"
     const val RECOGNITION_SITE = "Recognition site"
+    const val OVERHANG = "Overhang"
     const val CUT_COUNT = "Cut count"
     const val DESCRIPTION = "Description"
     const val ORIGIN = "Origin"

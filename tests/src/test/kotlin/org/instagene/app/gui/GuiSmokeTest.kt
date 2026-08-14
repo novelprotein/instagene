@@ -377,6 +377,28 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun enzymeTableShowsOverhangGeometryAndObservedBases() {
+        val panel = onEdt {
+            val prefs = Prefs().apply { update { it.copy(digestCuttersOnly = false) } }
+            DigestPanel(SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT")), {}, { _, _ -> }, prefs)
+        }
+        awaitDigestCounts(panel)
+        onEdt {
+            val table = descendants(panel, javax.swing.JTable::class.java).single {
+                it.getColumnName(0) == "Use"
+            }
+            val ecoRow = panel.displayedEnzymes().indexOfFirst { it.name == "EcoRI" }
+            val bluntRow = panel.displayedEnzymes().indexOfFirst { it.name == "DpnI" }
+            assertTrue(ecoRow >= 0)
+            assertTrue(bluntRow >= 0)
+            assertEquals("5' overhang (4 bp): AATT", table.getValueAt(ecoRow, 3))
+            assertEquals("blunt", table.getValueAt(bluntRow, 3))
+            assertTrue(table.getValueAt(ecoRow, 3).toString() != "—")
+            panel.dispose()
+        }
+    }
+
+    @Test
     fun digestPanelCuttersOnlyKeepsOnlyCutters() {
         val panel = onEdt {
             DigestPanel(SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT")), {}, { _, _ -> })
@@ -443,7 +465,7 @@ class GuiSmokeTest {
             assertTrue(table.getValueAt(matchRow, 0).toString().endsWith("bp"))
             assertTrue(table.getValueAt(matchRow, 1).toString().isNotBlank())
             assertTrue(table.getValueAt(matchRow, 2).toString().isNotBlank())
-            assertEquals("AATT", table.getValueAt(matchRow, 4))
+            assertEquals("5' overhang (4 bp): AATT", table.getValueAt(matchRow, 4))
             assertEquals("GAATTC", table.getValueAt(matchRow, 5))
             assertTrue(table.getValueAt(matchRow, 6).toString().isNotBlank())
 
@@ -634,6 +656,45 @@ class GuiSmokeTest {
             } finally {
                 content.dispose()
             }
+        }
+    }
+
+    @Test
+    fun openingAnAnalysisSequenceActivatesItsDocumentOnTheSequenceTab() {
+        val partA = File.createTempFile("instagene-part-a", ".fa").apply {
+            writeText(">partA\nAAAACCCCGGGGTTTTACGTACGTACGTACG\n")
+        }
+        val partB = File.createTempFile("instagene-part-b", ".fa").apply {
+            writeText(">partB\nACGTACGTACGTACGTTTTCCCCAAAAGGGG\n")
+        }
+        try {
+            onEdt {
+                val content = InstaGeneContent(null, prefs = Prefs())
+                try {
+                    content.toolTabs.selectedIndex = content.toolTabs.indexOfTab("Analysis")
+                    content.analysisPanel.selectTool("Assembly")
+                    val analysisTabs = descendants(content.analysisPanel, javax.swing.JTabbedPane::class.java).single {
+                        (0 until it.tabCount).map(it::getTitleAt).contains("Assembly")
+                    }
+                    val assembly = analysisTabs.selectedComponent
+
+                    descendants(assembly, javax.swing.JTextField::class.java).single { it.columns == 36 }.text =
+                        "${partA.absolutePath},${partB.absolutePath}"
+                    descendants(assembly, javax.swing.JTextField::class.java).single { it.text == "assembly_product" }.text =
+                        "opened_from_analysis"
+                    descendants(assembly, JCheckBox::class.java).single { it.text == "Circular product" }.isSelected = false
+                    descendants(assembly, javax.swing.JButton::class.java).single { it.text == "Preview" }.doClick()
+                    descendants(assembly, javax.swing.JButton::class.java).single { it.text == "Open product" }.doClick()
+
+                    assertEquals("Sequence", content.toolTabs.getTitleAt(content.toolTabs.selectedIndex))
+                    assertEquals("opened_from_analysis", content.activeDocument.seq.name)
+                } finally {
+                    content.dispose()
+                }
+            }
+        } finally {
+            partA.delete()
+            partB.delete()
         }
     }
 

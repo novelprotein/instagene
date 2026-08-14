@@ -39,7 +39,7 @@ class TableLabelsTest {
         val library = LibraryPanel(prefs, doc, view) { _ -> }
         val history = EditHistoryPanel(EditRecorder())
 
-        assertEquals(listOf("Use", "Enzyme", "Recognition site", "Cut count", "Description"),
+        assertEquals(listOf("Use", "Enzyme", "Recognition site", "Overhang", "Cut count", "Description"),
             table(digest, 0).headers())
         assertEquals(listOf("Length", "Start", "End", "Strand", "Overhang", "Recognition sequence", "Cut type"),
             table(digest, 1).headers())

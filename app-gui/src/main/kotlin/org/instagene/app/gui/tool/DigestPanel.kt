@@ -87,6 +87,9 @@ class DigestPanel(
     /** Per-enzyme cut counts for the current sequence; null until the asynchronous scan completes. */
     private var countsCache: Map<Enzyme, Int>? = null
 
+    /** Distinct sequence-specific overhangs observed for each enzyme. */
+    private var overhangCache: Map<Enzyme, List<String>> = emptyMap()
+
     /** True while the cached counts do not match [SeqDocument.seq] (a recompute is in flight). */
     private var countsStale = false
 
@@ -321,6 +324,7 @@ class DigestPanel(
             }
             countsVersion++ // invalidate any in-flight scan
             countsCache = null
+            overhangCache = emptyMap()
             countsStale = false
             visibleEnzymes = emptyList()
             fragments = emptyList()
@@ -334,6 +338,7 @@ class DigestPanel(
             return
         }
         countsStale = true
+        overhangCache = emptyMap()
         rebuildEnzymeTable()
         scheduleCutCounts(seq)
         applySelection()
@@ -359,6 +364,7 @@ class DigestPanel(
                 .thenBy { it.name.lowercase() }
         )
         enzymeModel.counts = counts
+        enzymeModel.overhangs = overhangCache
         enzymeModel.fireTableDataChanged()
         restoreEnzymeSelection(selectedEnzyme)
         showMatchesForSelectedEnzyme(selectedMatch?.takeIf { it.enzyme == selectedEnzyme })
@@ -450,6 +456,7 @@ class DigestPanel(
             SwingUtilities.invokeLater {
                 if (version != countsVersion) return@invokeLater
                 countsCache = emptyMap()
+                overhangCache = emptyMap()
                 countsStale = false
                 rebuildEnzymeTable()
             }
@@ -459,14 +466,30 @@ class DigestPanel(
         // the partial maps are merged on the event thread after every chunk completes.
         val perTask = (enzymes.size + countThreads - 1) / countThreads
         val partial = ConcurrentHashMap<Enzyme, Int>(enzymes.size)
+        val partialOverhangs = ConcurrentHashMap<Enzyme, List<String>>(enzymes.size)
         val pending = AtomicInteger(enzymes.chunked(perTask).size)
         for (chunk in enzymes.chunked(perTask)) {
             countPool.submit {
-                for (enzyme in chunk) partial[enzyme] = Digest.countSites(seq, enzyme)
+                for (enzyme in chunk) {
+                    val count = Digest.countSites(seq, enzyme)
+                    partial[enzyme] = count
+                    // Geometry is cheap and is always shown. Materializing every
+                    // cut site just to derive observed bases would be too costly
+                    // for genome-scale sequences, so sequence-specific bases are
+                    // limited to the same manageable-size threshold used for
+                    // synchronous digest work.
+                    if (seq.length < asyncDigestThreshold && count > 0 && enzyme.overhangLength != 0) {
+                        partialOverhangs[enzyme] = Digest.cutSites(seq, enzyme)
+                            .map { Digest.stickyEnd(seq, it).overhang }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                    }
+                }
                 if (pending.decrementAndGet() == 0) {
                     SwingUtilities.invokeLater {
                         if (version != countsVersion) return@invokeLater
                         countsCache = partial
+                        overhangCache = partialOverhangs
                         countsStale = false
                         rebuildEnzymeTable()
                     }
@@ -490,6 +513,9 @@ class DigestPanel(
 
     /** Exposed for tests: the cut counts for the current sequence, or null while stale/unknown. */
     fun computedCutCounts(): Map<Enzyme, Int>? = if (countsStale) null else countsCache
+
+    /** Exposed for tests: observed sequence-specific overhangs, or null while stale/unknown. */
+    fun computedOverhangs(): Map<Enzyme, List<String>>? = if (countsStale) null else overhangCache
 
     /** Exposed for tests: the enzymes currently ticked in the table, in order. */
     fun selectedEnzymes(): List<Enzyme> = checked.toList()
@@ -719,11 +745,13 @@ class DigestPanel(
 
     private inner class EnzymeTableModel : AbstractTableModel() {
         var counts: Map<Enzyme, Int> = emptyMap()
+        var overhangs: Map<Enzyme, List<String>> = emptyMap()
 
         private val columns = arrayOf(
             TableLabels.USE,
             TableLabels.ENZYME,
             TableLabels.RECOGNITION_SITE,
+            TableLabels.OVERHANG,
             TableLabels.CUT_COUNT,
             TableLabels.DESCRIPTION,
         )
@@ -743,7 +771,8 @@ class DigestPanel(
                 0 -> enzyme in checked
                 1 -> enzyme.name
                 2 -> enzyme.notation()
-                3 -> (counts[enzyme] ?: 0).toString()
+                3 -> overhangLabel(enzyme, overhangs[enzyme].orEmpty())
+                4 -> (counts[enzyme] ?: 0).toString()
                 else -> descriptionFor(enzyme)
             }
         }
@@ -781,12 +810,26 @@ class DigestPanel(
                 1 -> if (wraps) "${f.start + 1} (wraps)" else f.start + 1
                 2 -> if (wraps) "${f.end} (wraps)" else f.end
                 3 -> site?.strand?.symbol ?: TableLabels.NOT_APPLICABLE
-                4 -> site?.let { f.leftEnd.overhang.ifBlank { "blunt" } } ?: TableLabels.NOT_APPLICABLE
+                4 -> site?.let { overhangLabel(it.enzyme, listOf(Digest.stickyEnd(doc.seq, it).overhang)) }
+                    ?: TableLabels.NOT_APPLICABLE
                 5 -> site?.let { doc.seq.sub(it.recognitionStart, it.recognitionStart + it.enzyme.siteLength) }
                     ?: TableLabels.NOT_APPLICABLE
                 else -> site?.enzyme?.endType?.label ?: TableLabels.NOT_APPLICABLE
             }
         }
+    }
+
+    private fun overhangLabel(enzyme: Enzyme, observed: List<String>): String {
+        val geometry = if (enzyme.overhangLength == 0) {
+            "blunt"
+        } else {
+            "${enzyme.endType.label} (${kotlin.math.abs(enzyme.overhangLength)} bp)"
+        }
+        val distinct = observed.filter { it.isNotBlank() }.distinct()
+        if (distinct.isEmpty()) return geometry
+        val shown = distinct.take(4).joinToString(", ")
+        val more = distinct.size - 4
+        return "$geometry: $shown" + if (more > 0) " (+$more more)" else ""
     }
 
     private data class MergedDigestRow(val fragment: Fragment, val site: CutSite?)

@@ -7,7 +7,6 @@ import java.net.http.HttpClient
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class NcbiClientTest {
     @Test
@@ -30,6 +29,26 @@ class NcbiClientTest {
             val fetched = client.fetchGenBank("J01636.1")
             assertEquals("J01636.1", fetched.name)
             assertEquals("ACGTACGT", fetched.bases)
+        }
+    }
+
+    @Test
+    fun mapsNcbiSummaryRecordsKeyedByNumericUid() {
+        withServer(numericSummary = true) { base ->
+            val client = NcbiClient(
+                http = HttpClient.newHttpClient(),
+                baseUrl = "$base/entrez/eutils",
+                blastBaseUrl = "$base/Blast.cgi",
+            )
+
+            val result = client.searchNucleotide("J01636.1")
+
+            assertEquals(1, result.totalCount)
+            assertEquals("J01636.1", result.hits.single().accession)
+            assertEquals("Example nucleotide record", result.hits.single().title)
+            assertEquals("Escherichia coli", result.hits.single().organism)
+            assertEquals(8, result.hits.single().length)
+            assertEquals("genomic", result.hits.single().moleculeType)
         }
     }
 
@@ -58,7 +77,7 @@ class NcbiClientTest {
         }
     }
 
-    private fun withServer(block: (String) -> Unit) {
+    private fun withServer(numericSummary: Boolean = false, block: (String) -> Unit) {
         val statusCalls = AtomicInteger()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange ->
@@ -68,7 +87,11 @@ class NcbiClientTest {
                 path.endsWith("/esearch.fcgi") ->
                     """{"header":{"type":"esearch"},"esearchresult":{"count":"1","idlist":["J01636.1"]}}"""
                 path.endsWith("/esummary.fcgi") ->
-                    """{"result":{"uids":["J01636.1"],"J01636.1":{"accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""
+                    if (numericSummary) {
+                        """{"result":{"uids":["12345"],"12345":{"uid":"12345","accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""
+                    } else {
+                        """{"result":{"uids":["J01636.1"],"J01636.1":{"accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""
+                    }
                 path.endsWith("/efetch.fcgi") -> genBank
                 path.endsWith("/Blast.cgi") && exchange.requestMethod == "POST" -> "RID = RID123\nRTOE = 2\n"
                 path.endsWith("/Blast.cgi") && query.contains("FORMAT_OBJECT=SearchInfo") ->

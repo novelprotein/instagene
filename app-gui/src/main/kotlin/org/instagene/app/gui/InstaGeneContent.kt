@@ -269,7 +269,7 @@ class InstaGeneContent(
             initial,
             { seq ->
                 openSequence(seq)
-                toolTabs.selectedIndex = toolTabs.indexOfTab("Analysis")
+                toolTabs.selectedIndex = toolTabs.indexOfTab("Sequence")
             },
             { start, end -> sequenceView.revealRange(start, end) },
         )
