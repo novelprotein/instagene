@@ -1,5 +1,6 @@
 package org.instagene.core.io
 
+import org.instagene.core.ChromatogramReader
 import java.io.File
 
 /**
@@ -18,6 +19,9 @@ enum class FileType(val displayName: String) {
 
     /** A PDF document. */
     PDF("PDF"),
+
+    /** A Sanger sequencing chromatogram (ABI/AB1 or SCF). */
+    CHROMATOGRAM("chromatogram"),
 
     /** Anything else, in practice binary data or an unknown format. */
     OTHER("file"),
@@ -67,6 +71,7 @@ object FileSniffer {
 
     /** The broad type of the first [bytes] of a file named [fileName] (may be null). */
     fun typeOf(bytes: ByteArray, fileName: String? = null): FileType = when {
+        ChromatogramReader.looksLikeAbi(bytes) || ChromatogramReader.looksLikeScf(bytes) -> FileType.CHROMATOGRAM
         isImageMagic(bytes) -> FileType.IMAGE
         isPdf(bytes) -> FileType.PDF
         isBinary(bytes) -> FileType.OTHER
@@ -77,6 +82,7 @@ object FileSniffer {
     fun typeOf(text: String): FileType {
         val head = text.removePrefix(BOM.toString()).take(PEEK_CHARS)
         if (GenBank.looksLikeGenBank(head)) return FileType.SEQUENCE
+        if (Gff3.looksLikeGff3(head)) return FileType.SEQUENCE
         if (head.contains('>')) return FileType.SEQUENCE
         val cleaned = head.filterNot { it.isWhitespace() || it.isDigit() }
         if (cleaned.isNotEmpty() && cleaned.none { !it.isLetter() }) return FileType.SEQUENCE

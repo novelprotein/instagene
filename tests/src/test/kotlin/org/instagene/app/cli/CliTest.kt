@@ -91,6 +91,27 @@ class CliTest {
     }
 
     @Test
+    fun goldenGateCommandAssemblesParts() {
+        val dir = createTempDirectory("cli-golden-gate").toFile()
+        try {
+            val first = File(dir, "first.fa").apply { writeText(">first\nAAAA\n") }
+            val second = File(dir, "second.fa").apply { writeText(">second\nCCCC\n") }
+            val (code, out) = capture {
+                Cli.run(listOf(
+                    "golden-gate",
+                    "--parts", "${first.absolutePath},${second.absolutePath}",
+                    "--overhangs", "A,B,A",
+                    "--to", "fasta",
+                ))
+            }
+            assertEquals(0, code)
+            assertTrue(out.contains("AAAACCCC"))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun missingRequiredOptionFailsCleanly() {
         val (code, out) = capture { Cli.run(listOf("find")) }
         assertEquals(1, code)

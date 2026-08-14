@@ -5,6 +5,8 @@ import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.Feature
 import org.instagene.core.Alphabet
+import org.instagene.core.PrimerDesign
+import org.instagene.core.PrimerDesignParameters
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import org.instagene.app.gui.prefs.SavedContext
@@ -12,6 +14,7 @@ import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
 import java.awt.BorderLayout
 import java.awt.FlowLayout
+import java.awt.GridLayout
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import javax.swing.BorderFactory
@@ -173,8 +176,50 @@ class PrimersPanel(
             add(editElementButton.apply {
                 addActionListener { editPrimerElement(resultsTable.selectedRow) }
             })
+            add(JButton("Advanced candidates...").apply {
+                addActionListener { showAdvancedCandidates() }
+            })
             add(Box.createHorizontalStrut(4))
         })
+    }
+
+    private fun showAdvancedCandidates() {
+        if (doc.seq.kind == SeqKind.PROTEIN) return
+        val (start, end) = toRange()
+        if (start !in 0 until doc.seq.length || end <= start || end > doc.seq.length) return
+        val minLength = JSpinner(SpinnerNumberModel(18, 8, 100, 1))
+        val maxLength = JSpinner(SpinnerNumberModel(30, 8, 100, 1))
+        val minTm = JTextField("50", 6)
+        val maxTm = JTextField("70", 6)
+        val minGc = JTextField("30", 6)
+        val maxGc = JTextField("70", 6)
+        val form = JPanel(GridLayout(4, 4, 6, 6)).apply {
+            add(JLabel("Min length")); add(minLength)
+            add(JLabel("Max length")); add(maxLength)
+            add(JLabel("Min Tm")); add(minTm)
+            add(JLabel("Max Tm")); add(maxTm)
+            add(JLabel("Min GC %")); add(minGc)
+            add(JLabel("Max GC %")); add(maxGc)
+            add(JLabel("Target Tm")); add(tmSpinner)
+            add(JLabel("Target")); add(JLabel("Amplicon ${start + 1}..$end"))
+        }
+        val ok = JOptionPane.showConfirmDialog(null, form, "Advanced Primer Candidates", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
+        if (ok != JOptionPane.OK_OPTION) return
+        runCatching {
+            PrimerDesign.candidates(doc.seq, start, end, PrimerDesignParameters(
+                minLength = (minLength.value as Number).toInt(),
+                maxLength = (maxLength.value as Number).toInt(),
+                targetTm = (tmSpinner.value as Number).toDouble(),
+                minTm = minTm.text.toDouble(), maxTm = maxTm.text.toDouble(),
+                minGc = minGc.text.toDouble(), maxGc = maxGc.text.toDouble(),
+            ))
+        }.onSuccess { candidates ->
+            val text = candidates.take(100).joinToString("\n") {
+                "${it.primer.name}\t${it.start + 1}..${it.end}\t${it.primer.bases}\tTm=${"%.1f".format(it.primer.tm)}\tGC=${"%.1f".format(it.primer.gc)}\tscore=${"%.2f".format(it.score)}\tself=${it.selfComplementarity}"
+            }.ifBlank { "No candidates passed the filters." }
+            val area = JTextArea(text, 24, 110).apply { isEditable = false; font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12) }
+            JOptionPane.showMessageDialog(null, JScrollPane(area), "Advanced Primer Candidates", JOptionPane.INFORMATION_MESSAGE)
+        }.onFailure { JOptionPane.showMessageDialog(null, it.message ?: "Primer search failed", "Advanced Primer Candidates", JOptionPane.ERROR_MESSAGE) }
     }
 
     private fun fillFromSelection() {

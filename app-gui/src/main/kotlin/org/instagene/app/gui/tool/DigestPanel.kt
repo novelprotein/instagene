@@ -1,6 +1,7 @@
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.TableLabels
+import org.instagene.app.gui.dialog.AnalysisDialogs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.enzyme.EnzymeElementDialog
@@ -59,12 +60,9 @@ class DigestPanel(
 
     private val checked = LinkedHashSet<Enzyme>()
     private val enzymeModel = EnzymeTableModel()
-    private val fragmentModel = FragmentTableModel()
-    private val matchesModel = MatchTableModel()
+    private val digestModel = DigestTableModel()
     private val enzymeTable = JTable(enzymeModel)
-    private val fragmentTable = JTable(fragmentModel)
-    private val matchesTable = JTable(matchesModel)
-    private val matchesLabel = JLabel("Matches")
+    private val digestTable = JTable(digestModel)
     private val filterField = JTextField()
     private val cuttersOnly = JCheckBox("Only enzymes that cut", true)
     private val uniqueOnly = JCheckBox("Only unique cutters", false)
@@ -76,8 +74,8 @@ class DigestPanel(
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
     private var matches: List<CutSite> = emptyList()
+    private var mergedRows: List<MergedDigestRow> = emptyList()
     private var restoringEnzymeSelection = false
-    private var restoringMatchSelection = false
     private var restoringFragmentSelection = false
 
     /** The full catalog (built-in + custom), used for the cut-count scan and lookups. */
@@ -139,15 +137,9 @@ class DigestPanel(
             }
         }
 
-        matchesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-        matchesTable.rowHeight = 20
-        matchesTable.selectionModel.addListSelectionListener {
-            if (!it.valueIsAdjusting && !restoringMatchSelection) revealSelectedMatch()
-        }
-
-        fragmentTable.rowHeight = 20
-        fragmentTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-        fragmentTable.selectionModel.addListSelectionListener {
+        digestTable.rowHeight = 20
+        digestTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+        digestTable.selectionModel.addListSelectionListener {
             if (!it.valueIsAdjusting) {
                 if (!restoringFragmentSelection) revealSelectedFragment()
                 updateFragmentActionState()
@@ -156,32 +148,16 @@ class DigestPanel(
 
         add(buildTop(), BorderLayout.NORTH)
 
-        // Enzyme table on top, every individual match of the selected enzyme
-        // beneath it, and the digest fragments at the bottom.
-        val matchesPanel = JPanel(BorderLayout(0, 4)).apply {
-            add(
-                matchesLabel.apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
-                BorderLayout.NORTH
-            )
-            add(JScrollPane(matchesTable), BorderLayout.CENTER)
-        }
-        val top = JSplitPane(
-            JSplitPane.VERTICAL_SPLIT,
-            JScrollPane(enzymeTable),
-            matchesPanel,
-        ).apply {
-            resizeWeight = 0.62
-            border = null
-        }
+        // Enzyme catalog on top and the merged digest/match table beneath it.
         val split = JSplitPane(
             JSplitPane.VERTICAL_SPLIT,
-            top,
+            JScrollPane(enzymeTable),
             JPanel(BorderLayout(0, 4)).apply {
                 add(
-                    JLabel("Fragments").apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
+                    JLabel("Digest fragments and cut sites").apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
                     BorderLayout.NORTH
                 )
-                add(JScrollPane(fragmentTable), BorderLayout.CENTER)
+                add(JScrollPane(digestTable), BorderLayout.CENTER)
                 add(buildFragmentButtons(), BorderLayout.SOUTH)
             },
         ).apply {
@@ -302,6 +278,9 @@ class DigestPanel(
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
             add(cuttersOnly)
             add(uniqueOnly)
+            add(JButton("Diagnostic sites").apply {
+                addActionListener { AnalysisDialogs.showDiagnostic(null, doc, checked.toList()) }
+            })
             add(editElementButton.apply {
                 addActionListener { editEnzymeElement(enzymeTable.selectedRow) }
             })
@@ -347,10 +326,9 @@ class DigestPanel(
             fragments = emptyList()
             matches = emptyList()
             enzymeModel.fireTableDataChanged()
-            fragmentModel.fireTableDataChanged()
+            digestModel.fireTableDataChanged()
             restoreFragmentSelection(null)
-            matchesModel.fireTableDataChanged()
-            matchesLabel.text = "Matches"
+            mergedRows = emptyList()
             summary.text = "Restriction digestion applies to double-stranded DNA" +
                     (if (seq.kind == SeqKind.PROTEIN) " (this is a protein sequence)." else ".")
             return
@@ -367,7 +345,7 @@ class DigestPanel(
      * at the top of the table. */
     private fun rebuildEnzymeTable() {
         val selectedEnzyme = visibleEnzymes.getOrNull(enzymeTable.selectedRow)
-        val selectedMatch = matches.getOrNull(matchesTable.selectedRow)
+        val selectedMatch = mergedRows.getOrNull(digestTable.selectedRow)?.site
         val counts = countsCache.orEmpty()
         val needle = filterField.text.trim().lowercase()
         visibleEnzymes = enabledPool.filter { enzyme ->
@@ -408,30 +386,53 @@ class DigestPanel(
         val enzyme = visibleEnzymes.getOrNull(row)
         if (enzyme == null || doc.seq.kind != SeqKind.DNA) {
             matches = emptyList()
-            matchesLabel.text = "Matches"
-            matchesModel.fireTableDataChanged()
+            rebuildMergedRows()
             return
         }
         matches = Digest.cutSites(doc.seq, enzyme)
-        matchesLabel.text = "Matches for ${enzyme.name} (${matches.size})"
-        matchesModel.fireTableDataChanged()
-        restoreMatchSelection(matchToRestore)
+        rebuildMergedRows()
+        restoreMergedSelection(matchToRestore)
     }
 
-    /** Restores a particular cut site after its match table is rebuilt. */
-    private fun restoreMatchSelection(matchToRestore: CutSite?) {
-        val row = matchToRestore?.let { saved -> matches.indexOfFirst { it == saved } } ?: -1
-        restoringMatchSelection = true
+    private fun rebuildMergedRows() {
+        val previousRow = mergedRows.getOrNull(digestTable.selectedRow)
+        val previewFragments = if (matches.isNotEmpty() && matches.none { site -> fragments.any { it.start == site.topCut } }) {
+            Digest.digest(doc.seq, matches.map { it.enzyme }.distinct())
+        } else {
+            fragments
+        }
+        val rowsByStart = previewFragments.groupBy { it.start }
+        val matched = matches.mapNotNull { site ->
+            rowsByStart[site.topCut]?.firstOrNull()?.let { MergedDigestRow(it, site) }
+        }
+        val matchedFragments = matched.mapTo(HashSet()) { it.fragment }
+        val fragmentOnly = previewFragments.filterNot { it in matchedFragments }.map { MergedDigestRow(it, null) }
+        mergedRows = (matched + fragmentOnly).sortedWith(compareBy<MergedDigestRow> { it.fragment.start }.thenBy { it.site == null })
+        digestModel.fireTableDataChanged()
+        val selectedRow = when {
+            previousRow?.site != null -> mergedRows.indexOfFirst { it.site == previousRow.site }
+            previousRow != null -> mergedRows.indexOfFirst { it.fragment == previousRow.fragment }
+            else -> -1
+        }.takeIf { it >= 0 } ?: mergedRows.indices.firstOrNull() ?: -1
+        restoringFragmentSelection = true
         try {
-            if (row >= 0) matchesTable.selectionModel.setSelectionInterval(row, row)
-            else matchesTable.clearSelection()
+            if (selectedRow >= 0) digestTable.selectionModel.setSelectionInterval(selectedRow, selectedRow)
+            else digestTable.clearSelection()
         } finally {
-            restoringMatchSelection = false
+            restoringFragmentSelection = false
         }
     }
 
-    private fun revealSelectedMatch() {
-        revealMatch(matchesTable.selectedRow)
+    /** Restores a particular cut site after the merged table is rebuilt. */
+    private fun restoreMergedSelection(matchToRestore: CutSite?) {
+        val row = matchToRestore?.let { saved -> mergedRows.indexOfFirst { it.site == saved } } ?: -1
+        restoringFragmentSelection = true
+        try {
+            if (row >= 0) digestTable.selectionModel.setSelectionInterval(row, row)
+            else digestTable.clearSelection()
+        } finally {
+            restoringFragmentSelection = false
+        }
     }
 
     /** Reveals the match at [row] in the sequence view, handling origin-wrapping sites. */
@@ -480,7 +481,7 @@ class DigestPanel(
         uniqueOnly.isEnabled = enabled
         enzymeTable.isEnabled = enabled
         refreshEditElementActionState()
-        fragmentTable.isEnabled = enabled
+        digestTable.isEnabled = enabled
         updateFragmentActionState()
     }
 
@@ -509,24 +510,24 @@ class DigestPanel(
     fun displayedMatches(): List<CutSite> = matches.toList()
 
     /** Exposed for tests: the individual cut site selected in the matches table. */
-    fun selectedMatchInTable(): CutSite? = matches.getOrNull(matchesTable.selectedRow)
+    fun selectedMatchInTable(): CutSite? = mergedRows.getOrNull(digestTable.selectedRow)?.site
 
     /** Exposed for tests: selects a displayed individual cut site. */
     fun selectMatchInTable(site: CutSite) {
-        val row = matches.indexOfFirst { it == site }
-        if (row >= 0) matchesTable.selectionModel.setSelectionInterval(row, row)
+        val row = mergedRows.indexOfFirst { it.site == site }
+        if (row >= 0) digestTable.selectionModel.setSelectionInterval(row, row)
     }
 
     /** Exposed for tests: the fragments displayed for the active digest. */
     fun displayedFragments(): List<Fragment> = fragments.toList()
 
     /** Exposed for tests: the fragment currently selected in the table. */
-    fun selectedFragmentInTable(): Fragment? = fragments.getOrNull(fragmentTable.selectedRow)
+    fun selectedFragmentInTable(): Fragment? = mergedRows.getOrNull(digestTable.selectedRow)?.fragment
 
     /** Exposed for tests: selects [fragment] when it is part of the active digest. */
     fun selectFragmentInTable(fragment: Fragment) {
-        val row = fragments.indexOfFirst { it == fragment }
-        if (row >= 0) fragmentTable.selectionModel.setSelectionInterval(row, row)
+        val row = mergedRows.indexOfFirst { it.fragment == fragment }
+        if (row >= 0) digestTable.selectionModel.setSelectionInterval(row, row)
     }
 
     /** Exposed for tests: whether the Open and Save actions have a valid target. */
@@ -579,7 +580,8 @@ class DigestPanel(
 
     /** Opens the fragment selected in the table as a standalone sequence. */
     fun openSelectedFragment() {
-        extractFragment(fragmentTable.selectedRow)
+        val row = digestTable.selectedRow
+        if (row >= 0) extractFragment(mergedRows.getOrNull(row)?.fragment?.let { fragments.indexOf(it) } ?: -1)
     }
 
     /** Stores the fragment at [row] in the library with its source context. */
@@ -604,7 +606,8 @@ class DigestPanel(
 
     /** Saves the fragment selected in the table to the Library. */
     fun saveSelectedFragment() {
-        saveFragment(fragmentTable.selectedRow)
+        val row = digestTable.selectedRow
+        if (row >= 0) saveFragment(mergedRows.getOrNull(row)?.fragment?.let { fragments.indexOf(it) } ?: -1)
     }
 
     private fun applySelection() {
@@ -613,7 +616,8 @@ class DigestPanel(
             digestVersion++
             doc.setMappedEnzymes(emptyList())
             fragments = emptyList()
-            fragmentModel.fireTableDataChanged()
+            mergedRows = emptyList()
+            digestModel.fireTableDataChanged()
             restoreFragmentSelection(null)
             enzymeModel.fireTableDataChanged()
             prefs.update { it.copy(selectedEnzymes = emptyList()) }
@@ -648,7 +652,7 @@ class DigestPanel(
     private fun applyDigestResult(frags: List<Fragment>, active: List<Enzyme>) {
         val selectedFragment = selectedFragmentInTable()
         fragments = frags
-        fragmentModel.fireTableDataChanged()
+        rebuildMergedRows()
         restoreFragmentSelection(selectedFragment)
         enzymeModel.fireTableDataChanged()
         prefs.update { it.copy(selectedEnzymes = active.map { enzyme -> enzyme.name }) }
@@ -666,19 +670,21 @@ class DigestPanel(
     }
 
     private fun revealSelectedFragment() {
-        revealFragment(fragmentTable.selectedRow)
+        val row = digestTable.selectedRow
+        val fragment = mergedRows.getOrNull(row)?.fragment ?: return
+        revealFragment(fragment)
     }
 
     /** Restores a stable fragment selection, defaulting to the first result. */
     private fun restoreFragmentSelection(fragmentToRestore: Fragment?) {
-        val row = fragmentToRestore?.let { saved -> fragments.indexOfFirst { it == saved } }
+        val row = fragmentToRestore?.let { saved -> mergedRows.indexOfFirst { it.fragment == saved } }
             ?.takeIf { it >= 0 }
-            ?: fragments.indices.firstOrNull()
+            ?: mergedRows.indices.firstOrNull()
             ?: -1
         restoringFragmentSelection = true
         try {
-            if (row >= 0) fragmentTable.selectionModel.setSelectionInterval(row, row)
-            else fragmentTable.clearSelection()
+            if (row >= 0) digestTable.selectionModel.setSelectionInterval(row, row)
+            else digestTable.clearSelection()
         } finally {
             restoringFragmentSelection = false
         }
@@ -687,7 +693,8 @@ class DigestPanel(
 
     /** Keeps fragment actions honest: an enabled button always has a target row. */
     private fun updateFragmentActionState() {
-        val hasRow = fragmentTable.isEnabled && fragmentTable.selectedRow in fragments.indices
+        val hasRow = digestTable.isEnabled && digestTable.selectedRow in mergedRows.indices &&
+                mergedRows[digestTable.selectedRow].fragment in fragments
         extractButton.isEnabled = hasRow
         saveFragmentButton.isEnabled = hasRow
     }
@@ -696,6 +703,10 @@ class DigestPanel(
     fun revealFragment(row: Int) {
         if (row !in fragments.indices) return
         val f = fragments[row]
+        revealFragment(f)
+    }
+
+    private fun revealFragment(f: Fragment) {
         val wraps = doc.seq.isCircular && f.start + f.length > doc.seq.length
         if (wraps) {
             onReveal(0, doc.seq.length)
@@ -745,59 +756,38 @@ class DigestPanel(
         }
     }
 
-    private inner class MatchTableModel : AbstractTableModel() {
+    private inner class DigestTableModel : AbstractTableModel() {
         private val columns = arrayOf(
-            "#",
-            TableLabels.POSITION,
+            TableLabels.LENGTH,
+            TableLabels.START,
+            TableLabels.END,
             TableLabels.STRAND,
+            "Overhang",
             TableLabels.RECOGNITION_SEQUENCE,
             TableLabels.CUT_TYPE,
         )
 
-        override fun getRowCount(): Int = matches.size
+        override fun getRowCount(): Int = mergedRows.size
         override fun getColumnCount(): Int = columns.size
         override fun getColumnName(column: Int): String = columns[column]
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
-            val site = matches[rowIndex]
-            val wraps = doc.seq.isCircular && site.recognitionEnd > doc.seq.length
+            val row = mergedRows[rowIndex]
+            val f = row.fragment
+            val site = row.site
+            val wraps = doc.seq.isCircular && f.end > doc.seq.length
             return when (columnIndex) {
-                0 -> rowIndex + 1
-                1 -> if (wraps) {
-                    "${site.recognitionStart + 1} (wraps)"
-                } else {
-                    "${site.recognitionStart + 1}..${site.recognitionEnd}"
-                }
-                2 -> site.strand.symbol
-                3 -> doc.seq.sub(site.recognitionStart, site.recognitionStart + site.enzyme.siteLength)
-                else -> site.enzyme.endType.label
+                0 -> TableLabels.length(f.length, SeqKind.DNA)
+                1 -> if (wraps) "${f.start + 1} (wraps)" else f.start + 1
+                2 -> if (wraps) "${f.end} (wraps)" else f.end
+                3 -> site?.strand?.symbol ?: TableLabels.NOT_APPLICABLE
+                4 -> site?.let { f.leftEnd.overhang.ifBlank { "blunt" } } ?: TableLabels.NOT_APPLICABLE
+                5 -> site?.let { doc.seq.sub(it.recognitionStart, it.recognitionStart + it.enzyme.siteLength) }
+                    ?: TableLabels.NOT_APPLICABLE
+                else -> site?.enzyme?.endType?.label ?: TableLabels.NOT_APPLICABLE
             }
         }
     }
 
-    private inner class FragmentTableModel : AbstractTableModel() {
-        private val columns = arrayOf(
-            "#",
-            TableLabels.LENGTH,
-            TableLabels.START,
-            TableLabels.LEFT_END,
-            TableLabels.RIGHT_END,
-        )
-
-        override fun getRowCount(): Int = fragments.size
-        override fun getColumnCount(): Int = columns.size
-        override fun getColumnName(column: Int): String = columns[column]
-
-        override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
-            val f = fragments[rowIndex]
-            val wraps = doc.seq.isCircular && f.start + f.length > doc.seq.length
-            return when (columnIndex) {
-                0 -> rowIndex + 1
-                1 -> TableLabels.length(f.length, SeqKind.DNA)
-                2 -> if (wraps) "${f.start + 1} (wraps)" else f.start + 1
-                3 -> f.leftEnd.toString()
-                else -> f.rightEnd.toString()
-            }
-        }
-    }
+    private data class MergedDigestRow(val fragment: Fragment, val site: CutSite?)
 }

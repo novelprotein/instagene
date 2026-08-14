@@ -391,6 +391,18 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun digestPanelOmitsRedundantListSitesButton() {
+        onEdt {
+            val panel = DigestPanel(SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT")), {}, { _, _ -> })
+            val buttons = descendants(panel, javax.swing.JButton::class.java)
+            assertTrue(buttons.none { it.text == "List sites" })
+            assertTrue(buttons.any { it.text == "Diagnostic sites" })
+            assertTrue(buttons.any { it.text == "Clear" })
+            panel.dispose()
+        }
+    }
+
+    @Test
     fun digestPanelListsIndividualMatchesForSelectedEnzyme() {
         val panel = onEdt {
             DigestPanel(SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT")), {}, { _, _ -> })
@@ -408,6 +420,39 @@ class GuiSmokeTest {
             val bam = panel.displayedMatches()
             assertEquals(1, bam.size)
             assertEquals(8, bam[0].recognitionStart)
+        }
+    }
+
+    @Test
+    fun mergedDigestTableShowsFragmentAndMatchColumns() {
+        onEdt {
+            val prefs = Prefs().apply { update { it.copy(digestCuttersOnly = false) } }
+            val panel = DigestPanel(
+                SeqDocument(Seq(name = "merged", bases = "AAAGAATTCCCGAATTCTTT")),
+                {},
+                { _, _ -> },
+                prefs,
+            )
+            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("EcoRI"))
+            val table = descendants(panel, javax.swing.JTable::class.java).single {
+                it.columnCount == 7 && it.getColumnName(0) == "Length"
+            }
+            assertEquals(listOf("Length", "Start", "End", "Strand", "Overhang", "Recognition sequence", "Cut type"),
+                (0 until table.columnCount).map(table::getColumnName))
+            val matchRow = (0 until table.rowCount).first { table.getValueAt(it, 3) == "+" }
+            assertTrue(table.getValueAt(matchRow, 0).toString().endsWith("bp"))
+            assertTrue(table.getValueAt(matchRow, 1).toString().isNotBlank())
+            assertTrue(table.getValueAt(matchRow, 2).toString().isNotBlank())
+            assertEquals("AATT", table.getValueAt(matchRow, 4))
+            assertEquals("GAATTC", table.getValueAt(matchRow, 5))
+            assertTrue(table.getValueAt(matchRow, 6).toString().isNotBlank())
+
+            val fragmentOnlyRow = (0 until table.rowCount).first { table.getValueAt(it, 3) == "—" }
+            assertTrue(table.getValueAt(fragmentOnlyRow, 0).toString().endsWith("bp"))
+            assertTrue(table.getValueAt(fragmentOnlyRow, 1).toString().isNotBlank())
+            assertTrue(table.getValueAt(fragmentOnlyRow, 2).toString().isNotBlank())
+            assertEquals(listOf("—", "—", "—", "—"), (3..6).map { table.getValueAt(fragmentOnlyRow, it) })
+            panel.dispose()
         }
     }
 
@@ -598,7 +643,7 @@ class GuiSmokeTest {
             val content = InstaGeneContent(null)
             val titles = (0 until content.toolTabs.tabCount).map { content.toolTabs.getTitleAt(it) }
             assertEquals(
-                listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers", "Library", "History"),
+                listOf("Info", "Map", "Sequence", "Enzyme", "Analysis", "Features", "Primers", "Library", "History"),
                 titles,
             )
 

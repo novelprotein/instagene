@@ -237,8 +237,9 @@ object GenBank {
         if ("ORGANISM" !in metadata) append("  ORGANISM  synthetic construct\n")
         append("FEATURES             Location/Qualifiers\n")
         for (f in seq.features.sortedBy { it.start }) {
-            val range = "${f.start + 1}..${f.end}"
-            val location = if (f.strand == Strand.REVERSE) "complement($range)" else range
+            val range = f.locationSegments.joinToString(",") { "${it.start + 1}..${it.end}" }
+            val joined = if (f.locationSegments.size > 1) "join($range)" else range
+            val location = if (f.strand == Strand.REVERSE) "complement($joined)" else joined
             append("     %-16s%s\n".format(f.type.take(15), location))
             val qualifiers = if (f.qualifiers.isEmpty()) {
                 buildMap {

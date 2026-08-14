@@ -10,7 +10,7 @@ A complete Swing-based graphical user interface for the InstaGene sequence edito
 
 **Main Window** (`InstaGeneWindow.kt`)
 - Central application window with menu bar, toolbar, and split pane layout
-- Integrates sequence editor and the tool tabs (Enzyme, Features, Primers, Sequence, Map, Info)
+- Integrates sequence editor and the tool tabs (Enzyme, Analysis, Features, Primers, Sequence, Map, Info)
 - Manages window state and file handling
 
 **Document Model** (`SeqDocument.kt`)
@@ -45,6 +45,12 @@ A complete Swing-based graphical user interface for the InstaGene sequence edito
 - PCR primer design for the selected amplicon (From/To follow the editor selection)
 - Adjustable target melting temperature
 - Forward/reverse pair table with Tm and GC%, copy as FASTA
+- Advanced candidate search with length, Tm, GC, and self-complementarity filters
+
+**Analysis Panel** (`AnalysisPanel.kt`) — the **Analysis** tab
+- Persistent sub-tabs for advanced search, alignment, enzyme analysis, assembly, virtual gels, calculators, NCBI/BLAST, and chromatograms
+- Assembly products can be previewed, opened as new documents, or saved
+- Network actions are explicit and run off the Swing event thread
 
 **Sequence Panel** — the **Sequence** tab
 - The main sequence editor lives on this tab, so it is visible only while the tab is selected
@@ -82,6 +88,10 @@ A complete Swing-based graphical user interface for the InstaGene sequence edito
 - Add enzyme by name with autocomplete
 - Browse common enzymes by letter
 - Clear all mapped enzymes
+- Virtual gel simulation with completion percentage
+- Sequence alignment against a selected query file
+- Sequence identity generation and verification
+- Molecular dilution calculator
 - About dialog
 
 ### Toolbar & Status Bar
@@ -168,11 +178,12 @@ The command-line platform is a separate app:
 
 **Reading**: FASTA, GenBank, and other common bioinformatics formats via SeqIO
 
-**Writing**: FASTA format (auto-detection based on extension)
+**Writing**: FASTA, GenBank, and GFF3 (auto-detection based on extension)
 
 **File Extensions Recognized**:
 - `.fasta`, `.fa`, `.fna`, `.fas`, `.seq`, `.txt`
 - `.gb`, `.gbk`, `.genbank`, `.ape`
+- `.gff`, `.gff3`
 
 ## Data Flow
 
@@ -210,12 +221,7 @@ UI Rendering
 
 ### Extensibility
 
-The architecture supports future enhancements:
-
-1. **Additional Panels**: Implement similar to DigestPanel/PlasmidMapPanel
-2. **File Formats**: Extend SeqIO with new format handlers
-3. **Display Modes**: Add new tracks or visualization modes to SequenceView
-4. **Analysis Tools**: Add to Tools menu with analysis workflow
+The architecture supports future enhancements by adding sub-panels to the shared Analysis workspace, file handlers to SeqIO, or display tracks to SequenceView. Analysis tools are also available through the Tools > Analysis Workspace shortcuts.
 
 ## Building from Source
 
@@ -314,15 +320,17 @@ then transform (revcomp, complement, transcribe, translate, …) and analyze
 (info, GC, Tm, ORFs, digest, find) the sequence. The whole stack runs on the
 engine module — the same code the CLI and desktop GUI use.
 
-## Future Enhancements
+## Parity Workflows
 
-- [ ] Batch enzyme editing
-- [ ] Custom enzyme definitions
-- [ ] Sequence alignment visualization
-- [ ] PCR primer design
-- [ ] Multi-sequence comparison
-- [ ] Import from NCBI
-- [ ] Export to various formats (GFF, JSON, etc.)
+- [x] Advanced IUPAC, mismatch, amino-acid, and 3′-constrained search
+- [x] GFF3 annotation import/export
+- [x] Virtual digest gel calculations
+- [x] Sequence alignment engine and desktop viewer
+- [x] Sequence identity generation
+- [x] Molecular dilution and master-mix calculations
+- [x] Editable SVG/PNG plasmid map export
+- [ ] NCBI and chromatogram integrations
+- [ ] Full Golden Gate/recombination designer dialogs
 - [x] Theme support (dark mode)
-- [ ] Tabbed multi-file editing
-- [ ] Hiding elements when not needed
+- [x] Tabbed multi-file editing
+- [x] Hiding elements when not needed

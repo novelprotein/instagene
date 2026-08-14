@@ -19,6 +19,15 @@ enum class Strand(val sign: Int, val symbol: String) {
     fun flipped(): Strand = if (this == FORWARD) REVERSE else FORWARD
 }
 
+/** One contiguous span of a possibly discontinuous annotation. */
+@Serializable
+data class FeatureSegment(val start: Int, val end: Int) {
+    init {
+        require(start >= 0) { "Feature segment starts before position 0" }
+        require(end >= start) { "Feature segment ends before it starts" }
+    }
+}
+
 /**
  * An annotated region, in half-open 0-based coordinates: `[start, end)`.
  *
@@ -39,16 +48,39 @@ data class Feature(
     val strand: Strand = Strand.FORWARD,
     val notes: String = "",
     val qualifiers: Map<String, List<String>> = emptyMap(),
+    /** Optional discontinuous spans; empty means the legacy [start]..[end] span. */
+    val segments: List<FeatureSegment> = emptyList(),
+    /** Optional display color in #RRGGBB form. */
+    val color: String? = null,
+    /** Whether the annotation is shown without deleting it from the record. */
+    val visible: Boolean = true,
+    /** Stable drawing priority; higher values are drawn in front. */
+    val displayOrder: Int = 0,
 ) {
     /** Span in bases: [end] - [start]. */
     val length: Int get() = end - start
 
     /** 1-based inclusive coordinates, the convention biologists actually read. */
-    fun displayRange(): String = "${start + 1}..$end"
+    fun displayRange(): String = locationSegments.joinToString(",") { "${it.start + 1}..${it.end}" }
+
+    /** All spans in biological order, including the legacy contiguous span. */
+    val locationSegments: List<FeatureSegment>
+        get() = segments.ifEmpty { listOf(FeatureSegment(start, end)) }
+
+    /** Returns this feature with a discontinuous location. */
+    fun withSegments(value: List<FeatureSegment>): Feature = copy(
+        start = value.minOfOrNull { it.start } ?: start,
+        end = value.maxOfOrNull { it.end } ?: end,
+        segments = value,
+    )
 
     init {
         require(start >= 0) { "Feature '$name' starts before position 0" }
         require(end >= start) { "Feature '$name' ends before it starts" }
+        require(segments.all { it.end >= it.start }) { "Feature '$name' has an invalid segment" }
+        require(segments.isEmpty() || (segments.minOf { it.start } == start && segments.maxOf { it.end } == end)) {
+            "Feature '$name' bounding coordinates do not contain its segments"
+        }
     }
 }
 
@@ -77,6 +109,18 @@ data class Seq(
     val length: Int get() = bases.length
 
     val isCircular: Boolean get() = topology == Topology.CIRCULAR
+
+    /** GenBank COMMENT text, exposed without requiring callers to know metadata keys. */
+    val comment: String get() = metadata["COMMENT"].orEmpty()
+
+    /** A persisted sequence identity, when one has been applied. */
+    val uniqueIdentifier: String? get() = metadata["CDSEGUID"]?.takeIf { it.isNotBlank() }
+
+    fun withComment(value: String): Seq = copy(metadata = metadata + ("COMMENT" to value))
+
+    fun withUniqueIdentifier(value: String?): Seq = copy(
+        metadata = if (value.isNullOrBlank()) metadata - "CDSEGUID" else metadata + ("CDSEGUID" to value)
+    )
 
     /** Base at [index], wrapping around the origin when the sequence is circular. */
     fun baseAt(index: Int): Char {

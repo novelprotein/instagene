@@ -3,6 +3,8 @@ package org.instagene.app.gui.menu
 import org.instagene.app.gui.enzyme.EnzymeManagerDialog
 import org.instagene.app.gui.enzyme.enzymePool
 import org.instagene.app.gui.enzyme.findEnzyme
+import org.instagene.app.gui.dialog.AnalysisDialogs
+import org.instagene.app.gui.dialog.SettingsDialog
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.tool.DigestPanel
@@ -20,6 +22,7 @@ class ToolsMenu(
     private val doc: SeqDocument,
     private val digestPanel: DigestPanel,
     private val prefs: Prefs = Prefs(),
+    private val onAnalysis: (String) -> Unit = {},
 ) {
 
     private val makeCircularItem = JMenuItem("Make Circular")
@@ -27,6 +30,12 @@ class ToolsMenu(
     private val addEnzymeItem = JMenuItem("Add Enzyme...")
     private val clearEnzymesItem = JMenuItem("Clear All Enzymes")
     private val manageEnzymesItem = JMenuItem("Manage Enzymes...")
+    private val alignItem = JMenuItem("Align Sequences...")
+    private val gelItem = JMenuItem("Virtual Gel...")
+    private val identityItem = JMenuItem("Sequence Identity...")
+    private val calculatorItem = JMenuItem("Molecular Calculator...")
+    private val settingsItem = JMenuItem("Settings...")
+    private val analysisMenu = createAnalysisMenu()
     private val commonEnzymesMenu = createCommonEnzymesMenu()
 
     init {
@@ -46,6 +55,7 @@ class ToolsMenu(
         clearEnzymesItem.isEnabled = dna
         manageEnzymesItem.isEnabled = dna
         commonEnzymesMenu.isEnabled = dna
+        gelItem.isEnabled = dna
         makeCircularItem.isEnabled = nucleotide && !seq.isCircular
         makeLinearItem.isEnabled = nucleotide && seq.isCircular
     }
@@ -77,7 +87,20 @@ class ToolsMenu(
             addSeparator()
             add(commonEnzymesMenu)
             addSeparator()
+            add(alignItem.apply { addActionListener { AnalysisDialogs.showAlignment(null, doc) } })
+            add(gelItem.apply { addActionListener { AnalysisDialogs.showGel(null, doc) } })
+            add(identityItem.apply { addActionListener { AnalysisDialogs.showIdentity(null, doc) } })
+            add(calculatorItem.apply { addActionListener { AnalysisDialogs.showMolecularCalculator(null) } })
+            add(analysisMenu)
+            add(settingsItem.apply { addActionListener { SettingsDialog.show(null, prefs) } })
+            addSeparator()
             add(createAboutItem())
+        }
+    }
+
+    private fun createAnalysisMenu(): JMenu = JMenu("Analysis Workspace").apply {
+        listOf("Search", "Alignment", "Enzymes", "Assembly", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram").forEach { name ->
+            add(JMenuItem(name).apply { addActionListener { onAnalysis(name) } })
         }
     }
 

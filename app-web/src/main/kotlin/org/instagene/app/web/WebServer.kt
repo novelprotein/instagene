@@ -7,9 +7,15 @@ import kotlinx.serialization.json.Json
 import org.instagene.core.CodonTable
 import org.instagene.core.Digest
 import org.instagene.core.Enzymes
+import org.instagene.core.AdvancedSearch
+import org.instagene.core.GelLane
+import org.instagene.core.SearchMode
+import org.instagene.core.SearchRequest
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
+import org.instagene.core.SequenceIdentity
+import org.instagene.core.VirtualGel
 import org.instagene.core.io.SeqIO
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -195,6 +201,8 @@ object WebServer {
             "orf" -> textResult("orf", orfText(seq, a))
             "find" -> textResult("find", findText(seq, a))
             "digest" -> textResult("digest", digestText(seq, a))
+            "gel" -> textResult("gel", gelText(seq, a))
+            "identity" -> textResult("identity", "${SequenceIdentity.cdseguid(seq)}\tverified=${SequenceIdentity.verify(seq)}")
             else -> throw IllegalArgumentException("Unknown operation '${req.op}'")
         }
     }
@@ -245,11 +253,32 @@ object WebServer {
     private fun findText(seq: Seq, a: Map<String, String>): String {
         val pattern = a["pattern"]?.takeIf { it.isNotBlank() }
             ?: throw IllegalArgumentException("Missing 'pattern' argument")
-        val hits = SeqOps.find(seq, pattern, a["forward-only"] != "true")
+        val mode = when (a["mode"]?.lowercase()) {
+            "literal" -> SearchMode.LITERAL
+            "amino", "aa", "protein" -> SearchMode.AMINO_ACID
+            else -> SearchMode.DNA_DEGENERATE
+        }
+        val hits = AdvancedSearch.find(seq, SearchRequest(
+            pattern = pattern,
+            mode = mode,
+            bothStrands = a["forward-only"] != "true",
+            maxMismatches = a["mismatches"]?.toIntOrNull() ?: 0,
+            threePrimeExact = a["three-prime"]?.toIntOrNull() ?: 0,
+        ))
         if (hits.isEmpty()) return "No hits for $pattern in ${seq.name}."
         return buildString {
-            hits.forEach { (pos, strand) -> append(pos + 1).append('\t').append(strand.symbol).append('\t').append(pattern).append('\n') }
+            hits.forEach { hit -> append(hit.start + 1).append('\t').append(hit.end).append('\t').append(hit.strand.symbol).append('\t').append(hit.mismatches).append('\t').append(hit.matched).append('\n') }
             append("${hits.size} hit(s) for $pattern in ${seq.name}")
+        }
+    }
+
+    private fun gelText(seq: Seq, a: Map<String, String>): String {
+        val enzymes = a["enzymes"]?.takeIf { it.isNotBlank() }?.let(Enzymes::parseList) ?: Enzymes.ALL
+        val result = VirtualGel.run(listOf(GelLane.Dna(seq.name, seq, enzymes, a["completion"]?.toIntOrNull() ?: 100)))
+        return buildString {
+            result.lanes.single().bands.forEach { band ->
+                append(band.sizeBp).append("\t").append(band.relativeIntensity).append("\t").append(result.migration(band.sizeBp)).append('\n')
+            }
         }
     }
 

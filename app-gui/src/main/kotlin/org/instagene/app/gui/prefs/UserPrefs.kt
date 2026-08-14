@@ -2,6 +2,7 @@ package org.instagene.app.gui.prefs
 
 import kotlinx.serialization.Serializable
 import org.instagene.core.Enzyme
+import org.instagene.core.FeatureDefinition
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 
@@ -27,6 +28,19 @@ data class SavedFeatureMetadata(
     val strand: Strand = Strand.FORWARD,
     val qualifiers: Map<String, List<String>> = emptyMap(),
 )
+
+/** Persisted pattern-backed annotation rule used by the feature library UI. */
+@Serializable
+data class SavedFeatureDefinition(
+    val name: String,
+    val pattern: String,
+    val type: String = "misc_feature",
+    val strand: Strand = Strand.FORWARD,
+    val color: String? = null,
+    val uppercaseOnly: Boolean = false,
+) {
+    fun toDefinition(): FeatureDefinition = FeatureDefinition(name, pattern, type, strand, color, uppercaseOnly)
+}
 
 /**
  * Where a saved library item came from, so it can be restored via a
@@ -81,6 +95,18 @@ data class UserPrefs(
     val primerDefaultTm: Double = 60.0,
     val activeTab: Int = 0,
     val library: List<SavedItem> = emptyList(),
+    val featureLibrary: List<SavedFeatureDefinition> = emptyList(),
     val theme: String = "FlatDraculaIJTheme",
     val fileBrowserVisible: Boolean = true,
+    /** ApE-compatible display and analysis defaults. */
+    val inlineFeatureMode: Boolean = true,
+    val showSecondStrand: Boolean = true,
+    val featureTransparency: Int = 80,
+    val defaultSequenceWidth: Int = 60,
+    val geneticCode: Int = 1,
+    val damMethylationDefault: Boolean = false,
+    val autosaveEnabled: Boolean = true,
+    val autosaveFrequencyMinutes: Int = 5,
+    val autosaveMaxVersions: Int = 10,
+    val defaultFileExtension: String = "gb",
 )

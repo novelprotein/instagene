@@ -2,14 +2,27 @@ package org.instagene.app.cli
 
 import org.instagene.core.Assembly
 import org.instagene.core.AssemblyException
+import org.instagene.core.AssemblyWorkflows
+import org.instagene.core.AdvancedSearch
+import org.instagene.core.Alignment
+import org.instagene.core.AlignmentParameters
 import org.instagene.core.CodonTable
 import org.instagene.core.Digest
 import org.instagene.core.Enzymes
 import org.instagene.core.ExternalTools
 import org.instagene.core.Feature
+import org.instagene.core.GelLane
+import org.instagene.core.MasterMixComponent
+import org.instagene.core.MolecularCalculators
+import org.instagene.core.NcbiClient
+import org.instagene.core.Recombination
+import org.instagene.core.SearchMode
+import org.instagene.core.SearchRequest
 import org.instagene.core.Seq
 import org.instagene.core.SeqOps
+import org.instagene.core.SequenceIdentity
 import org.instagene.core.Topology
+import org.instagene.core.VirtualGel
 import org.instagene.core.Version
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
@@ -66,6 +79,14 @@ object Cli {
             "tm" -> tm(load(args))
             "orf" -> orfs(load(args), args)
             "find" -> find(load(args), args)
+            "align" -> align(load(args), args)
+            "gel" -> gel(load(args), args)
+            "identity" -> identity(load(args))
+            "dilute" -> dilute(args)
+            "mix" -> mix(args)
+            "blast-url" -> blastUrl(load(args), args)
+            "ncbi-search" -> ncbiSearch(args)
+            "ncbi-fetch" -> emit(NcbiClient().fetchGenBank(args.require("accession")), args)
             "digest" -> digest(load(args), args)
             "sites" -> uniqueSites(load(args))
             "edit" -> emit(edit(load(args), args), args)
@@ -76,6 +97,8 @@ object Cli {
             "convert" -> emit(load(args), args)
             "plasmid" -> plasmid(args)
             "gibson" -> gibson(args)
+            "golden-gate", "goldengate" -> goldenGate(args)
+            "recombine" -> recombine(args)
 
             else -> throw CliException("Unknown command '$command'. Run `instagene help`.")
         }
@@ -154,7 +177,8 @@ object Cli {
             null -> outPath?.let { SeqIO.formatOf(File(it)) } ?: SeqFormat.FASTA
             "fasta", "fa" -> SeqFormat.FASTA
             "genbank", "gb", "gbk" -> SeqFormat.GENBANK
-            else -> throw CliException("Unknown format '$requested' (use fasta or genbank)")
+            "gff", "gff3" -> SeqFormat.GFF3
+            else -> throw CliException("Unknown format '$requested' (use fasta, genbank, or gff3)")
         }
         val text = SeqIO.write(seq, format)
         if (outPath != null) {
@@ -230,9 +254,80 @@ object Cli {
 
     private fun find(seq: Seq, args: Args) {
         val pattern = args.require("pattern")
-        val hits = SeqOps.find(seq, pattern, !args.flag("forward-only"))
-        hits.forEach { (pos, strand) -> println("${pos + 1}\t${strand.symbol}\t$pattern") }
+        val mode = when (args.opt("mode", "dna").lowercase()) {
+            "dna", "degenerate" -> SearchMode.DNA_DEGENERATE
+            "literal" -> SearchMode.LITERAL
+            "aa", "amino", "protein" -> SearchMode.AMINO_ACID
+            else -> throw CliException("--mode expects dna, literal, or amino")
+        }
+        val hits = AdvancedSearch.find(seq, SearchRequest(
+            pattern = pattern,
+            mode = mode,
+            bothStrands = !args.flag("forward-only"),
+            caseSensitive = args.flag("case-sensitive"),
+            maxMismatches = args.int("mismatches", 0),
+            threePrimeExact = args.int("three-prime", 0),
+        ))
+        hits.forEach { println("${it.start + 1}\t${it.end}\t${it.strand.symbol}\t${it.mismatches}\t${it.matched}") }
         println("${hits.size} hit(s) for $pattern in ${seq.name}")
+    }
+
+    private fun align(reference: Seq, args: Args) {
+        val paths = args.require("query").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (paths.isEmpty()) throw CliException("--query needs at least one comma-separated file")
+        val result = Alignment.align(
+            reference,
+            paths.map { loadFile(it, "Query") },
+            AlignmentParameters(
+                mismatchPenalty = -args.double("mismatch", 0.1),
+                gapPenalty = -args.double("gap", 1.5),
+                gapExtensionPenalty = -args.double("gap-extension", 0.5),
+                lineWidth = args.int("line-width", 60),
+            ),
+        )
+        println(">reference ${reference.name}")
+        println(result.reference.sequence)
+        result.queries.forEach {
+            println(">${it.name}\tscore=${round(it.score)}\tmatches=${it.matches}\tmismatches=${it.mismatches}\tgaps=${it.gaps}")
+            println(it.sequence)
+        }
+    }
+
+    private fun gel(seq: Seq, args: Args) {
+        val enzymes = Enzymes.parseList(args.require("enzymes"))
+        val result = VirtualGel.run(listOf(GelLane.Dna(seq.name, seq, enzymes, args.int("completion", 100))))
+        val lane = result.lanes.single()
+        println("${lane.name} virtual digest")
+        lane.bands.forEach { println("${it.sizeBp}\tintensity=${round(it.relativeIntensity)}\tmigration=${round(result.migration(it.sizeBp))}") }
+    }
+
+    private fun identity(seq: Seq) {
+        println("${SequenceIdentity.cdseguid(seq)}\tverified=${SequenceIdentity.verify(seq)}")
+    }
+
+    private fun dilute(args: Args) {
+        val result = MolecularCalculators.dilution(args.double("stock", 0.0), args.double("final", 0.0), args.double("volume", 0.0))
+        println("stock=${round(result.stockVolumeUl)} ul\tdiluent=${round(result.diluentVolumeUl)} ul\ttotal=${round(result.finalVolumeUl)} ul")
+    }
+
+    private fun mix(args: Args) {
+        val components = args.require("components").split(',').mapNotNull { token ->
+            val parts = token.split('=', limit = 2)
+            if (parts.size != 2) null else MasterMixComponent(parts[0].trim(), parts[1].trim().toDoubleOrNull() ?: 0.0)
+        }
+        val result = MolecularCalculators.masterMix(components, args.int("reactions", 1), args.double("overhead", 0.0))
+        result.components.forEach { println("${it.name}\t${round(it.volumeUl)} ul") }
+        println("total\t${round(result.totalVolumeUl)} ul")
+    }
+
+    private fun blastUrl(seq: Seq, args: Args) {
+        println(NcbiClient().blastUrl(seq, args.opt("program", "blastn"), args.double("expect", 100.0)))
+    }
+
+    private fun ncbiSearch(args: Args) {
+        val result = NcbiClient().searchNucleotide(args.require("term"), args.int("max-hits", 20))
+        result.hits.forEach { println("${it.accession}\t${it.title}") }
+        println("${result.hits.size} hit(s)")
     }
 
     private fun digest(seq: Seq, args: Args) {
@@ -377,6 +472,34 @@ object Cli {
         emit(result.product, args)
     }
 
+    private fun goldenGate(args: Args) {
+        val paths = args.require("parts").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (paths.isEmpty()) throw CliException("--parts needs at least one comma-separated file")
+        val overhangs = args.require("overhangs").split(',').map { it.trim() }
+        if (overhangs.size != paths.size + 1) {
+            throw CliException("--overhangs needs exactly one more item than --parts (left, between each part, right)")
+        }
+        val result = AssemblyWorkflows.goldenGate(
+            paths.map { loadFile(it, "Part") },
+            overhangs,
+            name = args.opt("name", "golden_gate_product"),
+            circular = !args.flag("linear"),
+        )
+        result.log.forEach { System.err.println("  $it") }
+        emit(result.product, args)
+    }
+
+    private fun recombine(args: Args) {
+        val target = loadFile(args.require("target"), "Target")
+        val donor = loadFile(args.require("donor"), "Donor")
+        val candidates = Recombination.candidates(target, donor, args.int("arm", 20))
+        val selected = candidates.getOrNull(args.int("candidate", 1) - 1)
+            ?: throw CliException("No matching recombination candidate found (or --candidate is out of range)")
+        val result = Recombination.recombine(target, donor, selected, args.opt("name", "${target.name}_recombined"))
+        System.err.println("Recombined ${target.name} with ${donor.name}: target ${selected.targetLeft + 1}..${selected.targetRight + selected.armLength}")
+        emit(result.product, args)
+    }
+
     private fun listEnzymes(args: Args) {
         val filter = args.opt("filter")?.lowercase()
         val shown = Enzymes.ALL.filter { filter == null || it.name.lowercase().contains(filter) }
@@ -443,6 +566,15 @@ object Cli {
           gc / tm FILE                    single numbers, handy in scripts
           orf [--min-aa 30] [--table 11]  open reading frames on both strands
           find --pattern GGATCC [--forward-only]
+          find --pattern GGATCC [--mismatches 1] [--three-prime 4] [--mode dna|literal|amino]
+          align --query read.fa[,read2.fa] reference.fa
+          gel --enzymes EcoRI,BamHI sequence.fa [--completion 50]
+          identity FILE                         print a stable sequence identity
+          dilute --stock 100 --final 10 --volume 100
+          mix --components buffer=2,water=5 --reactions 10 [--overhead 0.1]
+          blast-url FILE [--program blastn] [--expect 100]
+          ncbi-search --term "gene name" [--max-hits 20]
+          ncbi-fetch --accession ACCESSION [--to genbank]
           enzymes [--filter eco]          the built-in restriction enzyme list
           sites FILE                      unique cutters and non-cutters
 
@@ -455,11 +587,13 @@ object Cli {
           extract --from 100 --to 400 [--revcomp]
           annotate --from 1 --to 60 --label promoter [--type promoter]
           topology --set circular|linear [--origin 500]
-          convert --to genbank
+          convert --to genbank|gff3
 
         Building plasmids
           plasmid --backbone vec.gb --insert gene.fa --enzymes EcoRI,HinDIII [--name pMyGene]
           gibson --parts a.fa,b.fa,c.fa [--min-overlap 20] [--linear]
+          golden-gate --parts a.fa,b.fa --overhangs A,G,A [--linear]
+          recombine --target target.fa --donor donor.fa --arm 20 [--candidate 1]
           digest --enzymes EcoRI,BamHI [--fasta]   cut sites and fragments
           primers --from 100 --to 400 [--tm 60]
 

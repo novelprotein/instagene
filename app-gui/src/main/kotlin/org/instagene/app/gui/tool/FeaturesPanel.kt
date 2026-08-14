@@ -5,9 +5,12 @@ import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedFeatureMetadata
+import org.instagene.app.gui.prefs.SavedFeatureDefinition
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.core.Feature
+import org.instagene.core.FeatureDefinition
+import org.instagene.core.FeatureLibrary
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 import java.awt.BorderLayout
@@ -16,6 +19,7 @@ import java.awt.GridLayout
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JOptionPane
@@ -25,6 +29,8 @@ import javax.swing.JTable
 import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
+import javax.swing.JSpinner
+import javax.swing.SpinnerNumberModel
 import javax.swing.event.ListSelectionListener
 import javax.swing.table.AbstractTableModel
 
@@ -47,6 +53,7 @@ class FeaturesPanel(
     private val featureTable = JTable(featuresModel)
     private val addButton = JButton("Add Feature from Selection...")
     private val manualAddButton = JButton("Add Feature Manually...")
+    private val autoAnnotateButton = JButton("Auto-annotate...")
     private val editElementButton = JButton("Edit Element...")
     private val saveFeatureButton = JButton("Save feature to library")
     private val deleteButton = JButton("Delete")
@@ -112,6 +119,9 @@ class FeaturesPanel(
             add(manualAddButton.apply {
                 addActionListener { manualAddDialog() }
             })
+            add(autoAnnotateButton.apply {
+                addActionListener { autoAnnotateDialog() }
+            })
         })
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
             add(editElementButton.apply {
@@ -149,6 +159,7 @@ class FeaturesPanel(
     private fun refreshSelectionState() {
         addButton.isEnabled = doc.hasSelection && doc.selectionEnd > doc.selectionStart
         manualAddButton.isEnabled = doc.seq.length > 0
+        autoAnnotateButton.isEnabled = doc.seq.kind != SeqKind.PROTEIN && doc.seq.length > 0
         deleteButton.isEnabled = featureTable.selectedRow in doc.seq.features.indices
         editElementButton.isEnabled = deleteButton.isEnabled
         saveFeatureButton.isEnabled = savableFeature(featureTable.selectedRow) != null
@@ -253,6 +264,9 @@ class FeaturesPanel(
         end: Int,
         strand: Strand,
         description: String,
+        color: String? = null,
+        visible: Boolean = true,
+        displayOrder: Int = 0,
     ): String? {
         val previous = doc.seq.features.getOrNull(row) ?: return "Choose a feature to edit."
         val trimmedName = name.trim()
@@ -267,6 +281,9 @@ class FeaturesPanel(
             end = end,
             strand = strand,
             notes = description,
+            color = color?.trim()?.ifBlank { null },
+            visible = visible,
+            displayOrder = displayOrder,
         )
         doc.mutate("edit feature") { seq ->
             seq.copy(features = seq.features.mapIndexed { index, feature ->
@@ -303,6 +320,9 @@ class FeaturesPanel(
         end: Int,
         strand: Strand = Strand.FORWARD,
         notes: String = "",
+        color: String? = null,
+        visible: Boolean = true,
+        displayOrder: Int = 0,
     ): Boolean {
         val length = doc.seq.length
         if (start !in 1..length || end !in start..length) return false
@@ -313,6 +333,9 @@ class FeaturesPanel(
             end = end,
             strand = strand,
             notes = notes,
+            color = color?.trim()?.ifBlank { null },
+            visible = visible,
+            displayOrder = displayOrder,
         )
         doc.mutate("add feature") { it.withFeature(feature) }
         return true
@@ -396,6 +419,56 @@ class FeaturesPanel(
         }
     }
 
+    /** Applies simple pattern-backed feature definitions to the current sequence. */
+    private fun autoAnnotateDialog() {
+        if (doc.seq.kind == SeqKind.PROTEIN || doc.seq.length == 0) return
+        val patterns = JTextArea(
+            prefs.value.featureLibrary.takeIf { it.isNotEmpty() }?.joinToString("\n") { "${it.name}|${it.type}|${it.pattern}" }
+                ?: "promoter|promoter|TATAAA\n\n# and + mean variable-length nucleotide wildcards",
+            8,
+            42,
+        ).apply {
+            lineWrap = true
+            wrapStyleWord = false
+        }
+        val panel = JPanel(BorderLayout(0, 6)).apply {
+            add(JLabel("One definition per line: name|type|pattern"), BorderLayout.NORTH)
+            add(JScrollPane(patterns), BorderLayout.CENTER)
+        }
+        val ok = JOptionPane.showConfirmDialog(
+            null, panel, "Auto-annotate from Feature Library", JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE,
+        )
+        if (ok != JOptionPane.OK_OPTION) return
+        val definitions = patterns.text.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .mapNotNull { line ->
+                val fields = line.split('|', limit = 3).map(String::trim)
+                when {
+                    fields.size == 3 && fields[0].isNotEmpty() && fields[2].isNotEmpty() ->
+                        FeatureDefinition(fields[0], fields[2], fields[1].ifBlank { "misc_feature" })
+                    fields.size == 2 && fields[0].isNotEmpty() && fields[1].isNotEmpty() ->
+                        FeatureDefinition(fields[0], fields[1])
+                    else -> null
+                }
+            }
+            .toList()
+        if (definitions.isEmpty()) {
+            JOptionPane.showMessageDialog(null, "No valid feature definitions were entered.", "Auto-annotate", JOptionPane.INFORMATION_MESSAGE)
+            return
+        }
+        val annotated = FeatureLibrary.annotate(doc.seq, definitions)
+        val added = annotated.features.size - doc.seq.features.size
+        prefs.update { current ->
+            current.copy(featureLibrary = (current.featureLibrary + definitions.map {
+                SavedFeatureDefinition(it.name, it.pattern, it.type, it.strand, it.color, it.uppercaseOnly)
+            }).distinctBy { it.name.lowercase() })
+        }
+        doc.mutate("auto-annotate features") { annotated }
+        summary.text = "Auto-annotated $added feature(s) from ${definitions.size} definition(s)."
+    }
+
     private fun deleteSelectedFeature() {
         deleteFeature(featureTable.selectedRow)
     }
@@ -411,13 +484,19 @@ class FeaturesPanel(
         val startField = JTextField((feature.start + 1).toString(), 6)
         val endField = JTextField(feature.end.toString(), 6)
         val strandField = JComboBox(arrayOf("+", "-")).apply { selectedItem = feature.strand.symbol }
+        val colorField = JTextField(feature.color.orEmpty(), 10)
+        val visibleField = JCheckBox("Visible", feature.visible)
+        val orderField = JSpinner(SpinnerNumberModel(feature.displayOrder, -1000, 1000, 1))
         val descriptionField = JTextArea(feature.notes, 6, 40).apply { lineWrap = true; wrapStyleWord = true }
-        val form = JPanel(GridLayout(5, 2, 6, 6)).apply {
+        val form = JPanel(GridLayout(8, 2, 6, 6)).apply {
             add(JLabel("Name")); add(nameField)
             add(JLabel("Type")); add(typeField)
             add(JLabel("Start (1-based)")); add(startField)
             add(JLabel("End (1-based)")); add(endField)
             add(JLabel("Strand")); add(strandField)
+            add(JLabel("Color (#RRGGBB)")); add(colorField)
+            add(JLabel("Display order")); add(orderField)
+            add(JLabel("Visibility")); add(visibleField)
         }
         val ok = JOptionPane.showConfirmDialog(
             null,
@@ -441,6 +520,7 @@ class FeaturesPanel(
         } else {
             updateFeatureElement(
                 row, nameField.text, typeField.selectedItem?.toString().orEmpty(), start, end, strand, descriptionField.text,
+                colorField.text, visibleField.isSelected, (orderField.value as Number).toInt(),
             )
         }
         if (error != null) {

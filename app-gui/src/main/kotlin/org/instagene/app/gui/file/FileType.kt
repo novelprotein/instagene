@@ -18,6 +18,9 @@ enum class FileType {
     /** A PDF, opened with the system app. */
     PDF,
 
+    /** ABI/SCF sequencing data, opened with a chromatogram viewer. */
+    CHROMATOGRAM,
+
     /** Binary or unrecognized content, opened with the system app as a last resort. */
     UNKNOWN,
 }
@@ -29,10 +32,11 @@ enum class FileType {
 object FileTypes {
 
     /** Extensions that make a file eligible for the open-file dialog. */
-    val sequenceExtensions = setOf("fasta", "fa", "fna", "fas", "gb", "gbk", "genbank", "gp", "ape", "seq")
+    val sequenceExtensions = setOf("fasta", "fa", "fna", "fas", "gb", "gbk", "genbank", "gp", "ape", "seq", "gff", "gff3")
     private val textExtensions = setOf("md", "markdown", "notes", "log")
     private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "tif", "tiff")
     private val pdfExtensions = setOf("pdf")
+    private val chromatogramExtensions = setOf("ab1", "abi", "scf")
 
     /** The file filter for the open-file dialog: only sequence files are shown. */
     fun sequenceFileFilter(): FileNameExtensionFilter =
@@ -46,6 +50,7 @@ object FileTypes {
             ext in textExtensions -> return FileType.TEXT
             ext in imageExtensions -> return FileType.IMAGE
             ext in pdfExtensions -> return FileType.PDF
+            ext in chromatogramExtensions -> return FileType.CHROMATOGRAM
         }
         // `.txt` (and anything else unknown) is decided by content: DNA stays a
         // sequence, prose and notes become text, binary goes to the system app.
@@ -58,7 +63,8 @@ object FileTypes {
         val trimmed = text.trimStart()
         val looksFasta = trimmed.startsWith(">")
         val looksGenbank = trimmed.startsWith("LOCUS")
-        if (looksFasta || looksGenbank) return FileType.SEQUENCE
+        val looksGff = trimmed.startsWith("##gff-version")
+        if (looksFasta || looksGenbank || looksGff) return FileType.SEQUENCE
         val letters = trimmed.filter { it.isLetter() }
         if (letters.isNotEmpty() && letters.all { Alphabet.isNucleotide(it) } && letters.length >= 40) {
             return FileType.SEQUENCE

@@ -223,6 +223,15 @@ object Digest {
             .distinctBy { it.topCut }
             .sortedBy { it.topCut }
 
+        return digestAtSites(seq, sites)
+    }
+
+    /** Digests using an explicit subset of mapped sites, useful for partial-digest simulation. */
+    fun digestSites(seq: Seq, sites: Collection<CutSite>): List<Fragment> =
+        digestAtSites(seq, sites.distinctBy { it.topCut }.sortedBy { it.topCut })
+
+    private fun digestAtSites(seq: Seq, sites: List<CutSite>): List<Fragment> {
+
         if (sites.isEmpty()) {
             return listOf(
                 Fragment(seq.bases, StickyEnd.BLUNT, StickyEnd.BLUNT, seq.name, 0, seq.features)

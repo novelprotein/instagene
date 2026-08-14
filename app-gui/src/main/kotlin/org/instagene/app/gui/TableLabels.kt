@@ -25,6 +25,7 @@ object TableLabels {
     const val SEQUENCE = "Sequence"
     const val KIND = "Kind"
     const val SOURCE = "Source"
+    const val NOT_APPLICABLE = "—"
 
     fun length(value: Int, kind: SeqKind): String = "$value ${unit(kind)}"
 

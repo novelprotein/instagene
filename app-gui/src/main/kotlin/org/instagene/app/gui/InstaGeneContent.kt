@@ -20,6 +20,7 @@ import org.instagene.app.gui.menu.confirmDiscardChanges
 import org.instagene.app.gui.menu.menuShortcut
 import org.instagene.app.gui.project.ProjectTreePanel
 import org.instagene.app.gui.tool.DigestPanel
+import org.instagene.app.gui.tool.AnalysisPanel
 import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.app.gui.tool.InfoPanel
 import org.instagene.app.gui.tool.LibraryPanel
@@ -114,6 +115,7 @@ class InstaGeneContent(
     val sequenceView: SequenceView
     val textEditorView: TextEditorView
     val digestPanel: DigestPanel
+    val analysisPanel: AnalysisPanel
     val plasmidMapPanel: PlasmidMapPanel
     val featuresPanel: FeaturesPanel
     val primersPanel: PrimersPanel
@@ -262,6 +264,14 @@ class InstaGeneContent(
             },
             { start, end -> sequenceView.revealRange(start, end) },
             prefs,
+        )
+        analysisPanel = AnalysisPanel(
+            initial,
+            { seq ->
+                openSequence(seq)
+                toolTabs.selectedIndex = toolTabs.indexOfTab("Analysis")
+            },
+            { start, end -> sequenceView.revealRange(start, end) },
         )
         plasmidMapPanel = PlasmidMapPanel(initial).apply {
             onSelect = { start, end -> sequenceView.revealRange(start, end) }
@@ -638,6 +648,7 @@ class InstaGeneContent(
         if (active is SeqDocument) {
             sequenceView.bindDocument(active)
             digestPanel.bindDocument(active)
+            analysisPanel.bindDocument(active)
             plasmidMapPanel.bindDocument(active)
             featuresPanel.bindDocument(active)
             primersPanel.bindDocument(active)
@@ -703,7 +714,7 @@ class InstaGeneContent(
                 isFileBrowserVisible = { fileBrowserVisible },
                 onFileBrowserVisible = { visible -> setFileBrowserVisible(visible) },
             ),
-            tools = ToolsMenu(menusDoc, digestPanel, prefs),
+            tools = ToolsMenu(menusDoc, digestPanel, prefs) { name -> analysisPanel.selectTool(name) },
         )
     }
 
@@ -774,6 +785,7 @@ class InstaGeneContent(
             addTab("Map", plasmidMapPanel)
             addTab("Sequence", editorScroll)
             addTab("Enzyme", digestPanel)
+            addTab("Analysis", analysisPanel)
             addTab("Features", featuresPanel)
             addTab("Primers", primersPanel)
             addTab("Library", libraryPanel)

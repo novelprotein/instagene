@@ -41,10 +41,8 @@ class TableLabelsTest {
 
         assertEquals(listOf("Use", "Enzyme", "Recognition site", "Cut count", "Description"),
             table(digest, 0).headers())
-        assertEquals(listOf("#", "Position", "Strand", "Recognition sequence", "Cut type"),
+        assertEquals(listOf("Length", "Start", "End", "Strand", "Overhang", "Recognition sequence", "Cut type"),
             table(digest, 1).headers())
-        assertEquals(listOf("#", "Length", "Start", "Left end", "Right end"),
-            table(digest, 2).headers())
         assertEquals(listOf("Name", "Type", "Start", "End", "Strand", "Length", "Description"),
             table(features).headers())
         assertEquals(listOf("Name", "Sequence", "Length", "Melting temperature", "GC content", "Description"),

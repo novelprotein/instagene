@@ -9,7 +9,9 @@ import org.instagene.core.Strand
 import org.instagene.core.Topology
 import java.awt.BasicStroke
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -20,8 +22,13 @@ import java.awt.event.MouseEvent
 import java.awt.event.MouseMotionAdapter
 import java.awt.geom.Arc2D
 import java.awt.geom.Ellipse2D
+import java.awt.image.BufferedImage
+import java.io.File
+import javax.imageio.ImageIO
 import javax.swing.BorderFactory
+import javax.swing.JButton
 import javax.swing.JCheckBox
+import javax.swing.JFileChooser
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.PI
@@ -56,6 +63,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     val circularCheckbox: JCheckBox = JCheckBox("Circular").apply {
         toolTipText = "Toggle between circular (plasmid) and linear topology"
     }
+    val showFeatureLabels: JCheckBox = JCheckBox("Feature labels", true)
+    val showRestrictionSites: JCheckBox = JCheckBox("Restriction sites", true)
 
     private data class CircularLabel(
         val text: String,
@@ -99,12 +108,35 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         doc.addListener(docListener!!)
         syncTopologyControl()
 
-        add(JPanel(BorderLayout(6, 0)).apply {
+        add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
             isOpaque = false
             add(circularCheckbox, BorderLayout.WEST)
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                isOpaque = false
+                add(showFeatureLabels)
+                add(showRestrictionSites)
+            }, BorderLayout.CENTER)
+            add(JButton("Export PNG").apply {
+                addActionListener {
+                    val chooser = JFileChooser().apply { dialogTitle = "Export map as PNG" }
+                    if (chooser.showSaveDialog(this@PlasmidMapPanel) == JFileChooser.APPROVE_OPTION) exportPng(chooser.selectedFile)
+                }
+            }, BorderLayout.CENTER)
+            add(JButton("Export SVG").apply {
+                addActionListener {
+                    val chooser = JFileChooser().apply { dialogTitle = "Export map as SVG" }
+                    if (chooser.showSaveDialog(this@PlasmidMapPanel) == JFileChooser.APPROVE_OPTION) exportSvg(chooser.selectedFile)
+                }
+            }, BorderLayout.EAST)
         }, BorderLayout.NORTH)
+        showFeatureLabels.addActionListener { mapCanvas.repaint() }
+        showRestrictionSites.addActionListener { mapCanvas.repaint() }
         add(mapCanvas, BorderLayout.CENTER)
     }
+
+    private fun featureColor(feature: Feature, index: Int): Color = feature.color?.let {
+        runCatching { Color.decode(it) }.getOrNull()
+    } ?: Palette.featureColor(index)
 
     /**
      * Binds this panel to another document and keeps the topology control in sync.
@@ -125,6 +157,53 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         syncTopologyControl()
         mapCanvas.repaint()
     }
+
+    /** Renders the current map to a PNG without requiring a visible window. */
+    fun exportPng(file: File, width: Int = 1200, height: Int = 900) {
+        require(width > 0 && height > 0) { "Map dimensions must be positive" }
+        mapCanvas.setSize(width, height)
+        mapCanvas.doLayout()
+        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+        val graphics = image.createGraphics()
+        try { mapCanvas.paint(graphics) } finally { graphics.dispose() }
+        ImageIO.write(image, "png", file)
+    }
+
+    /** Exports a lightweight, editable SVG representation of the current map. */
+    fun exportSvg(file: File, width: Int = 1200, height: Int = 900) {
+        val seq = doc.seq
+        val cx = width / 2
+        val cy = height / 2
+        val radius = min(width, height) / 3
+        val featureSvg = seq.features.filter { it.visible }.mapIndexed { index, feature ->
+            val start = feature.start.toDouble() / seq.length * 360.0 - 90.0
+            val end = feature.end.toDouble() / seq.length * 360.0 - 90.0
+            val color = feature.color ?: "#4c8bf5"
+            val y = cy - radius - 18 - (index % 8) * 14
+            "<path d=\"${svgArc(cx, cy, radius + (index % 4) * 12, start, end)}\" fill=\"none\" stroke=\"$color\" stroke-width=\"10\"/><text x=\"${cx + radius + 18}\" y=\"$y\" font-size=\"12\">${escapeSvg(feature.name)}</text>"
+        }.joinToString("\n")
+        file.writeText("""
+            <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">
+              <rect width="100%" height="100%" fill="#ffffff"/>
+              <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#9aa3ad" stroke-width="8"/>
+              <text x="$cx" y="${cy + 5}" text-anchor="middle" font-size="16">${escapeSvg(seq.name)} (${seq.length} bp)</text>
+              $featureSvg
+            </svg>
+        """.trimIndent())
+    }
+
+    private fun svgArc(cx: Int, cy: Int, radius: Int, start: Double, end: Double): String {
+        val s = Math.toRadians(start)
+        val e = Math.toRadians(end)
+        val x1 = cx + cos(s) * radius
+        val y1 = cy + sin(s) * radius
+        val x2 = cx + cos(e) * radius
+        val y2 = cy + sin(e) * radius
+        val large = if (abs(end - start) > 180) 1 else 0
+        return "M $x1 $y1 A $radius $radius 0 $large 1 $x2 $y2"
+    }
+
+    private fun escapeSvg(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
     /** Refreshes the background after a look-and-feel change. */
     override fun updateUI() {
@@ -291,9 +370,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             g2.font = labelFont
             val fm = g2.fontMetrics
             val labels = ArrayList<CircularLabel>(seq.features.size)
-            seq.features.forEachIndexed { index, f ->
+            seq.features.filter { it.visible }.forEachIndexed { index, f ->
                 val ring = r - 24 - (ringOf[f] ?: 0) * 15
-                val color = Palette.featureColor(index)
+                val color = featureColor(f, index)
                 val startAngle = 90.0 - f.start * 360.0 / seq.length
                 val extent = -(f.length * 360.0 / seq.length)
                 g2.color = color
@@ -319,7 +398,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             }
 
             // Restriction sites outside the backbone.
-            val sites = doc.cutSites.sortedBy { it.topCut }
+            val sites = if (showRestrictionSites.isSelected) doc.cutSites.sortedBy { it.topCut } else emptyList()
             g2.font = labelFont
             for (site in sites) {
                 val a = angleOf(site.topCut)
@@ -344,7 +423,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             drawStringCentered(g2, "GC ${"%.1f".format(SeqOps.gcContent(seq))}%", centerX, centerY + 28)
 
             // Draw labels last so restriction marks and the backbone cannot obscure them.
-            drawCircularFeatureLabels(g2, labels, fm)
+            if (showFeatureLabels.isSelected) drawCircularFeatureLabels(g2, labels, fm)
         }
 
         /**
@@ -424,7 +503,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val laneH = 16
             g2.font = labelFont
             val fm = g2.fontMetrics
-            val calloutLabels = seq.features.mapIndexedNotNull { index, feature ->
+            val calloutLabels = seq.features.filter { it.visible }.mapIndexedNotNull { index, feature ->
                 val x1 = left + (feature.start.toDouble() / seq.length * span).roundToInt()
                 val x2 = left + (feature.end.toDouble() / seq.length * span).roundToInt()
                 val featureWidth = maxOf(4, x2 - x1)
@@ -471,13 +550,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 tick += tickStep
             }
 
-            seq.features.forEachIndexed { index, f ->
+            seq.features.filter { it.visible }.forEachIndexed { index, f ->
                 val lane = laneOf[f] ?: 0
                 val x1 = left + (f.start.toDouble() / seq.length * span).roundToInt()
                 val x2 = left + (f.end.toDouble() / seq.length * span).roundToInt()
                 val y = axisY - 24 - lane * laneH
                 val w = maxOf(4, x2 - x1)
-                val color = Palette.featureColor(index)
+                val color = featureColor(f, index)
                 g2.color = Palette.translucent(color, 0x99)
                 g2.fillRoundRect(x1, y, w, 12, 6, 6)
                 g2.color = color
@@ -489,9 +568,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 }
             }
 
-            drawLinearFeatureLabels(g2, placedLabels, axisY, laneH, labelRowHeight)
+            if (showFeatureLabels.isSelected) drawLinearFeatureLabels(g2, placedLabels, axisY, laneH, labelRowHeight)
 
-            if (doc.cutSites.isNotEmpty()) {
+            if (showRestrictionSites.isSelected && doc.cutSites.isNotEmpty()) {
                 g2.font = labelFont
                 for (site in doc.cutSites) {
                     val x = left + (site.topCut.toDouble() / seq.length * span).roundToInt()

@@ -222,10 +222,12 @@ class FileMenu(
         }
         val fastaFilter = FileNameExtensionFilter("FASTA", "fasta", "fa", "fna")
         val genbankFilter = FileNameExtensionFilter("GenBank", "gb", "gbk", "genbank")
+        val gffFilter = FileNameExtensionFilter("GFF3", "gff", "gff3")
         val chooser = JFileChooser().apply {
             fileSelectionMode = JFileChooser.FILES_ONLY
             addChoosableFileFilter(fastaFilter)
             addChoosableFileFilter(genbankFilter)
+            addChoosableFileFilter(gffFilter)
             // Annotated or circular documents default to GenBank: FASTA would lose the plasmid map.
             fileFilter = if (SeqIO.preferredSaveFormat(seqDoc.seq) == SeqFormat.GENBANK) genbankFilter else fastaFilter
         }
@@ -234,7 +236,11 @@ class FileMenu(
             var file = chooser.selectedFile
             val chosen = chooser.fileFilter
             if (!file.name.contains(".")) {
-                val ext = if (chosen == genbankFilter) "gb" else "fasta"
+                val ext = when (chosen) {
+                    genbankFilter -> "gb"
+                    gffFilter -> "gff3"
+                    else -> "fasta"
+                }
                 file = File(file.parentFile, file.name + "." + ext)
             }
             if (wouldLosePlasmidData(file)) {
