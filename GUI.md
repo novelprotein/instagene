@@ -329,7 +329,7 @@ engine module — the same code the CLI and desktop GUI use.
 - [x] Sequence identity generation
 - [x] Molecular dilution and master-mix calculations
 - [x] Editable SVG/PNG plasmid map export
-- [ ] NCBI and chromatogram integrations
+- [x] NCBI and chromatogram integrations
 - [ ] Full Golden Gate/recombination designer dialogs
 - [x] Theme support (dark mode)
 - [x] Tabbed multi-file editing

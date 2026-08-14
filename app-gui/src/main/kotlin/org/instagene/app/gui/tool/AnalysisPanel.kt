@@ -6,6 +6,8 @@ import org.instagene.core.Alignment
 import org.instagene.core.AlignmentParameters
 import org.instagene.core.Assembly
 import org.instagene.core.AssemblyWorkflows
+import org.instagene.core.BlastSearchResult
+import org.instagene.core.BlastStatus
 import org.instagene.core.ChromatogramReader
 import org.instagene.core.Enzyme
 import org.instagene.core.EnzymeAnalysis
@@ -24,13 +26,11 @@ import org.instagene.core.SequenceIdentity
 import org.instagene.core.VirtualGel
 import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
-import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.GridLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
-import java.net.URI
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.DefaultListModel
@@ -58,6 +58,8 @@ class AnalysisPanel(
     initial: SeqDocument,
     private val onOpenSequence: (Seq) -> Unit,
     private val onReveal: (Int, Int) -> Unit,
+    private val ncbiClient: NcbiClient = NcbiClient(),
+    private val ncbiPollIntervalMillis: Long = 60_000L,
 ) : JPanel(BorderLayout()) {
     private var doc = initial
     private var listener: SeqDocument.Listener? = null
@@ -68,7 +70,7 @@ class AnalysisPanel(
     private val assembly = AssemblyAnalysisPanel(onOpenSequence)
     private val gel = GelAnalysisPanel()
     private val calculators = CalculatorAnalysisPanel()
-    private val ncbi = NcbiAnalysisPanel(onOpenSequence)
+    private val ncbi = NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis)
     private val chromatogram = ChromatogramAnalysisPanel()
 
     init {
@@ -398,60 +400,150 @@ private class CalculatorAnalysisPanel : BoundAnalysisPanel() {
     }
 }
 
-private class NcbiAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) : BoundAnalysisPanel() {
+private class NcbiAnalysisPanel(
+    private val onOpenSequence: (Seq) -> Unit,
+    private val client: NcbiClient,
+    pollIntervalMillis: Long,
+) : BoundAnalysisPanel() {
+    private val pollIntervalMillis = pollIntervalMillis.coerceAtLeast(0L)
     private val term = JTextField(30)
-    private val model = DefaultTableModel(arrayOf("Accession", "Title"), 0)
-    private val table = JTable(model)
+    private val nucleotideModel = tableModel("Accession", "Title", "Organism", "Length", "Molecule type")
+    private val nucleotideTable = JTable(nucleotideModel)
+    private val blastModel = tableModel(
+        "Query", "Subject", "% identity", "Alignment length", "Mismatches", "Gap openings",
+        "Query start", "Query end", "Subject start", "Subject end", "E-value", "Bit score",
+    )
+    private val blastTable = JTable(blastModel)
+    private val resultTabs = JTabbedPane()
     private val output = output()
+    private val searchButton = JButton("Search NCBI")
+    private val fetchButton = JButton("Fetch selected GenBank")
+    private val blastButton = JButton("Run BLAST")
     private var hits = emptyList<org.instagene.core.NcbiHit>()
+    private var searchWorker: SwingWorker<*, *>? = null
+    private var fetchWorker: SwingWorker<*, *>? = null
+    private var blastWorker: SwingWorker<*, *>? = null
+    private var requestGeneration = 0
 
     init {
-        val search = JButton("Search NCBI")
-        search.addActionListener { search() }
-        val fetch = JButton("Fetch selected GenBank")
-        fetch.addActionListener { fetch() }
-        val blast = JButton("Open BLAST")
-        blast.addActionListener { openBlast() }
-        add(row(JLabel("Nucleotide search"), term, search, fetch, blast), BorderLayout.NORTH)
-        add(JScrollPane(table), BorderLayout.CENTER)
+        searchButton.addActionListener { search() }
+        fetchButton.addActionListener { fetch() }
+        blastButton.addActionListener { runBlast() }
+        fetchButton.isEnabled = false
+        nucleotideTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+        nucleotideTable.selectionModel.addListSelectionListener {
+            fetchButton.isEnabled = nucleotideTable.selectedRow in hits.indices
+        }
+        blastTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+        resultTabs.addTab("Nucleotide records", JScrollPane(nucleotideTable))
+        resultTabs.addTab("BLAST results", JScrollPane(blastTable))
+        add(row(JLabel("Nucleotide search"), term, searchButton, fetchButton, blastButton), BorderLayout.NORTH)
+        add(resultTabs, BorderLayout.CENTER)
         add(JScrollPane(output).apply { preferredSize = java.awt.Dimension(10, 80) }, BorderLayout.SOUTH)
+    }
+
+    override fun refreshDocument() {
+        blastButton.isEnabled = doc.seq.kind != SeqKind.PROTEIN && doc.seq.bases.isNotBlank()
     }
 
     private fun search() {
         val query = term.text.trim()
         if (query.isEmpty()) return
+        requestGeneration++
+        val generation = requestGeneration
+        searchWorker?.cancel(true)
+        searchButton.isEnabled = false
+        fetchButton.isEnabled = false
         output.text = "Searching NCBI..."
-        object : SwingWorker<org.instagene.core.NcbiSearchResult, Unit>() {
-            override fun doInBackground() = NcbiClient().searchNucleotide(query)
+        searchWorker = object : SwingWorker<org.instagene.core.NcbiSearchResult, Unit>() {
+            override fun doInBackground() = client.searchNucleotide(query)
+
             override fun done() {
+                if (generation != requestGeneration || isCancelled) return
                 runCatching { get() }.onSuccess { result ->
                     hits = result.hits
-                    model.rowCount = 0
-                    hits.forEach { model.addRow(arrayOf<Any?>(it.accession, it.title)) }
-                    output.text = "${hits.size} result(s)."
+                    nucleotideModel.rowCount = 0
+                    hits.forEach {
+                        nucleotideModel.addRow(arrayOf<Any?>(it.accession, it.title, it.organism, it.length, it.moleculeType))
+                    }
+                    output.text = "${hits.size} result(s) shown${if (result.totalCount > hits.size) " of ${result.totalCount}" else ""}."
                 }.onFailure { output.text = it.message ?: "NCBI search failed" }
+                searchButton.isEnabled = true
             }
-        }.execute()
+        }.also { it.execute() }
     }
 
     private fun fetch() {
-        val row = table.selectedRow
+        val row = nucleotideTable.selectedRow
         if (row !in hits.indices) return
+        fetchWorker?.cancel(true)
+        fetchButton.isEnabled = false
         output.text = "Fetching ${hits[row].accession}..."
-        object : SwingWorker<Seq, Unit>() {
-            override fun doInBackground() = NcbiClient().fetchGenBank(hits[row].accession)
+        fetchWorker = object : SwingWorker<Seq, Unit>() {
+            override fun doInBackground() = client.fetchGenBank(hits[row].accession)
+
             override fun done() {
-                runCatching { onOpenSequence(get()) }.onFailure { output.text = it.message ?: "NCBI fetch failed" }
+                runCatching { get() }
+                    .onSuccess {
+                        onOpenSequence(it)
+                        output.text = "Opened ${hits[row].accession} in a new sequence tab."
+                    }
+                    .onFailure { output.text = it.message ?: "NCBI fetch failed" }
+                fetchButton.isEnabled = nucleotideTable.selectedRow in hits.indices
             }
-        }.execute()
+        }.also { it.execute() }
     }
 
-    private fun openBlast() {
-        runCatching {
-            val uri = NcbiClient().blastUrl(doc.seq, selection = if (doc.hasSelection) doc.selectionStart until doc.selectionEnd else null)
-            if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(uri)
-            uri
-        }.onSuccess { output.text = "Opened $it" }.onFailure { output.text = it.message ?: "Unable to open BLAST" }
+    private fun runBlast() {
+        if (doc.seq.kind == SeqKind.PROTEIN || doc.seq.bases.isBlank()) return
+        requestGeneration++
+        val generation = requestGeneration
+        blastWorker?.cancel(true)
+        blastButton.isEnabled = false
+        resultTabs.selectedIndex = 1
+        blastModel.rowCount = 0
+        output.text = "Submitting BLASTN to NCBI..."
+        val source = doc.seq
+        val selection = if (doc.hasSelection) doc.selectionStart until doc.selectionEnd else null
+        blastWorker = object : SwingWorker<BlastSearchResult, String>() {
+            override fun doInBackground(): BlastSearchResult {
+                val submission = client.submitBlastN(source, selection)
+                publish("BLAST request ${submission.rid} submitted; waiting for NCBI...")
+                var status = client.blastStatus(submission.rid)
+                while (status.status == BlastStatus.WAITING) {
+                    check(!isCancelled) { "BLAST request cancelled" }
+                    publish("BLAST request ${submission.rid} is still running...")
+                    Thread.sleep(pollIntervalMillis)
+                    status = client.blastStatus(submission.rid)
+                }
+                if (status.status != BlastStatus.READY) error(status.message.ifBlank { "NCBI BLAST failed" })
+                return client.fetchBlastResults(submission.rid)
+            }
+
+            override fun process(chunks: MutableList<String>) {
+                if (chunks.isNotEmpty()) output.text = chunks.last()
+            }
+
+            override fun done() {
+                if (generation != requestGeneration || isCancelled) return
+                runCatching { get() }.onSuccess { result ->
+                    blastModel.rowCount = 0
+                    result.hits.forEach {
+                        blastModel.addRow(arrayOf<Any?>(
+                            it.queryId, it.subjectId, it.percentIdentity, it.alignmentLength, it.mismatches,
+                            it.gapOpenings, it.queryStart, it.queryEnd, it.subjectStart, it.subjectEnd,
+                            it.eValue, it.bitScore,
+                        ))
+                    }
+                    output.text = if (result.hits.isEmpty()) "BLAST completed with no hits." else "${result.hits.size} BLAST hit(s) shown."
+                }.onFailure { output.text = it.message ?: "NCBI BLAST failed" }
+                blastButton.isEnabled = doc.seq.kind != SeqKind.PROTEIN && doc.seq.bases.isNotBlank()
+            }
+        }.also { it.execute() }
+    }
+
+    private fun tableModel(vararg columns: String): DefaultTableModel = object : DefaultTableModel(columns, 0) {
+        override fun isCellEditable(row: Int, column: Int): Boolean = false
     }
 }
 
