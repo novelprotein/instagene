@@ -8,6 +8,9 @@ import org.instagene.app.gui.dialog.SettingsDialog
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.tool.DigestPanel
+import org.instagene.app.gui.tool.FeaturesPanel
+import org.instagene.app.gui.tool.LibraryPanel
+import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.core.Enzyme
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
@@ -22,6 +25,9 @@ class ToolsMenu(
     private val doc: SeqDocument,
     private val digestPanel: DigestPanel,
     private val prefs: Prefs = Prefs(),
+    private val featuresPanel: FeaturesPanel? = null,
+    private val primersPanel: PrimersPanel? = null,
+    private val libraryPanel: LibraryPanel? = null,
     private val onAnalysis: (String) -> Unit = {},
 ) {
 
@@ -35,14 +41,43 @@ class ToolsMenu(
     private val identityItem = JMenuItem("Sequence Identity...")
     private val calculatorItem = JMenuItem("Molecular Calculator...")
     private val settingsItem = JMenuItem("Settings...")
+    private val diagnosticItem = JMenuItem("Diagnostic Sites...")
+
+    private val addFeatureFromSelectionItem = JMenuItem("Add Feature from Selection...")
+    private val addFeatureManualItem = JMenuItem("Add Feature Manually...")
+    private val autoAnnotateItem = JMenuItem("Auto-annotate...")
+    private val editFeatureElementItem = JMenuItem("Edit Element...")
+    private val saveFeatureItem = JMenuItem("Save Feature to Library")
+    private val deleteFeatureItem = JMenuItem("Delete")
+
+    private val designPrimersItem = JMenuItem("Design Primers...")
+    private val advancedCandidatesItem = JMenuItem("Advanced Candidates...")
+    private val copyFastaItem = JMenuItem("Copy as FASTA")
+    private val savePrimersItem = JMenuItem("Save Primers to Library")
+    private val addPrimersToFeaturesItem = JMenuItem("Add Primers to Features")
+    private val editPrimerElementItem = JMenuItem("Edit Element...")
+
+    private val addLibraryItem = JMenuItem("Add Item...")
+    private val insertAtCaretItem = JMenuItem("Insert at Caret")
+    private val copyLibraryItem = JMenuItem("Copy")
+    private val openLibraryItem = JMenuItem("Open as Sequence")
+    private val jumpToSourceItem = JMenuItem("Jump to Source")
+    private val editLibraryItem = JMenuItem("Edit Element...")
+    private val deleteLibraryItem = JMenuItem("Delete")
+
     private val analysisMenu = createAnalysisMenu()
     private val commonEnzymesMenu = createCommonEnzymesMenu()
+    private val featuresMenu = createFeaturesMenu()
+    private val primersMenu = createPrimersMenu()
+    private val libraryMenu = createLibraryMenu()
 
     init {
-        doc.addListener { _, reason ->
-            if (reason == SeqDocument.Reason.SEQUENCE) syncEnabled()
+        doc.addListener { _, _ -> syncEnabled() }
+        prefs.addListener {
+            rebuildCommonEnzymes()
+            syncEnabled()
         }
-        prefs.addListener { rebuildCommonEnzymes() }
+        libraryPanel?.onStateChanged = { syncEnabled() }
         syncEnabled()
     }
 
@@ -58,6 +93,32 @@ class ToolsMenu(
         gelItem.isEnabled = dna
         makeCircularItem.isEnabled = nucleotide && !seq.isCircular
         makeLinearItem.isEnabled = nucleotide && seq.isCircular
+        diagnosticItem.isEnabled = digestPanel.selectedEnzymes().isNotEmpty()
+
+        val fp = featuresPanel
+        addFeatureFromSelectionItem.isEnabled = fp?.isAddEnabled() == true
+        addFeatureManualItem.isEnabled = fp?.isManualAddEnabled() == true
+        autoAnnotateItem.isEnabled = fp?.isAutoAnnotateEnabled() == true
+        editFeatureElementItem.isEnabled = fp?.isEditElementEnabled() == true
+        saveFeatureItem.isEnabled = fp?.isSaveFeatureEnabled() == true
+        deleteFeatureItem.isEnabled = fp?.isDeleteEnabled() == true
+
+        val pp = primersPanel
+        designPrimersItem.isEnabled = pp?.isDesignEnabled() == true
+        advancedCandidatesItem.isEnabled = nucleotide
+        copyFastaItem.isEnabled = pp?.areResultActionsEnabled() == true
+        savePrimersItem.isEnabled = pp?.areResultActionsEnabled() == true
+        addPrimersToFeaturesItem.isEnabled = pp?.areResultActionsEnabled() == true
+        editPrimerElementItem.isEnabled = pp?.isEditElementEnabled() == true
+
+        val lp = libraryPanel
+        addLibraryItem.isEnabled = true
+        insertAtCaretItem.isEnabled = lp?.isInsertEnabled() == true
+        copyLibraryItem.isEnabled = lp?.isCopyEnabled() == true
+        openLibraryItem.isEnabled = lp?.isOpenEnabled() == true
+        jumpToSourceItem.isEnabled = lp?.isJumpToSourceEnabled() == true
+        editLibraryItem.isEnabled = lp?.isEditElementEnabled() == true
+        deleteLibraryItem.isEnabled = lp?.isDeleteEnabled() == true
     }
 
     fun create(): JMenu {
@@ -75,6 +136,10 @@ class ToolsMenu(
                 }
             })
             addSeparator()
+            add(featuresMenu)
+            add(primersMenu)
+            add(libraryMenu)
+            addSeparator()
             add(addEnzymeItem.apply {
                 addActionListener { addEnzymeByDialog() }
             })
@@ -86,6 +151,9 @@ class ToolsMenu(
             })
             addSeparator()
             add(commonEnzymesMenu)
+            add(diagnosticItem.apply {
+                addActionListener { AnalysisDialogs.showDiagnostic(null, doc, digestPanel.selectedEnzymes()) }
+            })
             addSeparator()
             add(alignItem.apply { addActionListener { AnalysisDialogs.showAlignment(null, doc) } })
             add(gelItem.apply { addActionListener { AnalysisDialogs.showGel(null, doc) } })
@@ -129,6 +197,79 @@ class ToolsMenu(
         add(JMenuItem("Simulate Agarose Gel").apply {
             toolTipText = "Open the configurable virtual agarose gel workspace."
             addActionListener { onAnalysis("Virtual Gel") }
+        })
+    }
+
+    /** Feature annotation actions, mirroring the Features panel buttons. */
+    private fun createFeaturesMenu(): JMenu = JMenu("Features").apply {
+        add(addFeatureFromSelectionItem.apply {
+            addActionListener { featuresPanel?.addFeatureDialog() }
+        })
+        add(addFeatureManualItem.apply {
+            addActionListener { featuresPanel?.manualAddDialog() }
+        })
+        add(autoAnnotateItem.apply {
+            addActionListener { featuresPanel?.autoAnnotateDialog() }
+        })
+        addSeparator()
+        add(editFeatureElementItem.apply {
+            addActionListener { featuresPanel?.editSelectedFeatureElement() }
+        })
+        add(saveFeatureItem.apply {
+            addActionListener { featuresPanel?.saveSelectedFeature() }
+        })
+        add(deleteFeatureItem.apply {
+            addActionListener { featuresPanel?.deleteSelectedFeature() }
+        })
+    }
+
+    /** Primer design actions, mirroring the Primers panel buttons. */
+    private fun createPrimersMenu(): JMenu = JMenu("Primers").apply {
+        add(designPrimersItem.apply {
+            addActionListener { primersPanel?.designAndPrompt() }
+        })
+        add(advancedCandidatesItem.apply {
+            addActionListener { primersPanel?.showAdvancedCandidates() }
+        })
+        addSeparator()
+        add(copyFastaItem.apply {
+            addActionListener { primersPanel?.copyAsFasta() }
+        })
+        add(savePrimersItem.apply {
+            addActionListener { primersPanel?.savePrimers() }
+        })
+        add(addPrimersToFeaturesItem.apply {
+            addActionListener { primersPanel?.addPrimersToFeatures() }
+        })
+        add(editPrimerElementItem.apply {
+            addActionListener { primersPanel?.editSelectedPrimerElement() }
+        })
+    }
+
+    /** Library actions, mirroring the Library panel buttons. */
+    private fun createLibraryMenu(): JMenu = JMenu("Library").apply {
+        add(addLibraryItem.apply {
+            addActionListener { libraryPanel?.showAddItemDialog() }
+        })
+        addSeparator()
+        add(insertAtCaretItem.apply {
+            addActionListener { libraryPanel?.insertSelectedRow() }
+        })
+        add(copyLibraryItem.apply {
+            addActionListener { libraryPanel?.copySelectedRow() }
+        })
+        add(openLibraryItem.apply {
+            addActionListener { libraryPanel?.openSelectedRow() }
+        })
+        add(jumpToSourceItem.apply {
+            addActionListener { libraryPanel?.jumpToSourceRow() }
+        })
+        addSeparator()
+        add(editLibraryItem.apply {
+            addActionListener { libraryPanel?.editSelectedRow() }
+        })
+        add(deleteLibraryItem.apply {
+            addActionListener { libraryPanel?.deleteSelectedRow() }
         })
     }
 

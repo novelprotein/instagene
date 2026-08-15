@@ -222,6 +222,12 @@ class FeaturesPanel(
     /** Exposed for tests: whether "Add Feature Manually..." is currently enabled. */
     fun isManualAddEnabled(): Boolean = manualAddButton.isEnabled
 
+    /** Whether "Auto-annotate..." is available for the current document. */
+    fun isAutoAnnotateEnabled(): Boolean = autoAnnotateButton.isEnabled
+
+    /** Whether "Edit Element..." can act on the currently selected feature row. */
+    fun isEditElementEnabled(): Boolean = editElementButton.isEnabled
+
     /** Exposed for tests: the currently selected feature row, -1 when none. */
     fun selectedFeatureRow(): Int = featureTable.selectedRow
 
@@ -394,7 +400,7 @@ class FeaturesPanel(
         return true
     }
 
-    private fun addFeatureDialog() {
+    fun addFeatureDialog() {
         if (!doc.hasSelection || doc.selectionEnd <= doc.selectionStart) return
         val nameField = JTextField(20)
         val typeField = JComboBox(TYPES.toTypedArray())
@@ -424,7 +430,7 @@ class FeaturesPanel(
         }
     }
 
-    private fun manualAddDialog() {
+    fun manualAddDialog() {
         if (doc.seq.length == 0) return
         val nameField = JTextField(20)
         val typeField = JComboBox(TYPES.toTypedArray())
@@ -473,7 +479,7 @@ class FeaturesPanel(
     }
 
     /** Applies simple pattern-backed feature definitions to the current sequence. */
-    private fun autoAnnotateDialog() {
+    fun autoAnnotateDialog() {
         if (doc.seq.kind == SeqKind.PROTEIN || doc.seq.length == 0) return
         val patterns = JTextArea(
             prefs.value.featureLibrary.takeIf { it.isNotEmpty() }?.joinToString("\n") { "${it.name}|${it.type}|${it.pattern}" }
@@ -522,8 +528,14 @@ class FeaturesPanel(
         summary.text = "Auto-annotated $added feature(s) from ${definitions.size} definition(s)."
     }
 
-    private fun deleteSelectedFeature() {
+    /** Deletes the feature currently selected in the table (undoable). */
+    fun deleteSelectedFeature() {
         deleteFeature(featureTable.selectedRow)
+    }
+
+    /** Opens the visible GUI editor for the feature currently selected in the table. */
+    fun editSelectedFeatureElement() {
+        editFeatureElement(featureTable.selectedRow)
     }
 
     /** Opens the visible GUI editor for every editable field of the selected feature. */

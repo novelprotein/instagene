@@ -796,6 +796,11 @@ class InstaGeneContent(
                 doc,
                 if (doc is SeqDocument) SequenceEditActions(sequenceView, doc) else TextEditActions(textEditorView),
                 prefs,
+                featuresPanel = featuresPanel,
+                onEditProperties = {
+                    toolTabs.selectedIndex = toolTabs.indexOfTab("Info")
+                    infoPanel.nameField.requestFocusInWindow()
+                },
             ),
             view = ViewMenu(
                 menusDoc,
@@ -803,8 +808,16 @@ class InstaGeneContent(
                 prefs,
                 isFileBrowserVisible = { fileBrowserVisible },
                 onFileBrowserVisible = { visible -> setFileBrowserVisible(visible) },
+                onSelectToolTab = { name -> toolTabs.selectedIndex = toolTabs.indexOfTab(name) },
             ),
-            tools = ToolsMenu(menusDoc, digestPanel, prefs) { name -> analysisPanel.selectTool(name) },
+            tools = ToolsMenu(
+                menusDoc,
+                digestPanel,
+                prefs,
+                featuresPanel = featuresPanel,
+                primersPanel = primersPanel,
+                libraryPanel = libraryPanel,
+            ) { name -> analysisPanel.selectTool(name) },
         )
     }
 

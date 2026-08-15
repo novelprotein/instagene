@@ -4,6 +4,7 @@ import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.document.Doc
 import org.instagene.app.gui.menu.menuShortcut
+import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
@@ -20,6 +21,8 @@ class EditMenu(
     private val doc: Doc,
     private val editor: EditActions,
     private val prefs: Prefs = Prefs(),
+    private val featuresPanel: FeaturesPanel? = null,
+    private val onEditProperties: (() -> Unit)? = null,
 ) {
 
     private val undoItem = JMenuItem("Undo", KeyEvent.VK_Z).apply {
@@ -32,11 +35,25 @@ class EditMenu(
         addActionListener { editor.redo() }
     }
 
+    /** Annotates the current selection as a feature (sequence documents only). */
+    private val addFeatureItem = JMenuItem("Add Feature from Selection...").apply {
+        addActionListener { featuresPanel?.addFeatureDialog() }
+    }
+
+    /** Jumps to the sequence's editable name/properties on the Info tab. */
+    private val editPropertiesItem = JMenuItem("Edit Name / Properties...").apply {
+        addActionListener { onEditProperties?.invoke() }
+    }
+
     private var lastPattern: String? = null
 
     init {
-        doc.addDocListener { refreshUndoRedo() }
+        doc.addDocListener {
+            refreshUndoRedo()
+            refreshFeatureItems()
+        }
         refreshUndoRedo()
+        refreshFeatureItems()
     }
 
     /** Keeps the Undo/Redo items' labels and enabled state in step with the document history. */
@@ -45,6 +62,13 @@ class EditMenu(
         redoItem.isEnabled = editor.canRedo()
         undoItem.text = editor.undoLabel()?.let { "Undo $it" } ?: "Undo"
         redoItem.text = editor.redoLabel()?.let { "Redo $it" } ?: "Redo"
+    }
+
+    /** Keeps the sequence-only items in step with the current selection. */
+    private fun refreshFeatureItems() {
+        val seqDoc = doc as? SeqDocument ?: return
+        addFeatureItem.isEnabled = seqDoc.hasSelection && seqDoc.selectionEnd > seqDoc.selectionStart
+        editPropertiesItem.isEnabled = true
     }
 
     fun create(): JMenu {
@@ -66,6 +90,9 @@ class EditMenu(
             addSeparator()
             if (doc is SeqDocument) {
                 add(createSaveSelectionItem())
+                addSeparator()
+                add(addFeatureItem)
+                add(editPropertiesItem)
             }
         }
     }

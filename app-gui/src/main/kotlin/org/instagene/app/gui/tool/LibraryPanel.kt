@@ -122,6 +122,9 @@ class LibraryPanel(
         })
     }
 
+    /** Called after the action-button state changes (row selection or library edits), for menu sync. */
+    var onStateChanged: (() -> Unit)? = null
+
     private fun updateActionState() {
         val item = prefs.value.library.getOrNull(libraryTable.selectedRow)
         val hasRow = item != null
@@ -136,7 +139,26 @@ class LibraryPanel(
         } else {
             "${libraryModel.rowCount} saved item(s)."
         }
+        onStateChanged?.invoke()
     }
+
+    /** Exposed for tests and menus: whether "Insert at caret" can act on the selected row. */
+    fun isInsertEnabled(): Boolean = insertButton.isEnabled
+
+    /** Exposed for tests and menus: whether "Copy" can act on the selected row. */
+    fun isCopyEnabled(): Boolean = copyButton.isEnabled
+
+    /** Exposed for tests and menus: whether "Open as sequence" can act on the selected row. */
+    fun isOpenEnabled(): Boolean = openButton.isEnabled
+
+    /** Exposed for tests and menus: whether "Jump to source" can act on the selected row. */
+    fun isJumpToSourceEnabled(): Boolean = jumpButton.isEnabled
+
+    /** Exposed for tests and menus: whether "Edit Element..." can act on the selected row. */
+    fun isEditElementEnabled(): Boolean = editElementButton.isEnabled
+
+    /** Exposed for tests and menus: whether "Delete" can act on the selected row. */
+    fun isDeleteEnabled(): Boolean = deleteButton.isEnabled
 
     private fun libraryPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
         val item = row?.let { prefs.value.library.getOrNull(it) }
@@ -339,7 +361,25 @@ class LibraryPanel(
         SeqKind.PROTEIN -> bases.uppercase()
     }
 
-    private fun copySelected(row: Int) {
+    /** Acts on the currently selected library row; used by the menu bar. */
+    fun insertSelectedRow() = insertSelected(libraryTable.selectedRow)
+
+    /** Acts on the currently selected library row; used by the menu bar. */
+    fun copySelectedRow() = copySelected(libraryTable.selectedRow)
+
+    /** Acts on the currently selected library row; used by the menu bar. */
+    fun openSelectedRow() = openSelected(libraryTable.selectedRow)
+
+    /** Acts on the currently selected library row; used by the menu bar. */
+    fun jumpToSourceRow() = jumpToSource(libraryTable.selectedRow)
+
+    /** Acts on the currently selected library row; used by the menu bar. */
+    fun editSelectedRow() = editSelected(libraryTable.selectedRow)
+
+    /** Acts on the currently selected library row; used by the menu bar. */
+    fun deleteSelectedRow() = deleteSelected(libraryTable.selectedRow)
+
+    fun copySelected(row: Int) {
         val item = prefs.value.library.getOrNull(row) ?: return
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(item.bases), null)
     }
@@ -374,7 +414,7 @@ class LibraryPanel(
         )
     }
 
-    private fun showAddItemDialog() {
+    fun showAddItemDialog() {
         val kindField = JComboBox(SavedKind.entries.toTypedArray())
         val moleculeField = JComboBox(arrayOf(SeqKind.DNA, SeqKind.RNA)).apply {
             selectedItem = doc.seq.kind.takeIf { it != SeqKind.PROTEIN } ?: SeqKind.DNA
@@ -445,7 +485,7 @@ class LibraryPanel(
     }
 
     /** Opens the visible editor for the selected library item. */
-    private fun editSelected(row: Int) {
+    fun editSelected(row: Int) {
         val item = prefs.value.library.getOrNull(row) ?: return
         val nameField = JTextField(item.name, 24)
         val moleculeField = JComboBox(arrayOf(SeqKind.DNA, SeqKind.RNA)).apply {

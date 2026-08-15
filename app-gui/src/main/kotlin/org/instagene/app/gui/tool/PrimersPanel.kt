@@ -189,7 +189,7 @@ class PrimersPanel(
         })
     }
 
-    private fun showAdvancedCandidates() {
+    fun showAdvancedCandidates() {
         if (doc.seq.kind == SeqKind.PROTEIN) return
         val (start, end) = toRange()
         if (start !in 0 until doc.seq.length || end <= start || end > doc.seq.length) return
@@ -376,6 +376,11 @@ class PrimersPanel(
         return true
     }
 
+    /** Designs primers and, when a pair is found, prompts to annotate them, matching the button. */
+    fun designAndPrompt() {
+        if (design()) promptToAddPrimersToFeatures()
+    }
+
     /** Programmatic design over `[start, end)` (0-based), used by tests. */
     fun designAmplicon(start: Int, end: Int, tm: Double = 60.0) {
         fromField.text = (start + 1).toString()
@@ -457,10 +462,15 @@ class PrimersPanel(
         return true
     }
 
-    private fun copyAsFasta() {
+    fun copyAsFasta() {
         val pair = result ?: return
         val fasta = listOf(pair.first, pair.second).joinToString("\n") { ">${it.name}\n${it.bases}" }
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(fasta), null)
+    }
+
+    /** Opens the visible GUI editor for the primer currently selected in the results table. */
+    fun editSelectedPrimerElement() {
+        editPrimerElement(resultsTable.selectedRow)
     }
 
     /** Stores the last designed pair in the library, tagged with the amplicon context. */
@@ -513,6 +523,9 @@ class PrimersPanel(
 
     /** Whether Copy and Save have a designed primer pair to act on. */
     fun areResultActionsEnabled(): Boolean = copyButton.isEnabled && saveButton.isEnabled
+
+    /** Whether "Edit Element..." can act on the currently selected primer row. */
+    fun isEditElementEnabled(): Boolean = editElementButton.isEnabled
 
     /** Exposed for tests and the GUI: the description for a designed-primer row. */
     fun primerDescription(row: Int): String = descriptions.getOrNull(row).orEmpty()

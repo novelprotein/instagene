@@ -15,6 +15,7 @@ class ViewMenu(
     private val prefs: Prefs = Prefs(),
     private val isFileBrowserVisible: () -> Boolean = { true },
     private val onFileBrowserVisible: (Boolean) -> Unit = {},
+    private val onSelectToolTab: ((String) -> Unit)? = null,
 ) {
 
     private val complementItem = JCheckBoxMenuItem("Show Complement Strand", true)
@@ -58,6 +59,8 @@ class ViewMenu(
             add(createZoomOutItem())
             add(createResetZoomItem())
             addSeparator()
+            add(createPanelsMenu())
+            addSeparator()
             add(createThemeMenu(prefs))
             addSeparator()
             syncFileBrowser()
@@ -78,6 +81,18 @@ class ViewMenu(
     /** Reflects the project browser's current state in [fileBrowserItem]. */
     fun syncFileBrowser() {
         fileBrowserItem.isSelected = isFileBrowserVisible()
+    }
+
+    /** Navigation to each of the main tool tabs below the sequence editor. */
+    private fun createPanelsMenu(): JMenu = JMenu("Panels").apply {
+        listOf(
+            "Info", "Map", "Sequence", "Enzyme", "Analysis",
+            "Features", "Primers", "Library", "History",
+        ).forEach { name ->
+            add(JMenuItem(name).apply {
+                addActionListener { onSelectToolTab?.invoke(name) }
+            })
+        }
     }
 
     private fun createZoomInItem(): JMenuItem {

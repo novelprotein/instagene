@@ -7,6 +7,8 @@ import org.instagene.app.gui.edit.SequenceEditActions
 import org.instagene.app.gui.edit.TextEditActions
 import org.instagene.app.gui.enzyme.EnzymeManagerModel
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.prefs.SavedItem
+import org.instagene.core.Enzymes
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
@@ -536,6 +538,96 @@ class GuiSmokeTest {
             val dnaDoc = SeqDocument(Seq(bases = "ACGTACGT"))
             val dnaMenu = ViewMenu(dnaDoc, SequenceView(dnaDoc)).create()
             assertTrue(menuItem(dnaMenu, "Show Complement Strand").isEnabled)
+        }
+    }
+
+    @Test
+    fun editMenuExposesFeatureAndPropertiesItems() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGTACGT"))
+            val view = SequenceView(doc)
+            val features = FeaturesPanel(doc, Prefs()) { _, _ -> }
+            val menu = EditMenu(null, doc, SequenceEditActions(view, doc), Prefs(), featuresPanel = features).create()
+
+            val addFeature = menuItem(menu, "Add Feature from Selection...")
+            assertFalse(addFeature.isEnabled)
+            assertTrue(menuItem(menu, "Edit Name / Properties...").isEnabled)
+
+            doc.select(1, 4)
+            assertTrue(addFeature.isEnabled)
+            doc.moveCaret(0)
+            assertFalse(addFeature.isEnabled)
+        }
+    }
+
+    @Test
+    fun viewMenuPanelsNavigateToToolTabs() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "ACGT"))
+            var selected: String? = null
+            val menu = ViewMenu(doc, SequenceView(doc), onSelectToolTab = { selected = it }).create()
+            val panels = submenu(menu, "Panels")
+            listOf(
+                "Info", "Map", "Sequence", "Enzyme", "Analysis",
+                "Features", "Primers", "Library", "History",
+            ).forEach { assertTrue(menuItem(panels, it).isEnabled) }
+            menuItem(panels, "Enzyme").doClick()
+            assertEquals("Enzyme", selected)
+        }
+    }
+
+    @Test
+    fun toolsMenuExposesPanelSubmenusAndSyncsEnabledState() {
+        onEdt {
+            val doc = SeqDocument(Seq(bases = "AAAGAATTCCCGAATTCTTT"))
+            val view = SequenceView(doc)
+            val prefs = Prefs()
+            val digest = DigestPanel(doc, {}, { _, _ -> }, prefs)
+            val features = FeaturesPanel(doc, prefs) { _, _ -> }
+            val primers = PrimersPanel(doc, prefs)
+            val library = LibraryPanel(prefs, doc, view) { _ -> }
+            val tools = ToolsMenu(
+                doc, digest, prefs,
+                featuresPanel = features,
+                primersPanel = primers,
+                libraryPanel = library,
+            ).create()
+
+            val featuresMenu = submenu(tools, "Features")
+            val primersMenu = submenu(tools, "Primers")
+            val libraryMenu = submenu(tools, "Library")
+
+            assertFalse(menuItem(featuresMenu, "Add Feature from Selection...").isEnabled)
+            assertTrue(menuItem(featuresMenu, "Add Feature Manually...").isEnabled)
+            assertTrue(menuItem(featuresMenu, "Auto-annotate...").isEnabled)
+            doc.select(1, 4)
+            assertTrue(menuItem(featuresMenu, "Add Feature from Selection...").isEnabled)
+
+            doc.mutate("add feature") { it.withFeature(Feature("ori", start = 1, end = 4)) }
+            assertTrue(menuItem(featuresMenu, "Edit Element...").isEnabled)
+            assertTrue(menuItem(featuresMenu, "Save Feature to Library").isEnabled)
+            assertTrue(menuItem(featuresMenu, "Delete").isEnabled)
+
+            assertTrue(menuItem(primersMenu, "Design Primers...").isEnabled)
+            assertTrue(menuItem(primersMenu, "Advanced Candidates...").isEnabled)
+
+            assertTrue(menuItem(libraryMenu, "Add Item...").isEnabled)
+            assertFalse(menuItem(libraryMenu, "Insert at Caret").isEnabled)
+            assertFalse(menuItem(libraryMenu, "Open as Sequence").isEnabled)
+            library.addItem(SavedItem(SavedKind.FRAGMENT, "frag", "AAAA"))
+            library.libraryTable.setRowSelectionInterval(0, 0)
+            doc.moveCaret(doc.caret)
+            assertTrue(menuItem(libraryMenu, "Insert at Caret").isEnabled)
+            assertTrue(menuItem(libraryMenu, "Copy").isEnabled)
+            assertTrue(menuItem(libraryMenu, "Open as Sequence").isEnabled)
+            assertFalse(menuItem(libraryMenu, "Jump to Source").isEnabled)
+            assertTrue(menuItem(libraryMenu, "Edit Element...").isEnabled)
+            assertTrue(menuItem(libraryMenu, "Delete").isEnabled)
+
+            val diagnostic = menuItem(tools, "Diagnostic Sites...")
+            assertFalse(diagnostic.isEnabled)
+            digest.selectEnzymes(listOf(Enzymes.require("EcoRI")))
+            assertTrue(diagnostic.isEnabled)
         }
     }
 
@@ -1167,4 +1259,7 @@ class GuiSmokeTest {
 
     private fun menuItem(menu: JMenu, text: String): JMenuItem =
         menu.menuComponents.filterIsInstance<JMenuItem>().first { it.text == text }
+
+    private fun submenu(menu: JMenu, text: String): JMenu =
+        menu.menuComponents.filterIsInstance<JMenu>().first { it.text == text }
 }
