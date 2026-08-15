@@ -110,16 +110,18 @@ Cross-platform installers are built with jpackage through the
 installer is built on its own OS:
 
 ```bash
-./gradlew :app-gui:jpackage -Pjpackage.type=DEB        # Ubuntu: .deb
-./gradlew :app-gui:jpackage -Pjpackage.type=RPM        # Fedora: .rpm
-./gradlew :app-gui:jpackage -Pjpackage.type=MSI        # Windows (WiX): .msi
-./gradlew :app-gui:jpackage -Pjpackage.type=DMG        # macOS: .dmg (unsigned)
-./gradlew :app-gui:jpackage -Pjpackage.type=APP_IMAGE  # raw app image
-./gradlew :app-gui:jpackageAppImageZip -Pjpackage.type=APP_IMAGE  # …zipped
+./gradlew :app-gui:jpackage "-PjpackageType=DEB"        # Ubuntu: .deb
+./gradlew :app-gui:jpackage "-PjpackageType=RPM"        # Fedora: .rpm
+./gradlew :app-gui:jpackage "-PjpackageType=MSI"        # Windows (WiX): .msi
+./gradlew :app-gui:jpackage "-PjpackageType=DMG"        # macOS: .dmg (unsigned)
+./gradlew :app-gui:jpackage "-PjpackageType=APP_IMAGE"  # raw app image
+./gradlew :app-gui:jpackageAppImageZip "-PjpackageType=APP_IMAGE"  # …zipped
 ```
 
 - `-Pjpackage.dest=RELATIVE_PATH` overrides the output folder (relative to the
   project's `build/` directory; default `jpackage/dist`).
+- The legacy `-Pjpackage.type=TYPE` property remains supported; CI uses the
+  dotless alias because it passes through PowerShell reliably.
 - The build pins jpackage to the JDK 21 toolchain, so it never falls back to a
   random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
 - All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`

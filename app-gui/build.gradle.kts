@@ -34,9 +34,13 @@ tasks.register<JavaExec>("runGui") {
 
 // jpackage cannot cross-compile: each native installer is built on its own OS
 // (Windows .msi, macOS .dmg, Linux .deb/.rpm). The image type and destination
-// are driven by -Pjpackage.type / -Pjpackage.dest so one definition serves the
-// whole CI matrix; the default builds the OS-native image locally.
-val jpackageType = providers.gradleProperty("jpackage.type").map { it.uppercase() }.orElse("DEFAULT")
+// are driven by -PjpackageType (or the backward-compatible jpackage.type) and
+// -Pjpackage.dest so one definition serves the whole CI matrix; the default
+// builds the OS-native image locally. The dotless alias is safe in PowerShell.
+val jpackageType = providers.gradleProperty("jpackage.type")
+    .orElse(providers.gradleProperty("jpackageType"))
+    .map { it.uppercase() }
+    .orElse("DEFAULT")
 val defaultJpackageDest = jpackageType.map { if (it == "APP_IMAGE") "jpackage/app-image-dist" else "jpackage/dist" }
 val jpackageDest = providers.gradleProperty("jpackage.dest").orElse(defaultJpackageDest)
 
@@ -48,10 +52,14 @@ tasks.jar {
 // A portable java -jar distribution. Keep this separate from the thin
 // instagene.jar above: jpackage expects dependencies as individual input jars,
 // while users downloading a CI artifact need one self-contained file.
+val standaloneRuntimeClasspath = configurations.runtimeClasspath
 val standaloneJar = tasks.register<Jar>("standaloneJar") {
     group = "distribution"
     description = "Builds a self-contained, runnable InstaGene GUI jar."
-    dependsOn(tasks.classes)
+    // Expanding resolved files with zipTree does not retain their producing
+    // task dependencies, so carry the configuration's build dependencies
+    // explicitly. This guarantees project dependency jars exist on clean CI.
+    dependsOn(tasks.classes, standaloneRuntimeClasspath)
     archiveFileName = "instagene-gui.jar"
     destinationDirectory = layout.buildDirectory.dir("distributions")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -60,8 +68,7 @@ val standaloneJar = tasks.register<Jar>("standaloneJar") {
     }
     from(sourceSets.main.get().output)
     from({
-        configurations.runtimeClasspath.get()
-            .filter { it.isFile }
+        standaloneRuntimeClasspath.get()
             .map { zipTree(it) }
     })
     // Dependency signatures are invalid once their contents are repackaged.
@@ -183,10 +190,10 @@ tasks.jpackage {
 }
 
 // The low-friction fallback: a plain zip of the app image, so users get a
-// double-click app without installing anything (run with -Pjpackage.type=APP_IMAGE).
+// double-click app without installing anything (run with -PjpackageType=APP_IMAGE).
 tasks.register<Zip>("jpackageAppImageZip") {
     group = "distribution"
-    description = "Zips the jpackage app image (run with -Pjpackage.type=APP_IMAGE first)."
+    description = "Zips the jpackage app image (run with -PjpackageType=APP_IMAGE first)."
     dependsOn(tasks.jpackage)
     archiveFileName = "instagene-app-image.zip"
     destinationDirectory = layout.buildDirectory.dir("jpackage")
