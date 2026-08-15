@@ -1,3 +1,5 @@
+import buildsrc.tasks.MacPackageVersion
+import buildsrc.tasks.VerifyMacPackageMetadata
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.panteleyev.jpackage.ImageType
@@ -45,6 +47,14 @@ val jpackageType = providers.gradleProperty("jpackage.type")
 val defaultJpackageDest = jpackageType.map { if (it == "APP_IMAGE") "jpackage/app-image-dist" else "jpackage/dist" }
 val jpackageDest = providers.gradleProperty("jpackage.dest").orElse(defaultJpackageDest)
 val instaGeneVersion = providers.gradleProperty("instagene.version").orElse("0.0.0")
+
+// macOS rejects CFBundleVersion values beginning with zero. Keep the public
+// marketing version in CFBundleShortVersionString while supplying jpackage a
+// positive internal bundle version. The override supports future release
+// policies without creating a second required version setting.
+val macBundleVersion = providers.gradleProperty("instagene.macBundleVersion")
+    .orElse(instaGeneVersion.map(MacPackageVersion::defaultFor))
+    .map(MacPackageVersion::requireValid)
 
 // Fixed jar name so --main-jar is stable regardless of Gradle's archive naming.
 tasks.jar {
@@ -203,12 +213,40 @@ tasks.jpackage {
 // Build the macOS application bundle separately from the DMG. The JDK's DMG
 // path relies on additional Finder/AppleScript behavior that is brittle on
 // hosted runners; hdiutil can wrap the completed app image directly.
+val macJpackageResources = layout.buildDirectory.dir("jpackage/mac-resources")
+val prepareMacJpackageResources = tasks.register<Sync>("prepareMacJpackageResources") {
+    group = "distribution"
+    description = "Generates macOS jpackage resources with the public marketing version."
+    inputs.property("instagene.version", instaGeneVersion)
+    from(layout.projectDirectory.dir("src/jpackage/macos")) {
+        expand("INSTAGENE_MARKETING_VERSION" to instaGeneVersion.get())
+    }
+    into(macJpackageResources)
+}
+
+val verifyMacPackageMetadata = tasks.register<VerifyMacPackageMetadata>("verifyMacPackageMetadata") {
+    group = "verification"
+    description = "Verifies macOS marketing and bundle version metadata."
+    dependsOn(prepareMacJpackageResources)
+    val generatedTemplate = macJpackageResources.map { it.file("Info-lite.plist.template") }
+    plistTemplate = generatedTemplate
+    marketingVersion = instaGeneVersion
+    bundleVersion = macBundleVersion
+}
+
 val macAppImage = tasks.register<JPackageTask>("macAppImage") {
     group = "distribution"
     description = "Builds the unsigned macOS InstaGene.app image."
     configureInstaGenePackage()
+    dependsOn(verifyMacPackageMetadata)
+    appVersion = macBundleVersion.get()
     type = ImageType.APP_IMAGE
     destination = layout.buildDirectory.dir("jpackage/mac-app-image")
+    resourceDir = macJpackageResources
+}
+
+tasks.check {
+    dependsOn(verifyMacPackageMetadata)
 }
 
 val macDmgStage = layout.buildDirectory.dir("jpackage/mac-dmg-stage")

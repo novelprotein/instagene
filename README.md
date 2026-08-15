@@ -126,6 +126,10 @@ installer is built on its own OS:
   random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
 - The macOS task builds `InstaGene.app` with jpackage, then uses Apple's
   `hdiutil` to create the DMG with an Applications shortcut.
+- macOS requires a positive-leading internal bundle version, so a public
+  `0.x.y` version is packaged as bundle version `1.x.y` while the app and DMG
+  continue to display `0.x.y`. Override only the internal value with
+  `-Pinstagene.macBundleVersion=X.Y.Z` when needed.
 - All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`
   so `--main-jar` stays stable.
 

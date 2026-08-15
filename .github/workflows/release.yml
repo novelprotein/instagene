@@ -187,6 +187,20 @@ jobs:
           test -d "$mount_point/InstaGene.app"
           test -x "$mount_point/InstaGene.app/Contents/MacOS/InstaGene"
           test -L "$mount_point/Applications"
+          info_plist="$mount_point/InstaGene.app/Contents/Info.plist"
+          marketing_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")
+          bundle_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$info_plist")
+          expected_version=${dmg##*/InstaGene-}
+          expected_version=${expected_version%.dmg}
+          expected_bundle_version=$expected_version
+          if [[ "$expected_bundle_version" == 0.* ]]; then
+            expected_bundle_version="1.${expected_bundle_version#0.}"
+          elif [[ "$expected_bundle_version" == 0 ]]; then
+            expected_bundle_version=1
+          fi
+          test "$marketing_version" = "$expected_version"
+          test "$bundle_version" = "$expected_bundle_version"
+          [[ "$bundle_version" =~ ^[1-9][0-9]*(\.[0-9]+){0,2}$ ]]
           hdiutil detach "$mount_point"
           trap - EXIT
           rmdir "$mount_point"
