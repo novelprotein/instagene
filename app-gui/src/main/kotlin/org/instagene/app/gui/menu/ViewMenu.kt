@@ -2,15 +2,12 @@ package org.instagene.app.gui.menu
 
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.theme.ThemeManager
 import org.instagene.app.gui.tool.SequenceView
 import org.instagene.core.SeqKind
 import java.awt.event.KeyEvent
-import javax.swing.ButtonGroup
 import javax.swing.JCheckBoxMenuItem
 import javax.swing.JMenu
 import javax.swing.JMenuItem
-import javax.swing.JRadioButtonMenuItem
 
 class ViewMenu(
     private val doc: SeqDocument,
@@ -22,6 +19,7 @@ class ViewMenu(
 
     private val complementItem = JCheckBoxMenuItem("Show Complement Strand", true)
     private val translationItem = JCheckBoxMenuItem("Show Translation", false)
+    private val historyColorsItem = JCheckBoxMenuItem("Show Recent Change Color", false)
 
     init {
         doc.addListener { _, reason ->
@@ -51,12 +49,16 @@ class ViewMenu(
                     sequenceView.showTranslation = isSelected
                 }
             })
+            add(historyColorsItem.apply {
+                toolTipText = "Highlight bases changed by the most recent edit, undo, or redo."
+                addActionListener { sequenceView.showHistoryColors = isSelected }
+            })
             addSeparator()
             add(createZoomInItem())
             add(createZoomOutItem())
             add(createResetZoomItem())
             addSeparator()
-            add(createThemesMenu())
+            add(createThemeMenu(prefs))
             addSeparator()
             syncFileBrowser()
             add(fileBrowserItem)
@@ -76,28 +78,6 @@ class ViewMenu(
     /** Reflects the project browser's current state in [fileBrowserItem]. */
     fun syncFileBrowser() {
         fileBrowserItem.isSelected = isFileBrowserVisible()
-    }
-
-    private fun createThemesMenu(): JMenu {
-        val group = ButtonGroup()
-        return JMenu("Theme").apply {
-            mnemonic = KeyEvent.VK_T
-            ThemeManager.themes.forEach { theme ->
-                val item = JRadioButtonMenuItem(theme.displayName)
-                group.add(item)
-                item.isSelected = theme.id == prefs.value.theme
-                item.addActionListener {
-                    if (item.isSelected) selectTheme(theme.id)
-                }
-                add(item)
-            }
-        }
-    }
-
-    /** Switches the running look-and-feel and persists the choice for next launch. */
-    private fun selectTheme(id: String) {
-        if (ThemeManager.current() == id || !ThemeManager.apply(id)) return
-        prefs.update { it.copy(theme = id) }
     }
 
     private fun createZoomInItem(): JMenuItem {

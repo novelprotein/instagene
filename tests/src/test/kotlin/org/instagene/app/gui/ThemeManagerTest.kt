@@ -81,6 +81,33 @@ class ThemeManagerTest {
         assertEquals("FlatOneDarkIJTheme", ThemeManager.current())
     }
 
+    @Test
+    fun themeCanBeSelectedFromWelcomeViewMenu() {
+        val dir = Files.createTempDirectory("instagene-welcome-theme").toFile()
+        dir.deleteOnExit()
+        val file = File(dir, "prefs.json")
+
+        try {
+            ThemeManager.apply(ThemeManager.DEFAULT_THEME)
+            onEdt {
+                val prefs = Prefs(PrefsStore(file))
+                val content = InstaGeneContent(prefs = prefs)
+                val viewMenu = content.menuBar.getMenu(2)
+                val themeMenu = viewMenu.menuComponents.filterIsInstance<javax.swing.JMenu>()
+                    .single { it.text == "Theme" }
+                val oneDark = themeMenu.menuComponents.filterIsInstance<javax.swing.JRadioButtonMenuItem>()
+                    .first { it.text == "One Dark" }
+
+                oneDark.doClick()
+
+                assertEquals("FlatOneDarkIJTheme", prefs.value.theme)
+                assertEquals("FlatOneDarkIJTheme", ThemeManager.current())
+            }
+        } finally {
+            ThemeManager.apply(ThemeManager.DEFAULT_THEME)
+        }
+    }
+
     private fun onEdt(block: () -> Unit) {
         if (SwingUtilities.isEventDispatchThread()) return block()
         SwingUtilities.invokeAndWait(block)

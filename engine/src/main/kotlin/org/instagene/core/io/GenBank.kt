@@ -2,9 +2,13 @@ package org.instagene.core.io
 
 import org.instagene.core.Alphabet
 import org.instagene.core.Feature
+import org.instagene.core.MoleculeProperties
+import org.instagene.core.PrimerAnnotation
+import org.instagene.core.ProcedureRecord
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
+import org.instagene.core.Strandedness
 import org.instagene.core.Topology
 import java.io.Reader
 import java.io.StringReader
@@ -42,6 +46,7 @@ object GenBank {
         var topology = Topology.LINEAR
         var kind = SeqKind.DNA
         val features = ArrayList<Feature>()
+        val primers = ArrayList<PrimerAnnotation>()
         val metadata = LinkedHashMap<String, String>()
         val bases = StringBuilder()
 
@@ -63,15 +68,32 @@ object GenBank {
             val label = qualifiers["label"]?.firstOrNull() ?: qualifiers["gene"]?.firstOrNull()
                 ?: qualifiers["product"]?.firstOrNull() ?: qualifiers["note"]?.firstOrNull() ?: pendingType
             for ((start, end) in parseLocations(loc)) {
-                features += Feature(
-                    name = label,
-                    type = pendingType,
-                    start = start,
-                    end = end,
-                    strand = strand,
-                    notes = qualifiers["note"]?.joinToString("\n").orEmpty(),
-                    qualifiers = qualifiers.mapValues { (_, values) -> values.toList() },
-                )
+                if (pendingType.equals("primer_bind", true)) {
+                    val bound = qualifiers["sequence"]?.firstOrNull().orEmpty()
+                    primers += PrimerAnnotation(
+                        name = label,
+                        bases = bound,
+                        bindingStart = start,
+                        bindingEnd = end,
+                        strand = strand,
+                        extension = qualifiers["extension"]?.firstOrNull().orEmpty(),
+                        description = qualifiers["note"]?.joinToString("\n").orEmpty(),
+                    )
+                } else {
+                    features += Feature(
+                        name = label,
+                        type = pendingType,
+                        start = start,
+                        end = end,
+                        strand = strand,
+                        notes = qualifiers["note"]?.joinToString("\n").orEmpty(),
+                        qualifiers = qualifiers.mapValues { (_, values) -> values.toList() },
+                        geneticCodeId = qualifiers["transl_table"]?.firstOrNull()?.toIntOrNull() ?: 1,
+                        translationStartOffset = ((qualifiers["codon_start"]?.firstOrNull()?.toIntOrNull() ?: 1) - 1).coerceIn(0, 2),
+                        translationNumberingStart = qualifiers["numbering_start"]?.firstOrNull()?.toIntOrNull() ?: 1,
+                        ribosomalSlippage = qualifiers["ribosomal_slippage"]?.firstOrNull()?.toIntOrNull() ?: 0,
+                    )
+                }
             }
             qualifiers.clear()
             lastQualifier = null
@@ -217,6 +239,19 @@ object GenBank {
                 if (end > f.start) f.copy(end = end) else null
             }
         }
+        val molecule = MoleculeProperties(
+            strandedness = metadata["IG_STRANDS"]?.let { runCatching { Strandedness.valueOf(it) }.getOrNull() }
+                ?: if (kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
+            damMethylated = metadata["IG_DAM"].toBoolean(),
+            dcmMethylated = metadata["IG_DCM"].toBoolean(),
+            cpgMethylated = metadata["IG_CPG"].toBoolean(),
+            fivePrimePhosphorylated = metadata["IG_5P"]?.toBooleanStrictOrNull() ?: true,
+            threePrimePhosphorylated = metadata["IG_3P"].toBoolean(),
+        )
+        val provenance = metadata["IG_HISTORY"].orEmpty().split(" || ").filter(String::isNotBlank).map { encoded ->
+            val fields = encoded.split('|', limit = 3)
+            ProcedureRecord(fields.first(), fields.getOrElse(1) { "" }, timestamp = fields.getOrElse(2) { "0" }.toLongOrNull() ?: 0L)
+        }
         return Seq(
             name = name,
             bases = seqBases,
@@ -225,6 +260,9 @@ object GenBank {
             features = parsedFeatures.sortedBy { it.start },
             description = description,
             metadata = metadata,
+            primers = primers.sortedBy { it.bindingStart },
+            molecule = molecule,
+            provenance = provenance,
         )
     }
 
@@ -251,27 +289,56 @@ object GenBank {
             )
         )
         append("DEFINITION  ${seq.description.ifBlank { seq.name }}\n")
-        val metadata = seq.metadata.filterKeys { it !in setOf("LOCUS", "DEFINITION", "FEATURES", "ORIGIN") }
+        val stateMetadata = mapOf(
+            "IG_STRANDS" to seq.molecule.strandedness.name,
+            "IG_DAM" to seq.molecule.damMethylated.toString(),
+            "IG_DCM" to seq.molecule.dcmMethylated.toString(),
+            "IG_CPG" to seq.molecule.cpgMethylated.toString(),
+            "IG_5P" to seq.molecule.fivePrimePhosphorylated.toString(),
+            "IG_3P" to seq.molecule.threePrimePhosphorylated.toString(),
+        ) + if (seq.provenance.isEmpty()) emptyMap() else mapOf(
+            "IG_HISTORY" to seq.provenance.joinToString(" || ") {
+                "${it.operation.replace('|', '/') }|${it.summary.replace('|', '/')}|${it.timestamp}"
+            }
+        )
+        val metadata = seq.metadata.filterKeys { it !in setOf("LOCUS", "DEFINITION", "FEATURES", "ORIGIN") } + stateMetadata
         appendHeaderField("ACCESSION", metadata["ACCESSION"] ?: ".")
         metadata.filterKeys { it != "ACCESSION" }.forEach { (key, value) -> appendHeaderField(key, value) }
         if ("SOURCE" !in metadata) append("SOURCE      InstaGene\n")
         if ("ORGANISM" !in metadata) append("  ORGANISM  synthetic construct\n")
         append("FEATURES             Location/Qualifiers\n")
-        for (f in seq.features.sortedBy { it.start }) {
+        val persistedPrimerNames = seq.primers.map { it.name.lowercase() }.toSet()
+        for (f in seq.features.sortedBy { it.start }.filterNot {
+            it.type.equals("primer_bind", true) && it.name.lowercase() in persistedPrimerNames
+        }) {
             val range = f.locationSegments.joinToString(",") { "${it.start + 1}..${it.end}" }
             val joined = if (f.locationSegments.size > 1) "join($range)" else range
             val location = if (f.strand == Strand.REVERSE) "complement($joined)" else joined
             append("     %-16s%s\n".format(f.type.take(15), location))
+            val defaults = buildMap<String, List<String>> {
+                put("label", listOf(f.name))
+                if (f.notes.isNotBlank()) put("note", listOf(f.notes))
+                if (f.geneticCodeId != 1) put("transl_table", listOf(f.geneticCodeId.toString()))
+                if (f.translationStartOffset != 0) put("codon_start", listOf((f.translationStartOffset + 1).toString()))
+                if (f.translationNumberingStart != 1) put("numbering_start", listOf(f.translationNumberingStart.toString()))
+                if (f.ribosomalSlippage != 0) put("ribosomal_slippage", listOf(f.ribosomalSlippage.toString()))
+            }
             val qualifiers = if (f.qualifiers.isEmpty()) {
-                buildMap {
-                    put("label", listOf(f.name))
-                    if (f.notes.isNotBlank()) put("note", listOf(f.notes))
-                }
-            } else f.qualifiers
+                defaults
+            } else defaults + f.qualifiers
             qualifiers.forEach { (key, values) ->
                 if (values.isEmpty()) append("                     /$key\n")
                 values.forEach { value -> appendQualifier(key, value) }
             }
+        }
+        for (primer in seq.primers.sortedBy { it.bindingStart }) {
+            val range = "${primer.bindingStart + 1}..${primer.bindingEnd}"
+            val location = if (primer.strand == Strand.REVERSE) "complement($range)" else range
+            append("     %-16s%s\n".format("primer_bind", location))
+            appendQualifier("label", primer.name)
+            appendQualifier("sequence", primer.bases)
+            if (primer.extension.isNotBlank()) appendQualifier("extension", primer.extension)
+            if (primer.description.isNotBlank()) appendQualifier("note", primer.description)
         }
         append("ORIGIN\n")
         append(origin(seq.bases))

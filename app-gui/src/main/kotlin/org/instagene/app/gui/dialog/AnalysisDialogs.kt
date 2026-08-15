@@ -5,7 +5,7 @@ import org.instagene.core.*
 import org.instagene.core.io.SeqIO
 import javax.swing.*
 
-/** Small, reusable Swing front ends for the engine parity workflows. */
+/** Small, reusable Swing front ends for engine analysis workflows. */
 object AnalysisDialogs {
     fun showIdentity(frame: JFrame?, doc: SeqDocument) {
         val id = SequenceIdentity.cdseguid(doc.seq)

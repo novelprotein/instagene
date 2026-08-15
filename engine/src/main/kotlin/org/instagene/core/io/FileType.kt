@@ -83,6 +83,7 @@ object FileSniffer {
         val head = text.removePrefix(BOM.toString()).take(PEEK_CHARS)
         if (GenBank.looksLikeGenBank(head)) return FileType.SEQUENCE
         if (Gff3.looksLikeGff3(head)) return FileType.SEQUENCE
+        if (Embl.looksLike(head)) return FileType.SEQUENCE
         if (head.contains('>')) return FileType.SEQUENCE
         val cleaned = head.filterNot { it.isWhitespace() || it.isDigit() }
         if (cleaned.isNotEmpty() && cleaned.none { !it.isLetter() }) return FileType.SEQUENCE

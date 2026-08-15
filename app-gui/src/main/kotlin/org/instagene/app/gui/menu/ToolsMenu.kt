@@ -98,8 +98,42 @@ class ToolsMenu(
         }
     }
 
+    /** Method-oriented entry points mirroring the cloning and PCR workflow workspace. */
+    fun createActions(): JMenu = JMenu("Actions").apply {
+        mnemonic = KeyEvent.VK_A
+        val cloning = JMenu("Cloning").apply {
+            listOf(
+                "Restriction Cloning", "Gateway Cloning", "Gibson Assembly", "NEBuilder HiFi Assembly",
+                "In-Fusion Cloning", "TA / GC Cloning", "TOPO Cloning", "Golden Gate Assembly",
+            ).forEach { label ->
+                add(JMenuItem(label).apply {
+                    toolTipText = "Open the Assembly workspace for $label."
+                    addActionListener { onAnalysis("Assembly") }
+                })
+            }
+        }
+        val pcr = JMenu("PCR and Mutagenesis").apply {
+            listOf("PCR", "Inverse PCR", "Overlap Extension PCR", "Primer-Directed Mutagenesis", "Anneal Oligos").forEach { label ->
+                add(JMenuItem(label).apply {
+                    toolTipText = "Open the PCR / Mutagenesis workspace for $label."
+                    addActionListener { onAnalysis("PCR / Mutagenesis") }
+                })
+            }
+        }
+        add(cloning)
+        add(pcr)
+        add(JMenuItem("Translation and Codon Design").apply {
+            toolTipText = "Open translation, ORF, reverse-translation, and codon-design tools."
+            addActionListener { onAnalysis("Translation / Structure") }
+        })
+        add(JMenuItem("Simulate Agarose Gel").apply {
+            toolTipText = "Open the configurable virtual agarose gel workspace."
+            addActionListener { onAnalysis("Virtual Gel") }
+        })
+    }
+
     private fun createAnalysisMenu(): JMenu = JMenu("Analysis Workspace").apply {
-        listOf("Search", "Alignment", "Enzymes", "Assembly", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram").forEach { name ->
+        listOf("Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram").forEach { name ->
             add(JMenuItem(name).apply { addActionListener { onAnalysis(name) } })
         }
     }

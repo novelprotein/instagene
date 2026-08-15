@@ -72,7 +72,7 @@ class ProjectTreePanel(
     fun refresh() {
         val p = project
         val expanded = expandedFiles()
-        val selected = selectedFile()
+        val selected = selectedProjectFile()
         root.removeAllChildren()
         if (p == null) {
             root.userObject = "No project open"
@@ -110,7 +110,7 @@ class ProjectTreePanel(
     }
 
     /** The file of the currently selected tree node, or null. */
-    private fun selectedFile(): File? {
+    fun selectedProjectFile(): File? {
         val node = tree.selectionPath?.lastPathComponent as? DefaultMutableTreeNode
         return node?.userObject as? File
     }
@@ -157,6 +157,9 @@ class ProjectTreePanel(
 
     /** True when the tree has no project attached. */
     fun isEmpty(): Boolean = project == null
+
+    /** Current project root for content-aware search, or null outside project mode. */
+    fun projectRoot(): File? = project?.root
 
     /**
      * How [file] appears in the tree: its path relative to the project root

@@ -312,6 +312,10 @@ class FeaturesPanel(
         color: String? = null,
         visible: Boolean = true,
         displayOrder: Int = 0,
+        geneticCodeId: Int = 1,
+        translationNumberingStart: Int = 1,
+        translationStartOffset: Int = 0,
+        ribosomalSlippage: Int = 0,
     ): String? {
         val previous = doc.seq.features.getOrNull(row) ?: return "Choose a feature to edit."
         val trimmedName = name.trim()
@@ -329,6 +333,10 @@ class FeaturesPanel(
             color = color?.trim()?.ifBlank { null },
             visible = visible,
             displayOrder = displayOrder,
+            geneticCodeId = geneticCodeId,
+            translationNumberingStart = translationNumberingStart,
+            translationStartOffset = translationStartOffset,
+            ribosomalSlippage = ribosomalSlippage,
         )
         doc.mutate("edit feature") { seq ->
             seq.copy(features = seq.features.mapIndexed { index, feature ->
@@ -532,8 +540,12 @@ class FeaturesPanel(
         val colorField = JTextField(feature.color.orEmpty(), 10)
         val visibleField = JCheckBox("Visible", feature.visible)
         val orderField = JSpinner(SpinnerNumberModel(feature.displayOrder, -1000, 1000, 1))
+        val geneticCodeField = JSpinner(SpinnerNumberModel(feature.geneticCodeId, 1, 33, 1))
+        val numberingField = JSpinner(SpinnerNumberModel(feature.translationNumberingStart, -1_000_000, 1_000_000, 1))
+        val translationOffsetField = JSpinner(SpinnerNumberModel(feature.translationStartOffset, 0, 2, 1))
+        val slippageField = JSpinner(SpinnerNumberModel(feature.ribosomalSlippage, -2, 2, 1))
         val descriptionField = JTextArea(feature.notes, 6, 40).apply { lineWrap = true; wrapStyleWord = true }
-        val form = JPanel(GridLayout(8, 2, 6, 6)).apply {
+        val form = JPanel(GridLayout(12, 2, 6, 6)).apply {
             add(JLabel("Name")); add(nameField)
             add(JLabel("Type")); add(typeField)
             add(JLabel("Start (1-based)")); add(startField)
@@ -542,6 +554,10 @@ class FeaturesPanel(
             add(JLabel("Color (#RRGGBB)")); add(colorField)
             add(JLabel("Display order")); add(orderField)
             add(JLabel("Visibility")); add(visibleField)
+            add(JLabel("Genetic code table")); add(geneticCodeField)
+            add(JLabel("Translation numbering start")); add(numberingField)
+            add(JLabel("Translation start offset")); add(translationOffsetField)
+            add(JLabel("Ribosomal slippage")); add(slippageField)
         }
         val ok = JOptionPane.showConfirmDialog(
             null,
@@ -566,6 +582,10 @@ class FeaturesPanel(
             updateFeatureElement(
                 row, nameField.text, typeField.selectedItem?.toString().orEmpty(), start, end, strand, descriptionField.text,
                 colorField.text, visibleField.isSelected, (orderField.value as Number).toInt(),
+                (geneticCodeField.value as Number).toInt(),
+                (numberingField.value as Number).toInt(),
+                (translationOffsetField.value as Number).toInt(),
+                (slippageField.value as Number).toInt(),
             )
         }
         if (error != null) {

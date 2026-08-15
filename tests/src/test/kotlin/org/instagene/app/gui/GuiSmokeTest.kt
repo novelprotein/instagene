@@ -771,8 +771,11 @@ class GuiSmokeTest {
             assertEquals("old", panel.nameField.text)
             assertEquals("dna", panel.kindLabel.text)
             assertEquals("linear", panel.topologyLabel.text)
+            assertEquals("double", panel.strandednessLabel.text)
             assertEquals("8 bp", panel.lengthLabel.text)
             assertEquals("0", panel.featuresLabel.text)
+            assertEquals("0", panel.primersLabel.text)
+            assertEquals("0", panel.historyLabel.text)
 
             panel.renameTo("renamed")
             assertEquals("renamed", doc.seq.name)

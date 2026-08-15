@@ -31,7 +31,10 @@ class AnalysisPanelTest {
     fun analysisWorkspaceExposesEveryAddedWorkflow() = onEdt {
         val panel = AnalysisPanel(SeqDocument(Seq("sample", "GAATTCATGGCCTAAGCTT")), {}, { _, _ -> })
         assertEquals(
-            listOf("Search", "Alignment", "Enzymes", "Assembly", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram"),
+            listOf(
+                "Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
+                "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram",
+            ),
             panel.toolNames(),
         )
         panel.selectTool("Virtual Gel")

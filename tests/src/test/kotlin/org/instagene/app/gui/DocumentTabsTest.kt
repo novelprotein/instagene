@@ -270,11 +270,22 @@ class DocumentTabsTest {
             // The empty-state menu bar still shows the full set of top-level
             // options; the sequence-only ones are merely disabled.
             val menus = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text }
-            assertEquals(listOf("File", "Edit", "View", "Tools"), menus, "all top-level menus must be present")
+            assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools"), menus, "all top-level menus must be present")
             val edit = content.menuBar.getMenu(1)!!
-            val tools = content.menuBar.getMenu(3)!!
+            val view = content.menuBar.getMenu(2)!!
+            val project = content.menuBar.getMenu(3)!!
+            val actions = content.menuBar.getMenu(4)!!
+            val tools = content.menuBar.getMenu(5)!!
             assertFalse(edit.isEnabled, "Edit must be disabled with no document open")
+            assertTrue(view.isEnabled, "View must stay enabled so themes and the file browser can be changed")
+            assertFalse(project.isEnabled, "Project must be disabled with no project open")
+            assertFalse(actions.isEnabled, "Actions must be disabled with no document open")
             assertFalse(tools.isEnabled, "Tools must be disabled with no document open")
+            assertEquals(
+                listOf("Theme", "Show File Browser"),
+                view.menuComponents.filterIsInstance<javax.swing.JMenuItem>().map { it.text },
+                "welcome View menu must expose theme and browser controls without sequence-only actions",
+            )
 
             // "New Document" moves the window into the working view.
             content.welcomePanel.newDocumentButton.doClick()
@@ -450,12 +461,9 @@ class DocumentTabsTest {
 
             // The File Browser toggle moved into the toggleable header section
             // at the top of the file browser side panel.
-            assertEquals(
-                listOf(content.fileBrowserToggle),
-                content.fileBrowserHeader.components.toList(),
-                "the header must hold exactly the File Browser toggle",
-            )
+            assertSame(content.fileBrowserToggle, content.fileBrowserHeader.components.first())
             assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
+            assertSame(content.fileBrowserHeader, content.projectSearchField.parent)
             assertSame(content.fileBrowserPanel, content.fileBrowserHeader.parent)
 
             // The top toolbar is gone: the working view's top strip is the tab

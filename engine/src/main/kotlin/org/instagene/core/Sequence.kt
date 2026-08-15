@@ -8,6 +8,20 @@ enum class SeqKind { DNA, RNA, PROTEIN }
 /** Whether a molecule is an open line or a closed circle. */
 enum class Topology { LINEAR, CIRCULAR }
 
+/** Whether a nucleic-acid molecule is represented as one or two strands. */
+enum class Strandedness { SINGLE, DOUBLE }
+
+/** Persisted molecule chemistry used to validate restriction and cloning workflows. */
+@Serializable
+data class MoleculeProperties(
+    val strandedness: Strandedness = Strandedness.DOUBLE,
+    val damMethylated: Boolean = false,
+    val dcmMethylated: Boolean = false,
+    val cpgMethylated: Boolean = false,
+    val fivePrimePhosphorylated: Boolean = true,
+    val threePrimePhosphorylated: Boolean = false,
+)
+
 
 /** Which strand of the double helix a coordinate, cut or feature refers to. */
 
@@ -56,6 +70,14 @@ data class Feature(
     val visible: Boolean = true,
     /** Stable drawing priority; higher values are drawn in front. */
     val displayOrder: Int = 0,
+    /** NCBI genetic-code table used for translating this feature. */
+    val geneticCodeId: Int = 1,
+    /** Displayed amino-acid number assigned to the first translated residue. */
+    val translationNumberingStart: Int = 1,
+    /** Number of leading bases skipped before translation (GenBank codon_start - 1). */
+    val translationStartOffset: Int = 0,
+    /** Optional signed base shift at a programmed ribosomal-slippage position. */
+    val ribosomalSlippage: Int = 0,
 ) {
     /** Span in bases: [end] - [start]. */
     val length: Int get() = end - start
@@ -84,6 +106,37 @@ data class Feature(
     }
 }
 
+/** A primer bound to a nucleotide sequence, with any non-hybridizing 5' extension retained. */
+@Serializable
+data class PrimerAnnotation(
+    val name: String,
+    val bases: String,
+    val bindingStart: Int,
+    val bindingEnd: Int,
+    val strand: Strand = Strand.FORWARD,
+    val extension: String = "",
+    val description: String = "",
+    val visible: Boolean = true,
+) {
+    val fullSequence: String get() = extension + bases
+    val length: Int get() = fullSequence.length
+
+    init {
+        require(bindingStart >= 0) { "Primer '$name' starts before position 0" }
+        require(bindingEnd >= bindingStart) { "Primer '$name' ends before it starts" }
+    }
+}
+
+/** One reconstructable scientific operation that produced or changed a sequence. */
+@Serializable
+data class ProcedureRecord(
+    val operation: String,
+    val summary: String,
+    val inputs: List<String> = emptyList(),
+    val warnings: List<String> = emptyList(),
+    val timestamp: Long = 0L,
+)
+
 /**
  * An immutable nucleotide (or protein) sequence with annotations.
  *
@@ -105,6 +158,11 @@ data class Seq(
     val features: List<Feature> = emptyList(),
     val description: String = "",
     val metadata: Map<String, String> = emptyMap(),
+    val primers: List<PrimerAnnotation> = emptyList(),
+    val molecule: MoleculeProperties = MoleculeProperties(
+        strandedness = if (kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
+    ),
+    val provenance: List<ProcedureRecord> = emptyList(),
 ) {
     val length: Int get() = bases.length
 
@@ -151,8 +209,18 @@ data class Seq(
     /** A copy with [feature] added to the feature table, kept sorted by start. */
     fun withFeature(feature: Feature): Seq = copy(features = (features + feature).sortedBy { it.start })
 
+    /** A copy with [primer] persisted and sorted by its binding coordinate. */
+    fun withPrimer(primer: PrimerAnnotation): Seq =
+        copy(primers = (primers + primer).sortedBy { it.bindingStart })
+
     /** A copy with [feature] removed from the feature table (by structural equality). */
     fun withoutFeature(feature: Feature): Seq = copy(features = features - feature)
+
+    /** A copy with [primer] removed by structural equality. */
+    fun withoutPrimer(primer: PrimerAnnotation): Seq = copy(primers = primers - primer)
+
+    /** Appends a reconstructable operation to this sequence's embedded provenance. */
+    fun withProcedure(record: ProcedureRecord): Seq = copy(provenance = provenance + record)
 
     /** Inserts [insert] before position [at], shifting downstream features. */
     fun insertAt(at: Int, insert: String): Seq {
@@ -165,7 +233,18 @@ data class Seq(
                 else -> f.copy(end = f.end + added)                           // insertion lands inside
             }
         }
-        return copy(bases = bases.substring(0, at) + insert + bases.substring(at), features = moved)
+        val movedPrimers = primers.map { p ->
+            when {
+                p.bindingEnd <= at -> p
+                p.bindingStart >= at -> p.copy(bindingStart = p.bindingStart + added, bindingEnd = p.bindingEnd + added)
+                else -> p.copy(bindingEnd = p.bindingEnd + added)
+            }
+        }
+        return copy(
+            bases = bases.substring(0, at) + insert + bases.substring(at),
+            features = moved,
+            primers = movedPrimers,
+        )
     }
 
     /** Deletes `[start, end)`, shifting and clipping features. */
@@ -174,7 +253,12 @@ data class Seq(
         val removed = e - s
         if (removed == 0) return this
         val moved = features.mapNotNull { f -> clipAfterDeletion(f, s, e, removed) }
-        return copy(bases = bases.substring(0, s) + bases.substring(e), features = moved)
+        val movedPrimers = primers.mapNotNull { p -> clipPrimerAfterDeletion(p, s, e, removed) }
+        return copy(
+            bases = bases.substring(0, s) + bases.substring(e),
+            features = moved,
+            primers = movedPrimers,
+        )
     }
 
     /** Replaces `[start, end)` with [replacement]. */
@@ -192,7 +276,19 @@ data class Seq(
             if (e <= 0 || s >= slice.length) null
             else f.copy(start = s.coerceAtLeast(0), end = e.coerceAtMost(slice.length))
         }
-        return Seq(newName, slice, kind, Topology.LINEAR, kept, description)
+        val keptPrimers = primers.mapNotNull { p ->
+            val s = p.bindingStart - start
+            val e = p.bindingEnd - start
+            if (e <= 0 || s >= slice.length) null
+            else p.copy(bindingStart = s.coerceAtLeast(0), bindingEnd = e.coerceAtMost(slice.length))
+        }
+        return copy(
+            name = newName,
+            bases = slice,
+            topology = Topology.LINEAR,
+            features = kept,
+            primers = keptPrimers,
+        )
     }
 
     /**
@@ -218,7 +314,12 @@ data class Seq(
                 )
             }
         }
-        return copy(bases = rotated, features = moved.sortedBy { it.start })
+        val movedPrimers = primers.map { p ->
+            val span = p.bindingEnd - p.bindingStart
+            val start = Math.floorMod(p.bindingStart - o, length)
+            p.copy(bindingStart = start, bindingEnd = (start + span).coerceAtMost(length))
+        }.sortedBy { it.bindingStart }
+        return copy(bases = rotated, features = moved.sortedBy { it.start }, primers = movedPrimers)
     }
 
     /** Reverse complement; features are mirrored and their strands flipped. */
@@ -229,7 +330,14 @@ data class Seq(
         val mirrored = features.map { f ->
             f.copy(start = length - f.end, end = length - f.start, strand = f.strand.flipped())
         }.sortedBy { it.start }
-        return copy(name = newName, bases = rc, features = mirrored)
+        val mirroredPrimers = primers.map { p ->
+            p.copy(
+                bindingStart = length - p.bindingEnd,
+                bindingEnd = length - p.bindingStart,
+                strand = p.strand.flipped(),
+            )
+        }.sortedBy { it.bindingStart }
+        return copy(name = newName, bases = rc, features = mirrored, primers = mirroredPrimers)
     }
 
     /** Plain complement, without reversing. */
@@ -240,7 +348,15 @@ data class Seq(
     operator fun plus(other: Seq): Seq {
         require(!isCircular && !other.isCircular) { "Cannot concatenate circular sequences" }
         val shifted = other.features.map { it.copy(start = it.start + length, end = it.end + length) }
-        return copy(bases = bases + other.bases, features = features + shifted)
+        val shiftedPrimers = other.primers.map {
+            it.copy(bindingStart = it.bindingStart + length, bindingEnd = it.bindingEnd + length)
+        }
+        return copy(
+            bases = bases + other.bases,
+            features = features + shifted,
+            primers = primers + shiftedPrimers,
+            provenance = provenance + other.provenance,
+        )
     }
 
     private fun normalizeRange(start: Int, end: Int): Pair<Int, Int> {
@@ -258,6 +374,17 @@ data class Seq(
             val newStart = if (f.start < s) f.start else s
             val newEnd = (if (f.end > e) f.end - removed else s).coerceAtLeast(newStart)
             if (newEnd <= newStart) null else f.copy(start = newStart, end = newEnd)
+        }
+    }
+
+    private fun clipPrimerAfterDeletion(p: PrimerAnnotation, s: Int, e: Int, removed: Int): PrimerAnnotation? = when {
+        p.bindingEnd <= s -> p
+        p.bindingStart >= e -> p.copy(bindingStart = p.bindingStart - removed, bindingEnd = p.bindingEnd - removed)
+        p.bindingStart >= s && p.bindingEnd <= e -> null
+        else -> {
+            val newStart = if (p.bindingStart < s) p.bindingStart else s
+            val newEnd = (if (p.bindingEnd > e) p.bindingEnd - removed else s).coerceAtLeast(newStart)
+            if (newEnd <= newStart) null else p.copy(bindingStart = newStart, bindingEnd = newEnd)
         }
     }
 

@@ -129,6 +129,51 @@ object ExternalTools {
             installHint = "apt install muscle",
             builtinEquivalent = "(no built-in aligner)",
         ),
+        ExternalTool(
+            id = "clustalo",
+            displayName = "Clustal Omega",
+            executable = "clustalo",
+            argsTemplate = listOf("-i", "{in}", "-o", "{out}", "--outfmt", "fa", "--force"),
+            description = "Multiple DNA, RNA, or protein sequence alignment.",
+            installHint = "conda install -c bioconda clustalo",
+            builtinEquivalent = "InstaGene pairwise/reference alignment",
+        ),
+        ExternalTool(
+            id = "mafft",
+            displayName = "MAFFT",
+            executable = "mafft",
+            argsTemplate = listOf("--auto", "{in}"),
+            description = "Fast multiple sequence alignment for DNA, RNA, and protein.",
+            installHint = "conda install -c bioconda mafft",
+            builtinEquivalent = "InstaGene pairwise/reference alignment",
+        ),
+        ExternalTool(
+            id = "tcoffee",
+            displayName = "T-Coffee",
+            executable = "t_coffee",
+            argsTemplate = listOf("-in", "{in}", "-output", "fasta_aln", "-outfile", "{out}"),
+            description = "Consistency-based multiple sequence alignment.",
+            installHint = "conda install -c bioconda t_coffee",
+            builtinEquivalent = "InstaGene pairwise/reference alignment",
+        ),
+        ExternalTool(
+            id = "cap3",
+            displayName = "CAP3",
+            executable = "cap3",
+            argsTemplate = listOf("{in}"),
+            description = "De novo assembly of Sanger sequencing reads into contigs.",
+            installHint = "conda install -c bioconda cap3",
+            builtinEquivalent = "InstaGene reference alignment",
+        ),
+        ExternalTool(
+            id = "rnafold",
+            displayName = "ViennaRNA RNAfold",
+            executable = "RNAfold",
+            argsTemplate = listOf("--noPS"),
+            description = "Predicts RNA and single-stranded nucleic-acid secondary structure.",
+            installHint = "conda install -c bioconda viennarna",
+            builtinEquivalent = "InstaGene Nussinov secondary-structure prediction",
+        ),
     )
 
     private val pathCache = HashMap<String, String?>()
@@ -169,6 +214,8 @@ object ExternalTools {
         extraArgs: List<String> = emptyList(),
         timeoutSeconds: Long = 60,
         workingDir: File? = null,
+        inputFasta: String = Fasta.write(seq),
+        cancellationRequested: () -> Boolean = { false },
     ): ToolResult {
         val exe = locate(tool.executable)
             ?: return ToolResult(
@@ -180,9 +227,8 @@ object ExternalTools {
                     "Or use the built-in equivalent: ${tool.builtinEquivalent}",
             )
 
-        val fasta = Fasta.write(seq)
         val inFile = File.createTempFile("instagene-", ".fasta").apply {
-            writeText(fasta)
+            writeText(inputFasta)
             deleteOnExit()
         }
         val outFile = if (tool.producesOutFile) {
@@ -220,7 +266,7 @@ object ExternalTools {
 
             try {
                 if (tool.readsStdin) {
-                    process.outputStream.bufferedWriter().use { it.write(fasta) }
+                    process.outputStream.bufferedWriter().use { it.write(inputFasta) }
                 } else {
                     process.outputStream.close()
                 }
@@ -228,14 +274,21 @@ object ExternalTools {
                 // The child closed stdin before the FASTA was fully written.
             }
 
-            val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+            var finished = false
+            while (!finished && System.nanoTime() < deadline && !cancellationRequested()) {
+                finished = process.waitFor(200, TimeUnit.MILLISECONDS)
+            }
+            val cancelled = cancellationRequested()
             if (!finished) {
                 process.destroyForcibly()
                 process.waitFor(5, TimeUnit.SECONDS)
             }
             val stdout = stdoutFuture.get(5, TimeUnit.SECONDS)
             val stderr = stderrFuture.get(5, TimeUnit.SECONDS)
-            if (!finished) {
+            if (cancelled) {
+                ToolResult(tool, command.joinToString(" "), 130, stdout, "Cancelled")
+            } else if (!finished) {
                 ToolResult(tool, command.joinToString(" "), 124, stdout, "Timed out after ${timeoutSeconds}s")
             } else {
                 ToolResult(

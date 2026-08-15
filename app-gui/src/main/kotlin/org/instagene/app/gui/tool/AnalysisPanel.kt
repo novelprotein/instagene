@@ -15,7 +15,7 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.table.DefaultTableModel
 
-/** Persistent GUI workspace for the analysis APIs added for ApE parity. */
+/** Persistent GUI workspace for sequence analysis workflows. */
 class AnalysisPanel(
     initial: SeqDocument,
     onOpenSequence: (Seq) -> Unit,
@@ -30,6 +30,8 @@ class AnalysisPanel(
     private val alignment = AlignmentAnalysisPanel()
     private val enzymes = EnzymeAnalysisPanel()
     private val assembly = AssemblyAnalysisPanel(onOpenSequence)
+    private val pcr = PcrAnalysisPanel(onOpenSequence)
+    private val translation = TranslationAnalysisPanel(onOpenSequence)
     private val gel = GelAnalysisPanel()
     private val calculators = CalculatorAnalysisPanel()
     private val ncbi = NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis)
@@ -40,6 +42,8 @@ class AnalysisPanel(
         tabs.addTab("Alignment", alignment)
         tabs.addTab("Enzymes", enzymes)
         tabs.addTab("Assembly", assembly)
+        tabs.addTab("PCR / Mutagenesis", pcr)
+        tabs.addTab("Translation / Structure", translation)
         tabs.addTab("Virtual Gel", gel)
         tabs.addTab("Calculators", calculators)
         tabs.addTab("NCBI / BLAST", ncbi)
@@ -75,6 +79,8 @@ class AnalysisPanel(
         alignment.bindDocument(doc)
         enzymes.bindDocument(doc)
         assembly.bindDocument(doc)
+        pcr.bindDocument(doc)
+        translation.bindDocument(doc)
         gel.bindDocument(doc)
         calculators.bindDocument(doc)
         ncbi.bindDocument(doc)
@@ -191,12 +197,15 @@ private class SearchAnalysisPanel(private val onReveal: (Int, Int) -> Unit) : Bo
 }
 
 private class AlignmentAnalysisPanel : BoundAnalysisPanel() {
+    private val algorithm = JComboBox(MultipleAlignmentAlgorithm.entries.toTypedArray())
     private val queryNames = JTextField(30)
     private val mismatch = JTextField("0.1", 5)
     private val gap = JTextField("1.5", 5)
     private val extension = JTextField("0.5", 5)
     private val text = output()
+    private val run = JButton("Align")
     private var queryFiles: List<File> = emptyList()
+    private var worker: SwingWorker<MultipleAlignmentResult, Unit>? = null
 
     init {
         val choose = JButton("Choose query files...")
@@ -207,37 +216,75 @@ private class AlignmentAnalysisPanel : BoundAnalysisPanel() {
                 queryNames.text = queryFiles.joinToString(", ") { it.name }
             }
         }
-        val run = JButton("Align")
-        run.addActionListener { execute() }
-        add(row(choose, queryNames, JLabel("Mismatch"), mismatch, JLabel("Gap"), gap, JLabel("Extension"), extension, run), BorderLayout.NORTH)
+        run.toolTipText = "Run the selected aligner; click again to cancel a running alignment."
+        run.addActionListener { if (worker == null) execute() else cancel() }
+        algorithm.renderer = DefaultListCellRenderer().apply { horizontalAlignment = SwingConstants.LEFT }
+        add(row(choose, queryNames, JLabel("Algorithm"), algorithm, JLabel("Mismatch"), mismatch, JLabel("Gap"), gap, JLabel("Extension"), extension, run), BorderLayout.NORTH)
         add(JScrollPane(text), BorderLayout.CENTER)
     }
 
     private fun execute() {
         if (queryFiles.isEmpty()) return
-        runCatching {
-            Alignment.align(doc.seq, queryFiles.map { SeqIO.read(it) }, AlignmentParameters(
-                mismatchPenalty = -mismatch.text.toDouble(), gapPenalty = -gap.text.toDouble(), gapExtensionPenalty = -extension.text.toDouble(),
-            ))
-        }.onSuccess { result ->
-            text.text = buildString {
-                append("Reference: ${result.reference.name}\n\n")
-                result.queries.forEach { query ->
-                    append("${query.name}: score=${"%.2f".format(query.score)} matches=${query.matches} mismatches=${query.mismatches} gaps=${query.gaps}\n")
-                    append(query.sequence).append("\n\n")
-                }
+        run.text = "Cancel alignment"
+        text.text = "Aligning…"
+        val task = object : SwingWorker<MultipleAlignmentResult, Unit>() {
+            override fun doInBackground(): MultipleAlignmentResult {
+            val queries = queryFiles.map { SeqIO.read(it) }
+            val selected = algorithm.selectedItem as MultipleAlignmentAlgorithm
+            return if (selected == MultipleAlignmentAlgorithm.BUILTIN) {
+                val result = Alignment.align(doc.seq, queries, AlignmentParameters(
+                    mismatchPenalty = -mismatch.text.toDouble(), gapPenalty = -gap.text.toDouble(), gapExtensionPenalty = -extension.text.toDouble(),
+                ))
+                MultipleAlignmentResult(
+                    selected,
+                    listOf(doc.seq.copy(bases = result.reference.sequence)) + result.queries.mapIndexed { index, row -> queries[index].copy(bases = row.sequence) },
+                )
+            } else MultipleAlignment.align(listOf(doc.seq) + queries, selected) { isCancelled }
             }
-        }.onFailure { text.text = it.message ?: "Alignment failed" }
+
+            override fun done() {
+                if (worker !== this) return
+                worker = null
+                run.text = "Align"
+                if (isCancelled) {
+                    text.text = "Alignment cancelled."
+                    return
+                }
+                runCatching { get() }.onSuccess { result ->
+                    text.text = buildString {
+                        append("Algorithm: ${result.algorithm}\n\n")
+                        result.sequences.forEach { sequence ->
+                            append(">${sequence.name}\n")
+                            append(sequence.bases.chunked(80).joinToString("\n")).append("\n\n")
+                        }
+                    }
+                }.onFailure { text.text = it.message ?: "Alignment failed" }
+            }
+        }
+        worker = task
+        task.execute()
+    }
+
+    private fun cancel() {
+        worker?.cancel(true)
+        worker = null
+        run.text = "Align"
+        text.text = "Alignment cancelled."
     }
 }
 
 private class EnzymeAnalysisPanel : BoundAnalysisPanel() {
     private val names = JTextField("EcoRI,BamHI", 24)
+    private val enzymeSet = JComboBox((listOf("Custom") + EnzymeSetCatalog.PREDEFINED.map { it.name }).toTypedArray())
     private val dam = JCheckBox("Dam methylated")
     private val dcm = JCheckBox("Dcm methylated")
     private val output = output()
 
     init {
+        enzymeSet.addActionListener {
+            val selected = enzymeSet.selectedIndex - 1
+            if (selected >= 0) names.text = EnzymeSetCatalog.PREDEFINED[selected].enzymeNames.joinToString(",")
+        }
         val report = JButton("Restriction report")
         report.addActionListener { execute { enzymes -> EnzymeAnalysis.reports(doc.seq, enzymes).joinToString("\n") { "${it.enzyme.name}\t${it.count}\t${it.positions.joinToString(",")}" } } }
         val unique = JButton("Unique / absent")
@@ -250,9 +297,22 @@ private class EnzymeAnalysisPanel : BoundAnalysisPanel() {
         silent.addActionListener { execute { enzymes -> EnzymeAnalysis.silentSites(doc.seq, 0 until doc.seq.length, enzymes).joinToString("\n") { "${it.enzyme.name}\t${it.position + 1}\t${it.original} -> ${it.mutated}" } } }
         val recognition = JButton("Recognition preview")
         recognition.addActionListener { execute { enzymes -> enzymes.joinToString("\n") { "${it.name}\tforward=${EnzymeAnalysis.insertRecognitionSite(it)}\treverse=${EnzymeAnalysis.insertRecognitionSite(it, true)}" } } }
-        add(row(JLabel("Enzymes"), names, dam, dcm), BorderLayout.NORTH)
+        val applyState = JButton("Apply methylation state").apply {
+            toolTipText = "Persist Dam/Dcm methylation on the current molecule for later restriction checks."
+            addActionListener {
+                doc.mutate("update methylation state") { seq ->
+                    seq.copy(molecule = seq.molecule.copy(damMethylated = dam.isSelected, dcmMethylated = dcm.isSelected))
+                }
+            }
+        }
+        add(row(JLabel("Set"), enzymeSet, JLabel("Enzymes"), names, dam, dcm, applyState), BorderLayout.NORTH)
         add(row(report, unique, methylation, diagnostic, silent, recognition), BorderLayout.SOUTH)
         add(JScrollPane(output), BorderLayout.CENTER)
+    }
+
+    override fun refreshDocument() {
+        dam.isSelected = doc.seq.molecule.damMethylated
+        dcm.isSelected = doc.seq.molecule.dcmMethylated
     }
 
     private fun execute(action: (List<Enzyme>) -> String) {
@@ -261,17 +321,22 @@ private class EnzymeAnalysisPanel : BoundAnalysisPanel() {
 }
 
 private class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) : BoundAnalysisPanel() {
-    private val mode = JComboBox(arrayOf("Gibson", "Golden Gate", "Restriction ligation", "Homology recombination"))
+    private val mode = JComboBox(arrayOf(
+        "Restriction cloning", "Gateway cloning", "Gibson assembly", "NEBuilder HiFi", "In-Fusion cloning",
+        "TA cloning", "GC cloning", "TA TOPO", "Directional TOPO", "Blunt TOPO", "Golden Gate", "Homology recombination",
+    ))
     private val parts = JTextField(36)
     private val enzymes = JTextField("EcoRI", 12)
     private val overhangs = JTextField("A,G,A", 12)
-    private val arm = JSpinner(SpinnerNumberModel(20, 1, 1000, 1))
-    private val name = JTextField("assembly_product", 18)
+    private val arm = JSpinner(SpinnerNumberModel(15, 1, 1000, 1))
+    private val gatewaySites = JTextField("GGGGACAAGTTTGTACAAAAAAGCAGGCT,GGGGACCACTTTGTACAAGAAAGCTGGGT", 28)
+    private val productName = JTextField("assembly_product", 18)
     private val circular = JCheckBox("Circular product", true)
     private val output = output()
     private var product: Seq? = null
 
     init {
+        mode.selectedIndex = 2
         val choose = JButton("Choose parts...")
         choose.addActionListener {
             val chooser = JFileChooser().apply { isMultiSelectionEnabled = true }
@@ -291,60 +356,228 @@ private class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) :
             }
         }
         add(row(JLabel("Workflow"), mode, choose, parts), BorderLayout.NORTH)
-        add(row(JLabel("Enzymes"), enzymes, JLabel("Overhangs"), overhangs, JLabel("Homology arm"), arm, JLabel("Name"), name, circular, run, open, save), BorderLayout.SOUTH)
+        add(JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(row(JLabel("Enzymes"), enzymes, JLabel("Overhangs"), overhangs, JLabel("Homology arm"), arm))
+            add(row(JLabel("Gateway left,right"), gatewaySites, JLabel("Name"), productName, circular, run, open, save))
+        }, BorderLayout.SOUTH)
         add(JScrollPane(output), BorderLayout.CENTER)
     }
 
     private fun execute() {
         val files = parts.text.split(',').map(String::trim).filter(String::isNotEmpty)
         runCatching {
+            val loaded = files.map { SeqIO.read(File(it)) }
+            val orderedParts = if (doc.seq.bases.isBlank()) loaded else listOf(doc.seq) + loaded
+            fun firstInsert(): Seq = loaded.firstOrNull() ?: error("Choose at least one insert sequence")
             when (mode.selectedIndex) {
-                0 -> Assembly.gibson(files.map { SeqIO.read(File(it)) }, name = name.text, circular = circular.isSelected).product
-                1 -> AssemblyWorkflows.goldenGate(files.map { SeqIO.read(File(it)) }, overhangs.text.split(',').map(String::trim), name.text, circular.isSelected).product
-                2 -> {
-                    val cuts = Enzymes.parseList(enzymes.text)
-                    val fragments = files.map { SeqIO.read(File(it)) }.map { seq ->
-                        val digest = Digest.digest(seq, cuts)
-                        require(digest.size == 1) { "Each part must yield exactly one digest fragment" }
-                        TreatedFragment(digest.single())
-                    }
-                    AssemblyWorkflows.restrictionLigation(fragments, name.text, circular.isSelected).product
+                0 -> CloningWorkflows.restriction(doc.seq, firstInsert(), Enzymes.parseList(enzymes.text), productName.text)
+                1 -> gatewaySites.text.split(',').map(String::trim).let { sites ->
+                    require(sites.size == 2) { "Enter left and right Gateway recombination sites" }
+                    CloningWorkflows.gateway(doc.seq, firstInsert(), sites[0], sites[1], productName.text)
                 }
+                2 -> CloningWorkflows.overlapAssembly(CloningMethod.GIBSON, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt())
+                3 -> CloningWorkflows.overlapAssembly(CloningMethod.NEBUILDER_HIFI, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt())
+                4 -> CloningWorkflows.overlapAssembly(CloningMethod.IN_FUSION, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt())
+                5 -> CloningWorkflows.terminalClone(CloningMethod.TA, doc.seq, firstInsert(), productName.text)
+                6 -> CloningWorkflows.terminalClone(CloningMethod.GC, doc.seq, firstInsert(), productName.text)
+                7 -> CloningWorkflows.terminalClone(CloningMethod.TOPO_TA, doc.seq, firstInsert(), productName.text)
+                8 -> CloningWorkflows.terminalClone(CloningMethod.TOPO_DIRECTIONAL, doc.seq, firstInsert(), productName.text)
+                9 -> CloningWorkflows.terminalClone(CloningMethod.TOPO_BLUNT, doc.seq, firstInsert(), productName.text)
+                10 -> CloningWorkflows.goldenGate(
+                    orderedParts,
+                    overhangs.text.split(',').map(String::trim),
+                    productName.text,
+                    circular.isSelected,
+                )
                 else -> {
-                    require(files.isNotEmpty()) { "Choose a donor file" }
-                    val donor = SeqIO.read(File(files.first()))
+                    val donor = firstInsert()
                     val candidates = Recombination.candidates(doc.seq, donor, (arm.value as Number).toInt())
                     require(candidates.isNotEmpty()) { "No matching homology-arm candidate found" }
-                    Recombination.recombine(doc.seq, donor, candidates.first(), name.text).product
+                    val raw = Recombination.recombine(doc.seq, donor, candidates.first(), productName.text).product
+                    MolecularWorkflowResult(
+                        CloningMethod.GATEWAY,
+                        raw.withProcedure(ProcedureRecord("HOMOLOGY_RECOMBINATION", "Recombined ${donor.name} into ${doc.seq.name}", listOf(doc.seq.name, donor.name), timestamp = System.currentTimeMillis())),
+                        listOf(ProtocolStep("Homology recombination", "Used ${(arm.value as Number).toInt()} bp arms")),
+                    )
                 }
             }
         }.onSuccess { result ->
-            product = result
-            output.text = "Product: ${result.name}\nLength: ${result.length}\nTopology: ${result.topology}\n\n${result.bases.chunked(80).joinToString("\n")}"
+            product = result.product
+            output.text = buildString {
+                append("Product: ${result.product.name}\nLength: ${result.product.length}\nTopology: ${result.product.topology}\n")
+                result.diagnostics.forEach { append("${it.severity}: ${it.message}\n") }
+                append('\n')
+                result.steps.forEachIndexed { index, step -> append("${index + 1}. ${step.title}: ${step.detail}\n") }
+                append("\n${result.product.bases.chunked(80).joinToString("\n")}")
+            }
         }.onFailure { product = null; output.text = it.message ?: "Assembly failed" }
+    }
+}
+
+private class PcrAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) : BoundAnalysisPanel() {
+    private val mode = JComboBox(arrayOf("Standard PCR", "Inverse PCR", "Overlap extension PCR", "Primer-directed mutagenesis", "Anneal oligos"))
+    private val forward = JTextField(24)
+    private val reverse = JTextField(24)
+    private val forwardExtension = JTextField(10)
+    private val reverseExtension = JTextField(10)
+    private val replacement = JTextField(16)
+    private val secondFile = JTextField(28)
+    private val productName = JTextField("pcr_product", 16)
+    private val output = output()
+    private var product: Seq? = null
+
+    init {
+        val choose = JButton("Choose second product…").apply {
+            toolTipText = "Choose the second amplicon for overlap-extension PCR."
+            addActionListener {
+                val chooser = JFileChooser()
+                if (chooser.showOpenDialog(this@PcrAnalysisPanel) == JFileChooser.APPROVE_OPTION) secondFile.text = chooser.selectedFile.absolutePath
+            }
+        }
+        val run = JButton("Simulate").apply {
+            toolTipText = "Simulate the selected PCR, mutagenesis, or oligo-annealing workflow."
+            addActionListener { execute() }
+        }
+        val open = JButton("Open product").apply {
+            toolTipText = "Open the simulated product in a new InstaGene sequence tab."
+            addActionListener { product?.let(onOpenSequence) }
+        }
+        add(JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(row(JLabel("Workflow"), mode, JLabel("Forward / target"), forward, JLabel("Reverse"), reverse))
+            add(row(JLabel("5' extensions"), forwardExtension, reverseExtension, JLabel("Replacement"), replacement))
+            add(row(choose, secondFile, JLabel("Product name"), productName, run, open))
+        }, BorderLayout.NORTH)
+        add(JScrollPane(output), BorderLayout.CENTER)
+    }
+
+    override fun refreshDocument() {
+        if (doc.seq.kind == SeqKind.PROTEIN || doc.seq.length < 8 || forward.text.isNotBlank() || reverse.text.isNotBlank()) return
+        val length = minOf(20, doc.seq.length / 2)
+        forward.text = doc.seq.bases.take(length)
+        reverse.text = doc.seq.bases.takeLast(length).let { Seq("primer", it).reverseComplement().bases }
+        productName.text = "${doc.seq.name}_product"
+    }
+
+    private fun execute() {
+        runCatching {
+            when (mode.selectedIndex) {
+                0, 1 -> PcrWorkflows.amplify(
+                    doc.seq,
+                    PcrPrimer("forward", forward.text, forwardExtension.text),
+                    PcrPrimer("reverse", reverse.text, reverseExtension.text),
+                    productName.text,
+                    inverse = mode.selectedIndex == 1,
+                ).product
+                2 -> {
+                    val second = File(secondFile.text).takeIf(File::isFile)?.let(SeqIO::read)
+                        ?: error("Choose the second PCR product")
+                    PcrWorkflows.overlapExtension(doc.seq, second, name = productName.text).product
+                }
+                3 -> PcrWorkflows.mutagenize(doc.seq, forward.text, replacement.text, productName.text).product
+                else -> PcrWorkflows.anneal(forward.text, reverse.text, productName.text)
+            }
+        }.onSuccess {
+            product = it
+            output.text = buildString {
+                append("${it.name}: ${it.length} bp, ${it.topology.name.lowercase()}\n")
+                it.provenance.lastOrNull()?.let { record -> append("${record.operation}: ${record.summary}\n") }
+                if (it.primers.isNotEmpty()) append("Primers: ${it.primers.joinToString { primer -> primer.name }}\n")
+                append("\n${it.bases.chunked(80).joinToString("\n")}")
+            }
+        }.onFailure {
+            product = null
+            output.text = it.message ?: "PCR simulation failed"
+        }
+    }
+}
+
+private class TranslationAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) : BoundAnalysisPanel() {
+    private val operation = JComboBox(arrayOf("Find ORFs", "Make protein", "Reverse translate", "Optimize codons", "GC profile", "Secondary structure"))
+    private val frame = JSpinner(SpinnerNumberModel(1, 1, 3, 1))
+    private val profile = JComboBox(CodonDesign.PROFILES.map { it.name }.toTypedArray())
+    private val window = JSpinner(SpinnerNumberModel(100, 10, 10_000, 10))
+    private val output = output()
+    private var product: Seq? = null
+
+    init {
+        val run = JButton("Analyze").apply {
+            toolTipText = "Run the selected translation, codon, GC, or structure analysis."
+            addActionListener { execute() }
+        }
+        val open = JButton("Open product").apply {
+            toolTipText = "Open a translated or codon-designed product as a new sequence."
+            addActionListener { product?.let(onOpenSequence) }
+        }
+        add(row(JLabel("Operation"), operation, JLabel("Frame"), frame, JLabel("Codon profile"), profile, JLabel("Window"), window, run, open), BorderLayout.NORTH)
+        add(JScrollPane(output), BorderLayout.CENTER)
+    }
+
+    private fun execute() {
+        product = null
+        val selectedProfile = CodonDesign.PROFILES[profile.selectedIndex]
+        runCatching {
+            when (operation.selectedIndex) {
+                0 -> SeqOps.findOrfs(doc.seq).joinToString("\n") {
+                    "${it.start + 1}..${it.end}\t${it.strand.symbol}\tframe ${it.frame + 1}\t${it.lengthAa} aa"
+                }.ifBlank { "No ORFs found." }
+                1 -> CodonDesign.makeProtein(doc.seq, (frame.value as Number).toInt() - 1).also { product = it }
+                    .let { "${it.name}: ${it.length} aa\n\n${it.bases.chunked(80).joinToString("\n")}" }
+                2 -> CodonDesign.reverseTranslate(doc.seq, selectedProfile).also { product = it }
+                    .let { "${it.name}: ${it.length} bp\n\n${it.bases.chunked(80).joinToString("\n")}" }
+                3 -> CodonDesign.optimize(doc.seq, selectedProfile, (frame.value as Number).toInt() - 1).also { product = it }
+                    .let { "${it.name}: ${it.length} bp\n\n${it.bases.chunked(80).joinToString("\n")}" }
+                4 -> SequenceProfiles.gcWindows(doc.seq, (window.value as Number).toInt()).joinToString("\n") {
+                    "${it.start + 1}..${it.end}\t${"%.2f".format(it.gcPercent)}% GC"
+                }
+                else -> SecondaryStructure.predict(doc.seq).let {
+                    "${it.algorithm}: ${it.pairedBases} base pair(s), estimated ΔG ${"%.1f".format(it.estimatedDeltaG)} kcal/mol\n\n${it.sequence}\n${it.dotBracket}"
+                }
+            }
+        }.onSuccess { output.text = it }.onFailure { output.text = it.message ?: "Analysis failed" }
     }
 }
 
 private class GelAnalysisPanel : BoundAnalysisPanel() {
     private val enzymes = JTextField("EcoRI", 18)
     private val completion = JSpinner(SpinnerNumberModel(100, 0, 100, 5))
-    private val ladder = JTextField("10000,5000,2000,1000,500", 24)
+    private val ladder = JComboBox(VirtualGel.LADDERS.map { it.name }.toTypedArray())
+    private val agarose = JSpinner(SpinnerNumberModel(1.0, 0.3, 5.0, 0.1))
+    private val minutes = JSpinner(SpinnerNumberModel(45, 1, 600, 5))
+    private val voltage = JSpinner(SpinnerNumberModel(100, 1, 500, 5))
+    private val buffer = JComboBox(GelBuffer.entries.toTypedArray())
+    private val asPcr = JCheckBox("PCR product lane")
     private val output = output()
 
     init {
         val run = JButton("Run gel")
         run.addActionListener { execute() }
-        add(row(JLabel("Enzymes"), enzymes, JLabel("Completion %"), completion, JLabel("Ladder bp"), ladder, run), BorderLayout.NORTH)
+        add(JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(row(JLabel("Enzymes"), enzymes, JLabel("Completion %"), completion, JLabel("Ladder"), ladder, asPcr, run))
+            add(row(JLabel("Agarose %"), agarose, JLabel("Minutes"), minutes, JLabel("Voltage"), voltage, JLabel("Buffer"), buffer))
+        }, BorderLayout.NORTH)
         add(JScrollPane(output), BorderLayout.CENTER)
     }
 
     private fun execute() {
         runCatching {
-            val lanes = listOf(
-                GelLane.SizeStandard("Ladder", Ladder("Custom", ladder.text.split(',').map(String::trim).mapNotNull(String::toIntOrNull))),
-                GelLane.Dna(doc.seq.name, doc.seq, Enzymes.parseList(enzymes.text), (completion.value as Number).toInt()),
+            val standard = VirtualGel.LADDERS[ladder.selectedIndex]
+            val sample = if (asPcr.isSelected) {
+                GelLane.PcrProduct(doc.seq.name, doc.seq)
+            } else {
+                GelLane.Dna(doc.seq.name, doc.seq, Enzymes.parseList(enzymes.text), (completion.value as Number).toInt())
+            }
+            VirtualGel.run(
+                listOf(GelLane.SizeStandard(standard.name, standard), sample),
+                GelSettings(
+                    (agarose.value as Number).toDouble(),
+                    (minutes.value as Number).toInt(),
+                    (voltage.value as Number).toInt(),
+                    buffer.selectedItem as GelBuffer,
+                ),
             )
-            VirtualGel.run(lanes)
         }.onSuccess { result ->
             output.text = result.lanes.joinToString("\n\n") { lane ->
                 "${lane.name}\n" + lane.bands.joinToString("\n") { "  ${it.sizeBp} bp\tintensity=${"%.2f".format(it.relativeIntensity)}\tmigration=${"%.3f".format(result.migration(it.sizeBp))}" }

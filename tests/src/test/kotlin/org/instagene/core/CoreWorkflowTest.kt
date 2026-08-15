@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class ParityEngineTest {
+class CoreWorkflowTest {
     @Test
     fun advancedSearchSupportsMismatchesAndThreePrimeConstraint() {
         val seq = Seq(bases = "AAGGATCCGATT")

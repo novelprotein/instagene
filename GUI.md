@@ -320,7 +320,7 @@ then transform (revcomp, complement, transcribe, translate, …) and analyze
 (info, GC, Tm, ORFs, digest, find) the sequence. The whole stack runs on the
 engine module — the same code the CLI and desktop GUI use.
 
-## Parity Workflows
+## Analysis Workflows
 
 - [x] Advanced IUPAC, mismatch, amino-acid, and 3′-constrained search
 - [x] GFF3 annotation import/export

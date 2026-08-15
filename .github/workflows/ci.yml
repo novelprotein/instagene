@@ -128,6 +128,12 @@ jobs:
             gradle_task: :app-gui:jpackage
             artifact_name: instagene-windows-msi
             artifact_path: app-gui/build/jpackage/dist/*.msi
+          - label: macOS DMG
+            os: macos-latest
+            package_type: DMG
+            gradle_task: :app-gui:jpackage
+            artifact_name: instagene-macos-dmg
+            artifact_path: app-gui/build/jpackage/dist/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository

@@ -9,8 +9,10 @@ import org.instagene.core.Feature
 import org.instagene.core.Alphabet
 import org.instagene.core.PrimerDesign
 import org.instagene.core.PrimerDesignParameters
+import org.instagene.core.PrimerAnnotation
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
+import org.instagene.core.Strand
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
@@ -396,7 +398,7 @@ class PrimersPanel(
             appendLine("${pair.first.name}  ${pair.first.bases}")
             appendLine("${pair.second.name}  ${pair.second.bases}")
             appendLine()
-            append("Add them to the sequence's features list?")
+            append("Add them as persistent primer annotations?")
         }
         val choice = JOptionPane.showConfirmDialog(
             null,
@@ -420,10 +422,29 @@ class PrimersPanel(
         val fwd = Feature(pair.first.name, "primer_bind", from, from + pair.first.bases.length)
         val rev = Feature(pair.second.name, "primer_bind", to - pair.second.bases.length, to)
         val existing = doc.seq.features.map { it.name.lowercase() }.toSet()
+        val existingPrimers = doc.seq.primers.map { it.name.lowercase() }.toSet()
+        val fwdPrimer = PrimerAnnotation(
+            pair.first.name,
+            pair.first.bases,
+            from,
+            from + pair.first.bases.length,
+            Strand.FORWARD,
+            description = descriptions[0],
+        )
+        val revPrimer = PrimerAnnotation(
+            pair.second.name,
+            pair.second.bases,
+            to - pair.second.bases.length,
+            to,
+            Strand.REVERSE,
+            description = descriptions[1],
+        )
         doc.mutate("add primers to features") {
             var next = it
             if (fwd.name.lowercase() !in existing) next = next.withFeature(fwd)
             if (rev.name.lowercase() !in existing) next = next.withFeature(rev)
+            if (fwdPrimer.name.lowercase() !in existingPrimers) next = next.withPrimer(fwdPrimer)
+            if (revPrimer.name.lowercase() !in existingPrimers) next = next.withPrimer(revPrimer)
             next
         }
         // Adding annotations does not change the designed oligos or their input

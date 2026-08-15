@@ -68,6 +68,10 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
     var cutSites: List<CutSite> = emptyList()
         private set
 
+    /** Bases changed by the most recent edit/undo/redo, for optional history coloring. */
+    var recentChangeRange: IntRange? = null
+        private set
+
     private val listeners = ArrayList<Listener>()
     private val docListeners = ArrayList<Doc.Listener>()
     private val editListeners = ArrayList<Doc.EditListener>()
@@ -135,6 +139,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         while (undoStack.size > historyLimit) undoStack.removeFirst()
         redoStack.clear()
         seq = next
+        recentChangeRange = changedBaseRange(before, next)
         refreshDirty()
         clampSelection()
         refreshCutSites()
@@ -147,6 +152,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         undoStack.clear()
         redoStack.clear()
         seq = next
+        recentChangeRange = null
         savedSeq = next
         file = newFile
         isDirty = dirty
@@ -177,6 +183,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         redoStack.addLast(label to seq)
         val before = seq
         seq = previous
+        recentChangeRange = changedBaseRange(before, previous)
         refreshDirty()
         clampSelection()
         refreshCutSites()
@@ -190,6 +197,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         undoStack.addLast(label to seq)
         val before = seq
         seq = next
+        recentChangeRange = changedBaseRange(before, next)
         refreshDirty()
         clampSelection()
         refreshCutSites()
@@ -207,6 +215,22 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
             before.features != after.features -> "features ${before.features.size} -> ${after.features.size}"
             else -> null
         }
+    }
+
+    private fun changedBaseRange(before: Seq, after: Seq): IntRange? {
+        if (before.bases == after.bases) return null
+        val common = minOf(before.length, after.length)
+        var prefix = 0
+        while (prefix < common && before.bases[prefix] == after.bases[prefix]) prefix++
+        var suffix = 0
+        while (
+            suffix < common - prefix &&
+            before.bases[before.length - 1 - suffix] == after.bases[after.length - 1 - suffix]
+        ) suffix++
+        if (after.length == 0) return null
+        val endExclusive = (after.length - suffix).coerceAtLeast(prefix + 1).coerceAtMost(after.length)
+        val start = prefix.coerceAtMost(after.length - 1)
+        return start until endExclusive
     }
 
     /** Dirty means "differs from the last saved or loaded state", not "edited at all". */

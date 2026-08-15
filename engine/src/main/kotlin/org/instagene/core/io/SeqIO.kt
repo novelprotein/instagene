@@ -13,6 +13,9 @@ enum class SeqFormat(val displayName: String, val extensions: List<String>) {
     FASTA("FASTA", listOf("fa", "fasta", "fna", "fas", "seq", "txt")),
     GENBANK("GenBank", listOf("gb", "gbk", "genbank", "ape")),
     GFF3("GFF3", listOf("gff", "gff3")),
+    EMBL("EMBL / ENA", listOf("embl", "ena")),
+    SWISS_PROT("Swiss-Prot", listOf("swiss", "sprot", "dat")),
+    ALIGNMENT_FASTA("FASTA alignment", listOf("aln", "afa", "msa")),
 }
 
 /** Format-sniffing front door for reading and writing sequence files. */
@@ -29,13 +32,20 @@ object SeqIO {
      * are features or a circular topology (a plasmid map), FASTA otherwise.
      */
     fun preferredSaveFormat(seq: Seq): SeqFormat =
-        if (seq.isCircular || seq.features.isNotEmpty()) SeqFormat.GENBANK else SeqFormat.FASTA
+        if (
+            seq.isCircular || seq.features.isNotEmpty() || seq.primers.isNotEmpty() || seq.provenance.isNotEmpty() ||
+            seq.molecule != org.instagene.core.MoleculeProperties(
+                strandedness = if (seq.kind == SeqKind.PROTEIN) org.instagene.core.Strandedness.SINGLE else org.instagene.core.Strandedness.DOUBLE,
+            )
+        ) SeqFormat.GENBANK else SeqFormat.FASTA
 
     /** Sniffs the format of [text] from its opening lines. */
     fun detectFormat(text: String): SeqFormat =
         when {
             GenBank.looksLikeGenBank(text) -> SeqFormat.GENBANK
             Gff3.looksLikeGff3(text) -> SeqFormat.GFF3
+            Embl.looksLike(text) && Regex("\\bAA\\.", RegexOption.IGNORE_CASE).containsMatchIn(text.lineSequence().firstOrNull().orEmpty()) -> SeqFormat.SWISS_PROT
+            Embl.looksLike(text) -> SeqFormat.EMBL
             else -> SeqFormat.FASTA
         }
 
@@ -43,6 +53,7 @@ object SeqIO {
     fun parse(text: String, defaultName: String = "sequence"): Seq = when {
         GenBank.looksLikeGenBank(text) -> GenBank.parse(text, defaultName)
         Gff3.looksLikeGff3(text) -> Gff3.parse(text, defaultName)
+        Embl.looksLike(text) -> Embl.parse(text, defaultName)
         text.contains('>') -> Fasta.parse(text, defaultName)
         else -> rawSequence(text, defaultName)
     }
@@ -51,6 +62,7 @@ object SeqIO {
     fun parseAll(text: String, defaultName: String = "sequence"): List<Seq> = when {
         GenBank.looksLikeGenBank(text) -> splitGenBankRecords(text).map { GenBank.parse(it, defaultName) }
         Gff3.looksLikeGff3(text) -> listOf(Gff3.parse(text, defaultName))
+        Embl.looksLike(text) -> splitFlatFileRecords(text).map { Embl.parse(it, defaultName) }
         text.contains('>') -> Fasta.parseAll(text, defaultName)
         else -> listOf(rawSequence(text, defaultName))
     }
@@ -63,13 +75,16 @@ object SeqIO {
      */
     fun read(file: File): Seq {
         try {
+            SequenceFormatCatalog.forFile(file)?.takeIf { it.support == FormatSupport.CONVERTER }?.let {
+                return ExternalSequenceFormats.read(file, it)
+            }
             val magic = file.inputStream().use { it.readNBytes(4) }
             if (ChromatogramReader.looksLikeAbi(magic)) return ChromatogramReader.readAbi(file).toSeq()
             if (ChromatogramReader.looksLikeScf(magic)) return ChromatogramReader.readScf(file).toSeq()
             val firstLine = firstNonBlankLine(file)
             return if (isGenBankFile(file) || firstLine.startsWith("LOCUS")) {
                 file.bufferedReader().use { GenBank.parseFrom(it, file.nameWithoutExtension) }
-            } else if (firstLine.startsWith("##gff-version")) {
+            } else if (firstLine.startsWith("##gff-version") || firstLine.startsWith("ID   ")) {
                 parse(file.readText(), file.nameWithoutExtension)
             } else {
                 val hint = firstFastaRecordCapacityHint(file)
@@ -90,6 +105,9 @@ object SeqIO {
      */
     fun readAll(file: File): List<Seq> {
         try {
+            SequenceFormatCatalog.forFile(file)?.takeIf { it.support == FormatSupport.CONVERTER }?.let {
+                return listOf(ExternalSequenceFormats.read(file, it))
+            }
             val magic = file.inputStream().use { it.readNBytes(4) }
             if (ChromatogramReader.looksLikeAbi(magic)) return listOf(ChromatogramReader.readAbi(file).toSeq())
             if (ChromatogramReader.looksLikeScf(magic)) return listOf(ChromatogramReader.readScf(file).toSeq())
@@ -98,6 +116,8 @@ object SeqIO {
                 readGenBankRecords(file)
             } else if (firstLine.startsWith("##gff-version")) {
                 listOf(parse(file.readText(), file.nameWithoutExtension))
+            } else if (firstLine.startsWith("ID   ")) {
+                splitFlatFileRecords(file.readText()).map { Embl.parse(it, file.nameWithoutExtension) }
             } else {
                 file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
             }
@@ -155,6 +175,8 @@ object SeqIO {
         SeqFormat.FASTA -> Fasta.write(seq)
         SeqFormat.GENBANK -> GenBank.write(seq)
         SeqFormat.GFF3 -> Gff3.write(seq)
+        SeqFormat.EMBL, SeqFormat.SWISS_PROT -> Embl.write(seq)
+        SeqFormat.ALIGNMENT_FASTA -> Fasta.write(seq)
     }
 
     /** Writes [seq] to [file] in [format], defaulting to the format its extension names. */
@@ -176,6 +198,20 @@ object SeqIO {
         for (line in text.lineSequence()) {
             current.append(line).append('\n')
             if (line.normalizedOpeningLine().startsWith("//")) {
+                records += current.toString()
+                current.setLength(0)
+            }
+        }
+        if (current.isNotBlank()) records += current.toString()
+        return records
+    }
+
+    private fun splitFlatFileRecords(text: String): List<String> {
+        val records = ArrayList<String>()
+        val current = StringBuilder()
+        for (line in text.lineSequence()) {
+            current.append(line).append('\n')
+            if (line.trimStart().startsWith("//")) {
                 records += current.toString()
                 current.setLength(0)
             }

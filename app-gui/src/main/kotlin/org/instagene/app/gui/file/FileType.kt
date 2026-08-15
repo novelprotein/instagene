@@ -1,6 +1,7 @@
 package org.instagene.app.gui.file
 
 import org.instagene.core.Alphabet
+import org.instagene.core.io.SequenceFormatCatalog
 import java.io.File
 import javax.swing.filechooser.FileNameExtensionFilter
 
@@ -32,7 +33,7 @@ enum class FileType {
 object FileTypes {
 
     /** Extensions that make a file eligible for the open-file dialog. */
-    val sequenceExtensions = setOf("fasta", "fa", "fna", "fas", "gb", "gbk", "genbank", "gp", "ape", "seq", "gff", "gff3")
+    val sequenceExtensions = setOf("fasta", "fa", "fna", "fas", "gb", "gbk", "genbank", "gp", "ape", "seq", "gff", "gff3") + SequenceFormatCatalog.allExtensions
     private val textExtensions = setOf("md", "markdown", "notes", "log")
     private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "tif", "tiff")
     private val pdfExtensions = setOf("pdf")
@@ -64,7 +65,8 @@ object FileTypes {
         val looksFasta = trimmed.startsWith(">")
         val looksGenbank = trimmed.startsWith("LOCUS")
         val looksGff = trimmed.startsWith("##gff-version")
-        if (looksFasta || looksGenbank || looksGff) return FileType.SEQUENCE
+        val looksEmbl = trimmed.startsWith("ID   ")
+        if (looksFasta || looksGenbank || looksGff || looksEmbl) return FileType.SEQUENCE
         val letters = trimmed.filter { it.isLetter() }
         if (letters.isNotEmpty() && letters.all { Alphabet.isNucleotide(it) } && letters.length >= 40) {
             return FileType.SEQUENCE

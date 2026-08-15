@@ -56,6 +56,11 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
             field = value; relayout()
         }
 
+    var showHistoryColors: Boolean = false
+        set(value) {
+            field = value; repaint()
+        }
+
     var translationFrame: Int = 0
         set(value) {
             field = value; repaint()
@@ -221,6 +226,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         val top = yOfRow(row)
         val baseY = top + markHeight + lineHeight - getFontMetrics(baseFont).descent
 
+        paintHistoryChange(g2, from, to, top)
         paintSelection(g2, from, to, top)
         paintCutMarks(g2, from, to, top)
 
@@ -305,6 +311,16 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
             (e - s) * charWidth,
             lineHeight * trackCount(),
         )
+    }
+
+    private fun paintHistoryChange(g2: Graphics2D, from: Int, to: Int, top: Int) {
+        if (!showHistoryColors) return
+        val changed = doc.recentChangeRange ?: return
+        val s = maxOf(changed.first, from)
+        val e = minOf(changed.last + 1, to)
+        if (e <= s) return
+        g2.color = Color(0xF5, 0xA6, 0x23, 0x48)
+        g2.fillRect(xOf(s - from), top + markHeight, (e - s) * charWidth, lineHeight * trackCount())
     }
 
     private fun paintCutMarks(g2: Graphics2D, from: Int, to: Int, top: Int) {

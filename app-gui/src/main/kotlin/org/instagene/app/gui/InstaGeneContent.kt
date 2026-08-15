@@ -17,7 +17,10 @@ import org.instagene.app.gui.menu.FileMenu
 import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
 import org.instagene.app.gui.menu.confirmDiscardChanges
+import org.instagene.app.gui.menu.createThemeMenu
 import org.instagene.app.gui.menu.menuShortcut
+import org.instagene.app.gui.project.BatchOperation
+import org.instagene.app.gui.project.ProjectDialogs
 import org.instagene.app.gui.project.ProjectTreePanel
 import org.instagene.app.gui.tool.DigestPanel
 import org.instagene.app.gui.tool.AnalysisPanel
@@ -31,6 +34,7 @@ import org.instagene.core.NcbiClient
 import org.instagene.core.Seq
 import org.instagene.core.Version
 import org.instagene.core.io.SeqIO
+import org.instagene.core.project.ProjectSearch
 import org.instagene.core.project.ProjectLayout
 import org.instagene.core.project.SeqProject
 import java.awt.BasicStroke
@@ -67,8 +71,12 @@ import javax.swing.JScrollPane
 import javax.swing.JSplitPane
 import javax.swing.JTabbedPane
 import javax.swing.JToggleButton
+import javax.swing.JTextField
 import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
+import javax.swing.JTable
+import javax.swing.JOptionPane
+import javax.swing.table.DefaultTableModel
 import javax.swing.plaf.basic.BasicSplitPaneDivider
 import javax.swing.plaf.basic.BasicSplitPaneUI
 import kotlin.math.roundToInt
@@ -169,9 +177,21 @@ class InstaGeneContent(
         addActionListener { setFileBrowserVisible(isSelected) }
     }
 
+    val projectSearchField = JTextField(14).apply {
+        toolTipText = "Search project file names, sequences, features, primers, descriptions, and metadata."
+        addActionListener { showProjectSearch() }
+    }
+
+    private val projectSearchButton = JButton("Search").apply {
+        toolTipText = "Search all supported sequence files in the current project."
+        addActionListener { showProjectSearch() }
+    }
+
     /** The header strip of the file browser; its toggle alone remains when the browser is minimized. */
     val fileBrowserHeader = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
         add(fileBrowserToggle)
+        add(projectSearchField)
+        add(projectSearchButton)
     }
 
     /**
@@ -358,6 +378,68 @@ class InstaGeneContent(
         digestPanel.dispose()
     }
 
+    private fun showProjectSearch(promptIfBlank: Boolean = false) {
+        val root = project?.root ?: projectTreePanel.projectRoot()
+        var query = projectSearchField.text.trim()
+        if (query.isEmpty() && promptIfBlank) {
+            query = JOptionPane.showInputDialog(owner, "Search project:", "Project Search", JOptionPane.QUESTION_MESSAGE)
+                ?.trim()
+                .orEmpty()
+            if (query.isNotEmpty()) projectSearchField.text = query
+        }
+        if (root == null || query.isEmpty()) return
+        val hits = runCatching { ProjectSearch.search(root, query) }.getOrElse {
+            JOptionPane.showMessageDialog(owner, it.message ?: "Project search failed", "Project Search", JOptionPane.ERROR_MESSAGE)
+            return
+        }
+        val model = object : DefaultTableModel(arrayOf("File", "Matched", "Result"), 0) {
+            override fun isCellEditable(row: Int, column: Int): Boolean = false
+        }
+        hits.forEach { model.addRow(arrayOf(root.toPath().relativize(it.file.toPath()).toString(), it.field.name.lowercase(), it.summary)) }
+        val table = JTable(model).apply {
+            setSelectionMode(javax.swing.ListSelectionModel.SINGLE_SELECTION)
+            toolTipText = "Double-click a result to open its sequence file."
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent) {
+                    if (e.clickCount == 2) hits.getOrNull(selectedRow)?.let { openFileInTab(it.file) }
+                }
+            })
+        }
+        JOptionPane.showMessageDialog(
+            owner,
+            JScrollPane(table).apply { preferredSize = Dimension(720, 320) },
+            "Project Search — ${hits.size} result(s)",
+            JOptionPane.INFORMATION_MESSAGE,
+        )
+    }
+
+    private fun showProjectCollections() {
+        val p = project ?: return
+        ProjectDialogs.showCollections(owner, p, projectTreePanel.selectedProjectFile()?.takeIf(File::isFile)) { file ->
+            openFileInTab(file)
+        }
+        projectTreePanel.refresh()
+    }
+
+    private fun showBatchOperation(operation: BatchOperation) {
+        val p = project ?: return
+        ProjectDialogs.showBatch(owner, p, operation, selectedProjectFiles()) {
+            projectTreePanel.refresh()
+        }
+    }
+
+    private fun selectedProjectFiles(): List<File> {
+        val p = project ?: return emptyList()
+        val selected = projectTreePanel.selectedProjectFile()
+        return when {
+            selected?.isFile == true -> listOf(selected)
+            selected?.isDirectory == true -> selected.walkTopDown()
+                .filter { it.isFile && p.relativePath(it) != null && FileTypes.classify(it) == FileType.SEQUENCE }
+                .toList()
+            else -> activeDoc?.file?.takeIf { p.relativePath(it) != null }?.let(::listOf).orEmpty()
+        }
+    }
+
     // ------------------------------------------------------------- documents
 
     /** Opens a fresh empty sequence in a new tab. */
@@ -457,6 +539,7 @@ class InstaGeneContent(
         projectTreePanel.setProject(project)
         editRecorder.setProject(project, created = true)
         persistProject()
+        rebuildMenuBar()
         updateTitle()
     }
 
@@ -476,6 +559,7 @@ class InstaGeneContent(
         project = opened
         projectTreePanel.setProject(opened)
         editRecorder.setProject(opened, created = false)
+        rebuildMenuBar()
         // Convert the project's saved ratio to a fixed pixel width once the
         // split has been laid out. Until then, retain the ratio for persistence.
         pendingTreeRatio = opened.manifest.layout.treeSplitRatio.coerceIn(0.0, 1.0)
@@ -484,6 +568,8 @@ class InstaGeneContent(
         if (files.isEmpty()) {
             toolTabs.selectedIndex = opened.manifest.layout.activeToolTab.coerceIn(0, toolTabs.tabCount - 1)
             persistProject()
+            updateWorkingState()
+            rebuildMenuBar()
             return
         }
         loadingProject = true
@@ -510,6 +596,7 @@ class InstaGeneContent(
                 toolTabs.selectedIndex = opened.manifest.layout.activeToolTab.coerceIn(0, toolTabs.tabCount - 1)
                 loadingProject = false
                 persistProject()
+                rebuildMenuBar()
             }
         }.apply { isDaemon = false; name = "ProjectLoader" }.start()
     }
@@ -732,6 +819,8 @@ class InstaGeneContent(
             menuBar.add(set.file.create())
             menuBar.add(set.edit.create())
             menuBar.add(set.view.create().apply { isEnabled = sequence })
+            menuBar.add(createProjectMenu())
+            menuBar.add(set.tools.createActions().apply { isEnabled = sequence })
             menuBar.add(set.tools.create().apply { isEnabled = sequence })
         }
         menuBar.revalidate()
@@ -758,9 +847,24 @@ class InstaGeneContent(
         menuBar.add(JMenu("View").apply {
             mnemonic = KeyEvent.VK_V
             emptyViewBrowserItem.isSelected = fileBrowserVisible
+            add(createThemeMenu(prefs))
+            addSeparator()
             add(emptyViewBrowserItem)
         })
+        menuBar.add(createProjectMenu())
+        menuBar.add(JMenu("Actions").apply { isEnabled = false })
         menuBar.add(emptyStateMenuSet.tools.create().apply { isEnabled = false })
+    }
+
+    private fun createProjectMenu(): JMenu = JMenu("Project").apply {
+        mnemonic = KeyEvent.VK_P
+        isEnabled = project != null
+        add(menuItem("Search Project...") { showProjectSearch(promptIfBlank = true) })
+        add(menuItem("Collections...") { showProjectCollections() })
+        addSeparator()
+        add(menuItem("Batch Convert...") { showBatchOperation(BatchOperation.CONVERT) })
+        add(menuItem("Batch Annotate...") { showBatchOperation(BatchOperation.ANNOTATE) })
+        add(menuItem("Batch Update Properties...") { showBatchOperation(BatchOperation.PROPERTIES) })
     }
 
     private fun menuItem(label: String, mnemonic: Int? = null, accelerator: KeyStroke? = null, action: () -> Unit): JMenuItem =
@@ -836,6 +940,8 @@ class InstaGeneContent(
      */
     private fun applyFileBrowserVisible(visible: Boolean) {
         treeScroll.isVisible = visible
+        projectSearchField.isVisible = visible
+        projectSearchButton.isVisible = visible
         fileBrowserHeader.layout = FlowLayout(FlowLayout.LEFT, if (visible) 4 else 0, if (visible) 4 else 0)
         applyingFileBrowserLayout = true
         try {

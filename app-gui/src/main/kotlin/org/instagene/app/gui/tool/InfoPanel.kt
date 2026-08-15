@@ -58,11 +58,16 @@ class InfoPanel(
 
     val kindLabel = JLabel("-")
     val topologyLabel = JLabel("-")
+    val strandednessLabel = JLabel("-")
+    val methylationLabel = JLabel("-")
+    val phosphorylationLabel = JLabel("-")
     val lengthLabel = JLabel("-")
     val gcLabel = JLabel("-")
     val tmLabel = JLabel("-")
     val mwLabel = JLabel("-")
     val featuresLabel = JLabel("-")
+    val primersLabel = JLabel("-")
+    val historyLabel = JLabel("-")
     val fileLabel = JLabel("-")
     val openFileButton = JButton("Open File...")
 
@@ -87,6 +92,9 @@ class InfoPanel(
             labelRow("Description", descriptionScroll)
             labelRow("Kind", kindLabel)
             labelRow("Topology", topologyLabel)
+            labelRow("Strandedness", strandednessLabel)
+            labelRow("Methylation", methylationLabel)
+            labelRow("End chemistry", phosphorylationLabel)
             labelRow("Length", lengthLabel)
             labelRow("File", JPanel(BorderLayout(6, 0)).apply {
                 add(fileLabel, BorderLayout.CENTER)
@@ -106,6 +114,8 @@ class InfoPanel(
             statRow("Melting temp", tmLabel)
             statRow("Mol. weight", mwLabel)
             statRow("Features", featuresLabel)
+            statRow("Primers", primersLabel)
+            statRow("Recorded procedures", historyLabel)
         }
 
         add(properties, BorderLayout.NORTH)
@@ -139,6 +149,16 @@ class InfoPanel(
         if (!descriptionField.hasFocus()) descriptionField.text = seq.description
         kindLabel.text = seq.kind.name.lowercase()
         topologyLabel.text = seq.topology.name.lowercase()
+        strandednessLabel.text = seq.molecule.strandedness.name.lowercase()
+        methylationLabel.text = buildList {
+            if (seq.molecule.damMethylated) add("Dam")
+            if (seq.molecule.dcmMethylated) add("Dcm")
+            if (seq.molecule.cpgMethylated) add("CpG")
+        }.joinToString(", ").ifBlank { "none" }
+        phosphorylationLabel.text = buildList {
+            if (seq.molecule.fivePrimePhosphorylated) add("5′ phosphorylated")
+            if (seq.molecule.threePrimePhosphorylated) add("3′ phosphorylated")
+        }.joinToString(", ").ifBlank { "none" }
         val unit = if (seq.kind == SeqKind.PROTEIN) "aa" else "bp"
         lengthLabel.text = "${seq.length} $unit"
         val hasFile = doc.file != null
@@ -146,6 +166,8 @@ class InfoPanel(
         fileLabel.isVisible = hasFile
         openFileButton.isVisible = !hasFile
         featuresLabel.text = seq.features.size.toString()
+        primersLabel.text = seq.primers.size.toString()
+        historyLabel.text = seq.provenance.size.toString()
         refreshStats(seq)
     }
 
