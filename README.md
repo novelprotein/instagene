@@ -113,7 +113,6 @@ installer is built on its own OS:
 ./gradlew :app-gui:jpackage "-PjpackageType=DEB"        # Ubuntu: .deb
 ./gradlew :app-gui:jpackage "-PjpackageType=RPM"        # Fedora: .rpm
 ./gradlew :app-gui:jpackage "-PjpackageType=MSI"        # Windows (WiX): .msi
-./gradlew :app-gui:macDmg                               # macOS: .dmg (unsigned)
 ./gradlew :app-gui:jpackage "-PjpackageType=APP_IMAGE"  # raw app image
 ./gradlew :app-gui:jpackageAppImageZip "-PjpackageType=APP_IMAGE"  # …zipped
 ```
@@ -124,12 +123,6 @@ installer is built on its own OS:
   dotless alias because it passes through PowerShell reliably.
 - The build pins jpackage to the JDK 21 toolchain, so it never falls back to a
   random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
-- The macOS task builds `InstaGene.app` with jpackage, then uses Apple's
-  `hdiutil` to create the DMG with an Applications shortcut.
-- macOS requires a positive-leading internal bundle version, so a public
-  `0.x.y` version is packaged as bundle version `1.x.y` while the app and DMG
-  continue to display `0.x.y`. Override only the internal value with
-  `-Pinstagene.macBundleVersion=X.Y.Z` when needed.
 - All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`
   so `--main-jar` stays stable.
 
@@ -137,10 +130,9 @@ installer is built on its own OS:
 
 Successful pushes to `master` and manually dispatched CI runs publish
 short-lived downloadable artifacts for Linux (`.deb`, `.rpm`, and app-image
-zip), Windows (`.msi`), macOS (unsigned `.dmg`), and the portable runnable GUI
-JAR. Pull requests run the full test suite without the native packaging jobs.
-Tagged releases publish the same GUI JAR alongside the native installers and
-release checksums.
+zip), Windows (`.msi`), and the portable runnable GUI JAR. Pull requests run
+the full test suite without the native packaging jobs. Tagged releases publish
+the same GUI JAR alongside the native installers and release checksums.
 
 ### Git rules (local hooks)
 
