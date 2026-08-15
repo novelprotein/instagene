@@ -113,7 +113,7 @@ installer is built on its own OS:
 ./gradlew :app-gui:jpackage "-PjpackageType=DEB"        # Ubuntu: .deb
 ./gradlew :app-gui:jpackage "-PjpackageType=RPM"        # Fedora: .rpm
 ./gradlew :app-gui:jpackage "-PjpackageType=MSI"        # Windows (WiX): .msi
-./gradlew :app-gui:jpackage "-PjpackageType=DMG"        # macOS: .dmg (unsigned)
+./gradlew :app-gui:macDmg                               # macOS: .dmg (unsigned)
 ./gradlew :app-gui:jpackage "-PjpackageType=APP_IMAGE"  # raw app image
 ./gradlew :app-gui:jpackageAppImageZip "-PjpackageType=APP_IMAGE"  # …zipped
 ```
@@ -124,6 +124,8 @@ installer is built on its own OS:
   dotless alias because it passes through PowerShell reliably.
 - The build pins jpackage to the JDK 21 toolchain, so it never falls back to a
   random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
+- The macOS task builds `InstaGene.app` with jpackage, then uses Apple's
+  `hdiutil` to create the DMG with an Applications shortcut.
 - All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`
   so `--main-jar` stays stable.
 

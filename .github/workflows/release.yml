@@ -154,30 +154,48 @@ jobs:
 
   macos:
     name: macOS (.dmg, unsigned)
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 26
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: '21'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build installer
-        run: ./gradlew :app-gui:jpackage "-PjpackageType=DMG" --console=plain
+        run: ./gradlew :app-gui:macDmg --info --stacktrace --console=plain
+
+      - name: Verify installer
+        shell: bash
+        run: |
+          shopt -s nullglob
+          dmg_files=(app-gui/build/jpackage/dist/*.dmg)
+          test "${#dmg_files[@]}" -eq 1
+          dmg="${dmg_files[0]}"
+          hdiutil verify "$dmg"
+          mount_point=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "$dmg"
+          trap 'hdiutil detach "$mount_point" || true; rmdir "$mount_point" || true' EXIT
+          test -d "$mount_point/InstaGene.app"
+          test -x "$mount_point/InstaGene.app/Contents/MacOS/InstaGene"
+          test -L "$mount_point/Applications"
+          hdiutil detach "$mount_point"
+          trap - EXIT
+          rmdir "$mount_point"
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: macos-DMG
-          path: app-gui/build/jpackage/dist/*
+          path: app-gui/build/jpackage/dist/*.dmg
           if-no-files-found: error
 
   engine-sources:

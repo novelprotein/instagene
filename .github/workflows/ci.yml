@@ -129,9 +129,9 @@ jobs:
             artifact_name: instagene-windows-msi
             artifact_path: app-gui/build/jpackage/dist/*.msi
           - label: macOS DMG
-            os: macos-latest
+            os: macos-15
             package_type: DMG
-            gradle_task: :app-gui:jpackage
+            gradle_task: :app-gui:macDmg
             artifact_name: instagene-macos-dmg
             artifact_path: app-gui/build/jpackage/dist/*.dmg
     runs-on: ${{ matrix.os }}
@@ -155,7 +155,31 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build native package
+        if: ${{ matrix.package_type != 'DMG' }}
         run: ./gradlew ${{ matrix.gradle_task }} "-PjpackageType=${{ matrix.package_type }}" --console=plain
+
+      - name: Build macOS DMG
+        if: ${{ matrix.package_type == 'DMG' }}
+        run: ./gradlew ${{ matrix.gradle_task }} --info --stacktrace --console=plain
+
+      - name: Verify macOS DMG
+        if: ${{ matrix.package_type == 'DMG' }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          dmg_files=(app-gui/build/jpackage/dist/*.dmg)
+          test "${#dmg_files[@]}" -eq 1
+          dmg="${dmg_files[0]}"
+          hdiutil verify "$dmg"
+          mount_point=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "$dmg"
+          trap 'hdiutil detach "$mount_point" || true; rmdir "$mount_point" || true' EXIT
+          test -d "$mount_point/InstaGene.app"
+          test -x "$mount_point/InstaGene.app/Contents/MacOS/InstaGene"
+          test -L "$mount_point/Applications"
+          hdiutil detach "$mount_point"
+          trap - EXIT
+          rmdir "$mount_point"
 
       - name: Upload native package
         uses: actions/upload-artifact@v4

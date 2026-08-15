@@ -1,6 +1,7 @@
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.panteleyev.jpackage.ImageType
+import org.panteleyev.jpackage.JPackageTask
 import java.util.jar.JarFile
 
 plugins {
@@ -43,6 +44,7 @@ val jpackageType = providers.gradleProperty("jpackage.type")
     .orElse("DEFAULT")
 val defaultJpackageDest = jpackageType.map { if (it == "APP_IMAGE") "jpackage/app-image-dist" else "jpackage/dist" }
 val jpackageDest = providers.gradleProperty("jpackage.dest").orElse(defaultJpackageDest)
+val instaGeneVersion = providers.gradleProperty("instagene.version").orElse("0.0.0")
 
 // Fixed jar name so --main-jar is stable regardless of Gradle's archive naming.
 tasks.jar {
@@ -136,28 +138,37 @@ val osIs = { needle: String ->
 }
 val appImageName = osIs("mac").map { if (it) "InstaGene.app" else "InstaGene" }
 
-tasks.jpackage {
+val packagingJavaLauncher = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+    vendor.set(JvmVendorSpec.ADOPTIUM)
+}
+
+fun JPackageTask.configureInstaGenePackage() {
     dependsOn(verifyJpackageInput, tasks.jar)
 
     // jpackage links a runtime image with the JDK it runs on; pin it to the
     // same toolchain as the rest of the build so it cannot fall back to a
     // different JAVA_HOME (for example, a runtime without packaging modules).
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(21))
-        vendor.set(JvmVendorSpec.ADOPTIUM)
-    }
+    javaLauncher = packagingJavaLauncher
 
     appName = "InstaGene"
-    appVersion = providers.gradleProperty("instagene.version").orElse("0.0.0").get()
+    appVersion = instaGeneVersion.get()
     mainClass = "org.instagene.app.gui.GuiMainKt"
     mainJar = "instagene.jar"
     input = layout.buildDirectory.dir("jpackage/input")
-    destination = layout.buildDirectory.dir(jpackageDest)
     vendor = "InstaGene"
     appDescription = "DNA/RNA editing and plasmid construction."
     copyright = "InstaGene contributors"
-    type = jpackageType.map { ImageType.valueOf(it) }
     javaOptions = listOf("-Xmx8g")
+    // The plugin logs the jpackage process output at Gradle INFO level. Keep
+    // native verbose output available so CI can expose the real macOS error.
+    verbose = true
+}
+
+tasks.jpackage {
+    configureInstaGenePackage()
+    destination = layout.buildDirectory.dir(jpackageDest)
+    type = jpackageType.map { ImageType.valueOf(it) }
 
     // Low-friction installs: shortcuts on every platform, no icons (added later).
     // jpackage rejects OS-specific options when the package type is not the
@@ -187,6 +198,83 @@ tasks.jpackage {
     winPerUserInstall = useWindowsOpts
     macPackageIdentifier = useMacOpts.map { if (it) "org.instagene.InstaGene" else null }
     macSign = false
+}
+
+// Build the macOS application bundle separately from the DMG. The JDK's DMG
+// path relies on additional Finder/AppleScript behavior that is brittle on
+// hosted runners; hdiutil can wrap the completed app image directly.
+val macAppImage = tasks.register<JPackageTask>("macAppImage") {
+    group = "distribution"
+    description = "Builds the unsigned macOS InstaGene.app image."
+    configureInstaGenePackage()
+    type = ImageType.APP_IMAGE
+    destination = layout.buildDirectory.dir("jpackage/mac-app-image")
+}
+
+val macDmgStage = layout.buildDirectory.dir("jpackage/mac-dmg-stage")
+val macDmgOutput = layout.buildDirectory.file(
+    instaGeneVersion.map { "jpackage/dist/InstaGene-$it.dmg" },
+)
+
+val cleanMacDmgStage = tasks.register<Delete>("cleanMacDmgStage") {
+    delete(macDmgStage)
+}
+
+val prepareMacDmgStage = tasks.register<Exec>("prepareMacDmgStage") {
+    group = "distribution"
+    description = "Stages InstaGene.app and the Applications shortcut for the DMG."
+    dependsOn(macAppImage, cleanMacDmgStage)
+
+    val sourceApp = macAppImage.flatMap { it.destination.dir("InstaGene.app") }
+    val stagedApp = macDmgStage.map { it.dir("InstaGene.app") }
+    inputs.dir(sourceApp)
+
+    if (!System.getProperty("os.name").lowercase().contains("mac")) {
+        commandLine(
+            "/bin/bash", "-c",
+            "echo 'prepareMacDmgStage can only run on macOS' >&2; exit 1",
+        )
+    } else {
+        commandLine(
+            "/bin/bash", "-eu", "-o", "pipefail", "-c",
+            """
+                /bin/mkdir -p "${'$'}2"
+                /usr/bin/ditto "${'$'}1" "${'$'}3"
+                /bin/ln -s /Applications "${'$'}2/Applications"
+            """.trimIndent(),
+            "prepareMacDmgStage",
+            sourceApp.get().asFile.absolutePath,
+            macDmgStage.get().asFile.absolutePath,
+            stagedApp.get().asFile.absolutePath,
+        )
+    }
+}
+
+tasks.register<Exec>("macDmg") {
+    group = "distribution"
+    description = "Builds the unsigned macOS DMG using the packaged InstaGene.app image."
+    dependsOn(prepareMacDmgStage)
+    inputs.dir(macDmgStage)
+    outputs.file(macDmgOutput)
+
+    if (!System.getProperty("os.name").lowercase().contains("mac")) {
+        commandLine(
+            "/bin/bash", "-c",
+            "echo 'macDmg can only run on macOS' >&2; exit 1",
+        )
+    } else {
+        commandLine(
+            "/bin/bash", "-eu", "-o", "pipefail", "-c",
+            """
+                /bin/mkdir -p "${'$'}1"
+                /usr/bin/hdiutil create -volname InstaGene -srcfolder "${'$'}2" -ov -format UDZO "${'$'}3"
+            """.trimIndent(),
+            "macDmg",
+            macDmgOutput.get().asFile.parentFile.absolutePath,
+            macDmgStage.get().asFile.absolutePath,
+            macDmgOutput.get().asFile.absolutePath,
+        )
+    }
 }
 
 // The low-friction fallback: a plain zip of the app image, so users get a
