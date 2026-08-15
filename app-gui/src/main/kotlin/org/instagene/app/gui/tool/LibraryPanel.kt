@@ -1,12 +1,14 @@
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.TableLabels
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedFeatureMetadata
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
+import org.instagene.app.gui.installRowContextMenu
 import org.instagene.core.Alphabet
 import org.instagene.core.Feature
 import org.instagene.core.Seq
@@ -24,6 +26,7 @@ import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JPopupMenu
 import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
@@ -67,6 +70,7 @@ class LibraryPanel(
         libraryTable.selectionModel.addListSelectionListener {
             if (!it.valueIsAdjusting) updateActionState()
         }
+        libraryTable.installRowContextMenu { row -> libraryPopup(row) }
 
         addItemButton.addActionListener { showAddItemDialog() }
         insertButton.addActionListener { insertSelected(libraryTable.selectedRow) }
@@ -132,6 +136,47 @@ class LibraryPanel(
         } else {
             "${libraryModel.rowCount} saved item(s)."
         }
+    }
+
+    private fun libraryPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val item = row?.let { prefs.value.library.getOrNull(it) }
+        val hasRow = item != null
+        add(ContextMenus.item(
+            "Add Item…",
+            "Create a reusable primer, fragment, or feature library item.",
+        ) { showAddItemDialog() })
+        addSeparator()
+        add(ContextMenus.item(
+            "Insert at caret",
+            "Insert this item's sequence into the active nucleotide document.",
+            hasRow && doc.seq.kind != SeqKind.PROTEIN,
+        ) { insertSelected(row ?: -1) })
+        add(ContextMenus.item(
+            "Copy sequence",
+            "Copy this item's sequence bases to the clipboard.",
+            hasRow,
+        ) { copySelected(row ?: -1) })
+        add(ContextMenus.item(
+            "Open as sequence",
+            "Open this saved item as a new sequence tab.",
+            hasRow,
+        ) { openSelected(row ?: -1) })
+        add(ContextMenus.item(
+            "Jump to source",
+            "Reveal the source region if the originating sequence is active.",
+            item?.context?.sourceName?.isNotBlank() == true,
+        ) { jumpToSource(row ?: -1) })
+        addSeparator()
+        add(ContextMenus.item(
+            "Edit Element…",
+            "Edit this library item's visible fields.",
+            hasRow,
+        ) { editSelected(row ?: -1) })
+        add(ContextMenus.item(
+            "Delete",
+            "Remove this item from the library.",
+            hasRow,
+        ) { deleteSelected(row ?: -1) })
     }
 
     /**

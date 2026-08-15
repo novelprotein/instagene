@@ -1,8 +1,10 @@
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.TableLabels
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.installRowContextMenu
 import org.instagene.core.Feature
 import org.instagene.core.Alphabet
 import org.instagene.core.PrimerDesign
@@ -22,6 +24,7 @@ import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JLabel
+import javax.swing.JPopupMenu
 import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
@@ -80,6 +83,7 @@ class PrimersPanel(
         resultsTable.selectionModel.addListSelectionListener {
             if (!it.valueIsAdjusting) refreshEditElementActionState()
         }
+        resultsTable.installRowContextMenu { row -> primerPopup(row) }
 
         add(buildControls(), BorderLayout.NORTH)
         add(JScrollPane(resultsTable), BorderLayout.CENTER)
@@ -310,6 +314,42 @@ class PrimersPanel(
         saveButton.isEnabled = enabled && result != null
         resultsTable.isEnabled = enabled
         refreshResultActionState()
+    }
+
+    private fun primerPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val selectedPrimer = row?.let { primerAt(it) }
+        val hasResult = resultsTable.isEnabled && result != null
+        add(ContextMenus.item(
+            "Design primers",
+            "Run primer design for the current From/To amplicon range.",
+            designButton.isEnabled,
+        ) { if (design()) promptToAddPrimersToFeatures() })
+        add(ContextMenus.item(
+            "Advanced candidates…",
+            "Open detailed primer candidate filters for the current amplicon range.",
+            doc.seq.kind != SeqKind.PROTEIN,
+        ) { showAdvancedCandidates() })
+        addSeparator()
+        add(ContextMenus.item(
+            "Copy as FASTA",
+            "Copy the designed primer pair in FASTA format.",
+            hasResult,
+        ) { copyAsFasta() })
+        add(ContextMenus.item(
+            "Save primers to library",
+            "Save the designed primer pair to the reusable library.",
+            hasResult,
+        ) { savePrimers() })
+        add(ContextMenus.item(
+            "Add primers to features",
+            "Annotate the designed forward and reverse primers on the current sequence.",
+            hasResult,
+        ) { addPrimersToFeatures() })
+        add(ContextMenus.item(
+            "Edit Element…",
+            "Edit the selected primer's name, sequence, and description.",
+            selectedPrimer != null,
+        ) { editPrimerElement(row ?: -1) })
     }
 
     /** Exposed for tests: whether primer design is available for the sample type. */

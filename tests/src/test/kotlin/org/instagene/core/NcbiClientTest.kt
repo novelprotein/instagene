@@ -2,11 +2,13 @@ package org.instagene.core
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import org.instagene.core.io.SeqIOException
 import java.net.InetSocketAddress
 import java.net.http.HttpClient
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class NcbiClientTest {
     @Test
@@ -53,6 +55,59 @@ class NcbiClientTest {
     }
 
     @Test
+    fun fetchGenBankFailsClearlyWhenNcbiReturnsNonGenBankText() {
+        withServer(efetchBody = "Error: failed to retrieve sequence") { base ->
+            val client = NcbiClient(
+                http = HttpClient.newHttpClient(),
+                baseUrl = "$base/entrez/eutils",
+                blastBaseUrl = "$base/Blast.cgi",
+            )
+
+            val error = assertFailsWith<SeqIOException> { client.fetchGenBank("J01636.1") }
+
+            assertEquals("NCBI fetch for J01636.1 did not return GenBank text", error.message)
+        }
+    }
+
+    @Test
+    fun fetchGenBankUsesFastaBasesForContigRecordsAndKeepsFeatures() {
+        withServer(
+            efetchBody = contigGenBank,
+            efetchFastaBody = ">NZ_CONTIG.1 assembled scaffold\nAACCGGTTAACC\n",
+        ) { base ->
+            val client = NcbiClient(
+                http = HttpClient.newHttpClient(),
+                baseUrl = "$base/entrez/eutils",
+                blastBaseUrl = "$base/Blast.cgi",
+            )
+
+            val fetched = client.fetchGenBank("NZ_CONTIG.1")
+
+            assertEquals("NZ_CONTIG.1", fetched.name)
+            assertEquals("AACCGGTTAACC", fetched.bases)
+            assertEquals("join(ABC123.1:1..12)", fetched.metadata["CONTIG"])
+            assertEquals("kept", fetched.features.single { it.type == "CDS" }.name)
+            assertEquals(1, fetched.features.single { it.type == "CDS" }.start)
+            assertEquals(8, fetched.features.single { it.type == "CDS" }.end)
+        }
+    }
+
+    @Test
+    fun fetchGenBankFailsClearlyWhenSequenceReferenceRecordHasNoRetrievableFastaBases() {
+        withServer(efetchBody = wgsMasterGenBank, efetchFastaBody = "\n") { base ->
+            val client = NcbiClient(
+                http = HttpClient.newHttpClient(),
+                baseUrl = "$base/entrez/eutils",
+                blastBaseUrl = "$base/Blast.cgi",
+            )
+
+            val error = assertFailsWith<SeqIOException> { client.fetchGenBank("NZ_CONTIG.1") }
+
+            assertEquals("NCBI record NZ_CONTIG.1 has no retrievable sequence bases", error.message)
+        }
+    }
+
+    @Test
     fun submitsPollsAndParsesBlastTabularResults() {
         withServer { base ->
             val client = NcbiClient(
@@ -77,7 +132,12 @@ class NcbiClientTest {
         }
     }
 
-    private fun withServer(numericSummary: Boolean = false, block: (String) -> Unit) {
+    private fun withServer(
+        numericSummary: Boolean = false,
+        efetchBody: String? = null,
+        efetchFastaBody: String? = null,
+        block: (String) -> Unit,
+    ) {
         val statusCalls = AtomicInteger()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange ->
@@ -92,7 +152,8 @@ class NcbiClientTest {
                     } else {
                         """{"result":{"uids":["J01636.1"],"J01636.1":{"accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""
                     }
-                path.endsWith("/efetch.fcgi") -> genBank
+                path.endsWith("/efetch.fcgi") ->
+                    if (query.contains("rettype=fasta")) efetchFastaBody.orEmpty() else efetchBody ?: genBank
                 path.endsWith("/Blast.cgi") && exchange.requestMethod == "POST" -> "RID = RID123\nRTOE = 2\n"
                 path.endsWith("/Blast.cgi") && query.contains("FORMAT_OBJECT=SearchInfo") ->
                     if (statusCalls.getAndIncrement() == 0) "Status=WAITING\n" else "Status=READY\n"
@@ -123,6 +184,32 @@ class NcbiClientTest {
         VERSION     J01636.1
         ORIGIN
                 1 acgtacgt
+        //
+    """.trimIndent()
+
+    private val contigGenBank = """
+        LOCUS       NZ_CONTIG.1              12 bp    DNA     linear   CON 01-JAN-2024
+        DEFINITION  Assembled scaffold.
+        ACCESSION   NZ_CONTIG
+        VERSION     NZ_CONTIG.1
+        FEATURES             Location/Qualifiers
+             source          1..12
+                             /organism="synthetic construct"
+             CDS             2..8
+                             /gene="kept"
+        CONTIG      join(ABC123.1:1..12)
+        //
+    """.trimIndent()
+
+    private val wgsMasterGenBank = """
+        LOCUS       NZ_CONTIG.1              12 rc    DNA     linear   BCT 01-JAN-2024
+        DEFINITION  Whole genome shotgun sequencing project.
+        ACCESSION   NZ_CONTIG
+        VERSION     NZ_CONTIG.1
+        FEATURES             Location/Qualifiers
+             source          1..12
+                             /organism="synthetic construct"
+        WGS         ABC123000001-ABC123000012
         //
     """.trimIndent()
 }

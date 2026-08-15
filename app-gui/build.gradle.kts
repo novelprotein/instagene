@@ -1,5 +1,7 @@
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.panteleyev.jpackage.ImageType
+import java.util.jar.JarFile
 
 plugins {
     kotlin("jvm")
@@ -35,11 +37,61 @@ tasks.register<JavaExec>("runGui") {
 // are driven by -Pjpackage.type / -Pjpackage.dest so one definition serves the
 // whole CI matrix; the default builds the OS-native image locally.
 val jpackageType = providers.gradleProperty("jpackage.type").map { it.uppercase() }.orElse("DEFAULT")
-val jpackageDest = providers.gradleProperty("jpackage.dest").orElse("jpackage/dist")
+val defaultJpackageDest = jpackageType.map { if (it == "APP_IMAGE") "jpackage/app-image-dist" else "jpackage/dist" }
+val jpackageDest = providers.gradleProperty("jpackage.dest").orElse(defaultJpackageDest)
 
 // Fixed jar name so --main-jar is stable regardless of Gradle's archive naming.
 tasks.jar {
     archiveFileName = "instagene.jar"
+}
+
+// A portable java -jar distribution. Keep this separate from the thin
+// instagene.jar above: jpackage expects dependencies as individual input jars,
+// while users downloading a CI artifact need one self-contained file.
+val standaloneJar = tasks.register<Jar>("standaloneJar") {
+    group = "distribution"
+    description = "Builds a self-contained, runnable InstaGene GUI jar."
+    dependsOn(tasks.classes)
+    archiveFileName = "instagene-gui.jar"
+    destinationDirectory = layout.buildDirectory.dir("distributions")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Main-Class"] = "org.instagene.app.gui.GuiMainKt"
+    }
+    from(sourceSets.main.get().output)
+    from({
+        configurations.runtimeClasspath.get()
+            .filter { it.isFile }
+            .map { zipTree(it) }
+    })
+    // Dependency signatures are invalid once their contents are repackaged.
+    exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA", "META-INF/INDEX.LIST")
+}
+
+val verifyStandaloneJar = tasks.register("verifyStandaloneJar") {
+    group = "verification"
+    description = "Verifies the standalone GUI jar manifest and bundled runtime classes."
+    dependsOn(standaloneJar)
+    val archive = standaloneJar.flatMap { it.archiveFile }
+    inputs.file(archive)
+    doLast {
+        val file = archive.get().asFile
+        check(file.isFile) { "Missing standalone GUI jar: $file" }
+        JarFile(file).use { jar ->
+            check(jar.manifest.mainAttributes.getValue("Main-Class") == "org.instagene.app.gui.GuiMainKt") {
+                "Standalone GUI jar has no runnable Main-Class"
+            }
+            listOf(
+                "org/instagene/app/gui/GuiMainKt.class",
+                "org/instagene/core/NcbiClient.class",
+                "kotlin/jvm/internal/Intrinsics.class",
+                "kotlinx/serialization/json/Json.class",
+                "com/formdev/flatlaf/FlatLightLaf.class",
+            ).forEach { entry ->
+                check(jar.getJarEntry(entry) != null) { "Standalone GUI jar is missing $entry" }
+            }
+        }
+    }
 }
 
 // Everything jpackage needs in one flat input dir: the app jar plus its runtime deps.
@@ -51,6 +103,26 @@ val prepareJpackageInput = tasks.register<Sync>("prepareJpackageInput") {
     into(layout.buildDirectory.dir("jpackage/input"))
 }
 
+val verifyJpackageInput = tasks.register("verifyJpackageInput") {
+    group = "verification"
+    description = "Verifies that the packaged GUI jar contains the current GenBank fetch controls."
+    dependsOn(prepareJpackageInput)
+    val packagedJar = layout.buildDirectory.file("jpackage/input/instagene.jar")
+    inputs.file(packagedJar)
+    doLast {
+        val file = packagedJar.get().asFile
+        check(file.isFile) { "Missing packaged GUI jar: $file" }
+        JarFile(file).use { jar ->
+            val panelClass = jar.getJarEntry("org/instagene/app/gui/tool/NcbiAnalysisPanel.class")
+                ?: error("Packaged GUI jar is stale: NcbiAnalysisPanel.class is missing")
+            val bytecode = jar.getInputStream(panelClass).use { it.readBytes() }.toString(Charsets.ISO_8859_1)
+            check("ncbiSharedQuery" in bytecode) {
+                "Packaged GUI jar is stale: shared NCBI/GenBank query control is missing"
+            }
+        }
+    }
+}
+
 // A stable app image name per OS for the zip fallback: InstaGene / InstaGene.app.
 val osIs = { needle: String ->
     providers.systemProperty("os.name").map { it.lowercase().contains(needle) }
@@ -58,13 +130,14 @@ val osIs = { needle: String ->
 val appImageName = osIs("mac").map { if (it) "InstaGene.app" else "InstaGene" }
 
 tasks.jpackage {
-    dependsOn(prepareJpackageInput, tasks.jar)
+    dependsOn(verifyJpackageInput, tasks.jar)
 
     // jpackage links a runtime image with the JDK it runs on; pin it to the
     // same toolchain as the rest of the build so it cannot fall back to a
     // different JAVA_HOME (for example, a runtime without packaging modules).
     javaLauncher = javaToolchains.launcherFor {
         languageVersion.set(JavaLanguageVersion.of(21))
+        vendor.set(JvmVendorSpec.ADOPTIUM)
     }
 
     appName = "InstaGene"

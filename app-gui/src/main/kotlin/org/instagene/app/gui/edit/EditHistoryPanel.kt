@@ -1,5 +1,7 @@
 package org.instagene.app.gui.edit
 
+import org.instagene.app.gui.ContextMenus
+import org.instagene.app.gui.installRowContextMenu
 import org.instagene.core.project.EditEntry
 import java.awt.BorderLayout
 import java.awt.CardLayout
@@ -10,6 +12,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.swing.BorderFactory
 import javax.swing.JLabel
+import javax.swing.JPopupMenu
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTable
@@ -55,6 +58,7 @@ class EditHistoryPanel(private val recorder: EditRecorder) : JPanel(BorderLayout
         tableHeader.reorderingAllowed = false
         rowHeight = rowHeight.coerceAtLeast(20)
         border = BorderFactory.createEmptyBorder(4, 4, 4, 4)
+        installRowContextMenu { row -> historyPopup(row) }
     }
 
     private val hint = JLabel("No project edits recorded yet.", JLabel.CENTER).apply {
@@ -79,5 +83,20 @@ class EditHistoryPanel(private val recorder: EditRecorder) : JPanel(BorderLayout
         model.rows += recorder.entries.asReversed()
         model.fireTableDataChanged()
         (cards.layout as CardLayout).show(cards, if (recorder.entries.isEmpty()) CARD_HINT else CARD_TABLE)
+    }
+
+    private fun historyPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val hasRow = row in model.rows.indices
+        add(ContextMenus.item(
+            "Copy Row",
+            "Copy the selected edit history entry as tab-separated text.",
+            hasRow,
+        ) {
+            if (row != null && row in model.rows.indices) {
+                ContextMenus.copyToClipboard((0 until model.columnCount).joinToString("\t") { column ->
+                    model.getValueAt(row, column).toString()
+                })
+            }
+        })
     }
 }

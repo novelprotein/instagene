@@ -1,9 +1,11 @@
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.TableLabels
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.dialog.AnalysisDialogs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.installRowContextMenu
 import org.instagene.app.gui.enzyme.EnzymeElementDialog
 import org.instagene.app.gui.enzyme.enzymeDescriptionFor
 import org.instagene.app.gui.enzyme.enzymePool
@@ -30,6 +32,7 @@ import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JLabel
+import javax.swing.JPopupMenu
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
@@ -139,6 +142,7 @@ class DigestPanel(
                 refreshEditElementActionState()
             }
         }
+        enzymeTable.installRowContextMenu { row -> enzymePopup(row) }
 
         digestTable.rowHeight = 20
         digestTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
@@ -148,6 +152,7 @@ class DigestPanel(
                 updateFragmentActionState()
             }
         }
+        digestTable.installRowContextMenu { row -> digestPopup(row) }
 
         add(buildTop(), BorderLayout.NORTH)
 
@@ -371,6 +376,69 @@ class DigestPanel(
         refreshEditElementActionState()
     }
 
+    private fun enzymePopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val enzyme = row?.let { visibleEnzymes.getOrNull(it) }
+        val hasEnzyme = enzyme != null && enzymeTable.isEnabled
+        val checkedLabel = if (enzyme != null && enzyme in checked) "Uncheck Enzyme" else "Check Enzyme"
+        add(ContextMenus.item(
+            checkedLabel,
+            "Toggle whether this enzyme is included in the active digest.",
+            hasEnzyme,
+        ) { toggleEnzyme(row ?: -1) })
+        add(ContextMenus.item(
+            "Edit Element…",
+            "Edit this enzyme's recognition site, cuts, enabled state, and description.",
+            hasEnzyme,
+        ) { editEnzymeElement(row ?: -1) })
+        add(ContextMenus.item(
+            "Reveal First Cut Site",
+            "Select the first cut site for this enzyme in the sequence viewer.",
+            hasEnzyme && (enzymeModel.counts[enzyme] ?: 0) > 0,
+        ) { revealFirstSiteOfEnzyme(row ?: -1) })
+        addSeparator()
+        add(ContextMenus.item(
+            "Diagnostic sites",
+            "Open diagnostic site analysis for the currently checked enzymes.",
+            checked.isNotEmpty(),
+        ) { AnalysisDialogs.showDiagnostic(null, doc, checked.toList()) })
+        add(ContextMenus.item(
+            "Clear",
+            "Uncheck all enzymes and clear the current digest.",
+            checked.isNotEmpty(),
+        ) {
+            checked.clear()
+            applySelection()
+        })
+    }
+
+    private fun digestPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val merged = row?.let { mergedRows.getOrNull(it) }
+        val fragmentIndex = merged?.fragment?.let { fragments.indexOf(it) } ?: -1
+        val hasFragment = digestTable.isEnabled && fragmentIndex >= 0
+        val hasCutSite = digestTable.isEnabled && merged?.site != null
+        add(ContextMenus.item(
+            "Reveal Fragment",
+            "Select this fragment's bases in the sequence viewer.",
+            hasFragment,
+        ) { revealFragment(fragmentIndex) })
+        add(ContextMenus.item(
+            "Reveal Cut Site",
+            "Select this row's recognition sequence in the sequence viewer.",
+            hasCutSite,
+        ) { revealCutSite(merged?.site) })
+        addSeparator()
+        add(ContextMenus.item(
+            "Open fragment as new sequence",
+            "Open this digest fragment as a standalone sequence tab.",
+            hasFragment,
+        ) { extractFragment(fragmentIndex) })
+        add(ContextMenus.item(
+            "Save fragment to library",
+            "Save this digest fragment and its source context to the reusable library.",
+            hasFragment,
+        ) { saveFragment(fragmentIndex) })
+    }
+
     /** Restores the selected enzyme after a table refresh without revealing the sequence again. */
     private fun restoreEnzymeSelection(selectedEnzyme: Enzyme?) {
         val row = selectedEnzyme?.let { selected -> visibleEnzymes.indexOfFirst { it == selected } } ?: -1
@@ -591,6 +659,12 @@ class DigestPanel(
         editElementButton.isEnabled = enzymeTable.isEnabled && enzymeTable.selectedRow in visibleEnzymes.indices
     }
 
+    private fun toggleEnzyme(row: Int) {
+        val enzyme = visibleEnzymes.getOrNull(row) ?: return
+        if (enzyme in checked) checked -= enzyme else checked += enzyme
+        applySelection()
+    }
+
     /** Opens the visible GUI editor for every editable field of the selected enzyme. */
     private fun editEnzymeElement(row: Int) {
         val enzyme = visibleEnzymes.getOrNull(row) ?: return
@@ -689,10 +763,19 @@ class DigestPanel(
 
     private fun revealFirstSiteOfSelectedEnzyme() {
         val row = enzymeTable.selectedRow
-        if (row !in visibleEnzymes.indices) return
-        val enzyme = visibleEnzymes[row]
+        revealFirstSiteOfEnzyme(row)
+    }
+
+    private fun revealFirstSiteOfEnzyme(row: Int) {
+        val enzyme = visibleEnzymes.getOrNull(row) ?: return
         val site = Digest.cutSites(doc.seq, enzyme).firstOrNull() ?: return
         onReveal(site.recognitionStart, site.recognitionStart + enzyme.siteLength)
+    }
+
+    private fun revealCutSite(site: CutSite?) {
+        site ?: return
+        val wraps = doc.seq.isCircular && site.recognitionEnd > doc.seq.length
+        if (wraps) onReveal(0, doc.seq.length) else onReveal(site.recognitionStart, site.recognitionEnd)
     }
 
     private fun revealSelectedFragment() {

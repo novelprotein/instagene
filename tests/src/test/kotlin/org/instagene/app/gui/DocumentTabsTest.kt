@@ -184,7 +184,7 @@ class DocumentTabsTest {
     fun openingAProjectRestoresItsDocumentsActiveTabAndLayout() {
         val root = Files.createTempDirectory("proj").toFile()
         val a = File(root, "a.fasta").apply { writeText(">a\nAAAA\n") }
-        val b = File(root, "b.gb").apply { writeText(">b\nCCCC\n") }
+        val b = File(root, "b.fasta").apply { writeText(">b\nCCCC\n") }
         root.deleteOnExit()
         a.deleteOnExit()
         b.deleteOnExit()
@@ -206,7 +206,7 @@ class DocumentTabsTest {
         assertTrue(awaitEdt { content.docTabs.tabCount == 2 }, "project documents were not loaded")
 
         val active = content.activeDocument
-        assertEquals("b.gb", active.file?.name)
+        assertEquals("b.fasta", active.file?.name)
         assertEquals(3, content.toolTabs.selectedIndex, "project layout tab was not restored")
         onEdt {
             content.fileBrowserToggle.doClick()

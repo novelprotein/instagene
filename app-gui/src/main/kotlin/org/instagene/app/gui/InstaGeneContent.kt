@@ -27,6 +27,7 @@ import org.instagene.app.gui.tool.LibraryPanel
 import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.app.gui.tool.SequenceView
+import org.instagene.core.NcbiClient
 import org.instagene.core.Seq
 import org.instagene.core.Version
 import org.instagene.core.io.SeqIO
@@ -87,6 +88,7 @@ class InstaGeneContent(
     openPath: String? = null,
     private val owner: JFrame? = null,
     private val prefs: Prefs = Prefs(),
+    ncbiClient: NcbiClient = NcbiClient(),
 ) : JPanel(BorderLayout()) {
 
     /** The parent window, used for dialogs and the system-app opener; null in headless contexts. */
@@ -272,6 +274,7 @@ class InstaGeneContent(
                 toolTabs.selectedIndex = toolTabs.indexOfTab("Sequence")
             },
             { start, end -> sequenceView.revealRange(start, end) },
+            ncbiClient,
         )
         plasmidMapPanel = PlasmidMapPanel(initial).apply {
             onSelect = { start, end -> sequenceView.revealRange(start, end) }

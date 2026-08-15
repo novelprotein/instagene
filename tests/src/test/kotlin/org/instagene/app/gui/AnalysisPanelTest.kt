@@ -11,10 +11,14 @@ import java.awt.Component
 import java.awt.Container
 import java.awt.event.MouseEvent
 import java.net.InetSocketAddress
+import java.net.URLDecoder
 import java.net.http.HttpClient
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JButton
+import javax.swing.JComboBox
+import javax.swing.JMenuItem
 import javax.swing.JTable
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
@@ -75,8 +79,7 @@ class AnalysisPanelTest {
 
             val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
             onEdt {
-                val controls = searchButton.parent
-                descendants(controls, JTextField::class.java).single().text = "J01636.1"
+                ncbiQueryField(panel).text = "J01636.1"
                 searchButton.doClick()
             }
             awaitCondition { nucleotideTable(panel).rowCount == 1 }
@@ -92,7 +95,9 @@ class AnalysisPanelTest {
             awaitCondition { opened != null }
             assertEquals("ACGTACGT", opened?.bases)
 
-            onEdt { descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }.doClick() }
+            onEdt {
+                descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }.doClick()
+            }
             awaitCondition { blastTable(panel).rowCount == 1 }
             onEdt {
                 val table = blastTable(panel)
@@ -131,8 +136,7 @@ class AnalysisPanelTest {
 
             val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
             onEdt {
-                val controls = searchButton.parent
-                descendants(controls, JTextField::class.java).single().text = "J01636.1"
+                ncbiQueryField(panel).text = "J01636.1"
                 searchButton.doClick()
             }
             awaitCondition { nucleotideTable(panel).rowCount == 1 }
@@ -143,6 +147,197 @@ class AnalysisPanelTest {
             }
             awaitCondition { opened != null }
             assertEquals("ACGTACGT", opened?.bases)
+        }
+    }
+
+    @Test
+    fun ncbiFetchRequiresCurrentSelectionWhenTypedQueryIsNotAnAccession() {
+        val fetchedId = AtomicReference<String>()
+        withApiServer(onFetch = fetchedId::set) { base ->
+            val panel = ncbiPanel(base)
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                ncbiQueryField(panel).text = "J01636.1"
+                searchButton.doClick()
+            }
+            awaitCondition { nucleotideTable(panel).rowCount == 1 }
+            onEdt {
+                ncbiQueryField(panel).text = "record search"
+                searchButton.doClick()
+            }
+            awaitCondition { nucleotideTable(panel).rowCount == 1 }
+            onEdt {
+                nucleotideTable(panel).clearSelection()
+                assertTrue(fetchButton.isEnabled)
+                fetchButton.doClick()
+            }
+            awaitCondition {
+                descendants(panel, javax.swing.JTextArea::class.java)
+                    .any { it.text.contains("Run Search NCBI and select a result") }
+            }
+            assertEquals(null, fetchedId.get())
+        }
+    }
+
+    @Test
+    fun ncbiFetchCanUseTypedAccessionWithoutSearchResults() {
+        val fetchedId = AtomicReference<String>()
+        val searches = ArrayList<String>()
+        withApiServer(onFetch = fetchedId::set, onSearch = searches::add) { base ->
+            var opened: Seq? = null
+            val panel = onEdt {
+                AnalysisPanel(
+                    SeqDocument(Seq("query", "ACGTACGT")),
+                    { opened = it },
+                    { _, _ -> },
+                    NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                    ncbiPollIntervalMillis = 0,
+                ).also { it.selectTool("NCBI / BLAST") }
+            }
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                assertTrue(fetchButton.isEnabled)
+                ncbiQueryField(panel).text = "J01636.1"
+                fetchButton.doClick()
+            }
+            awaitCondition { opened != null }
+
+            assertEquals("J01636.1", fetchedId.get())
+            assertEquals("ACGTACGT", opened?.bases)
+            assertEquals(emptyList(), searches)
+        }
+    }
+
+    @Test
+    fun fullWindowFetchGenBankOpensSequenceTabFromSharedQueryField() {
+        val fetchedId = AtomicReference<String>()
+        withApiServer(onFetch = fetchedId::set) { base ->
+            val content = onEdt {
+                InstaGeneContent(
+                    ncbiClient = NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                ).also {
+                    it.toolTabs.selectedIndex = it.toolTabs.indexOfTab("Analysis")
+                    it.analysisPanel.selectTool("NCBI / BLAST")
+                }
+            }
+            val fetchButton = descendants(content.analysisPanel, JButton::class.java)
+                .single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                assertEquals(0, content.docTabs.tabCount)
+                ncbiQueryField(content.analysisPanel).text = "J01636.1"
+                assertTrue(fetchButton.isEnabled)
+                fetchButton.doClick()
+                assertEquals(false, fetchButton.isEnabled)
+            }
+            awaitCondition { content.docTabs.tabCount == 1 }
+
+            onEdt {
+                assertEquals("J01636.1", fetchedId.get())
+                assertEquals("ACGTACGT", (content.activeDoc as SeqDocument).seq.bases)
+                assertTrue(fetchButton.isEnabled)
+            }
+        }
+    }
+
+    @Test
+    fun failedGenBankFetchRestoresButtonAndShowsError() {
+        withApiServer(fetchBody = "not a GenBank record") { base ->
+            val panel = ncbiPanel(base)
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                ncbiQueryField(panel).text = "J01636.1"
+                fetchButton.doClick()
+                assertEquals(false, fetchButton.isEnabled)
+            }
+            awaitCondition {
+                fetchButton.isEnabled && descendants(panel, javax.swing.JTextArea::class.java)
+                    .any { it.text.contains("did not return GenBank text") }
+            }
+        }
+    }
+
+    @Test
+    fun ncbiFetchIsAlwaysActionableAndExplainsMissingAccession() {
+        withApiServer { base ->
+            val panel = ncbiPanel(base)
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                ncbiQueryField(panel).text = "lacZ operon"
+                assertTrue(searchButton.isEnabled)
+                assertTrue(fetchButton.isEnabled)
+                fetchButton.doClick()
+            }
+            awaitCondition {
+                descendants(panel, javax.swing.JTextArea::class.java)
+                    .any { it.text.contains("Run Search NCBI and select a result") }
+            }
+        }
+    }
+
+    @Test
+    fun ncbiFetchTracksClickedAndRightClickedRows() {
+        val fetched = ArrayList<String>()
+        withApiServer(searchIds = listOf("J01636.1", "ALT123.1"), onFetch = fetched::add) { base ->
+            val panel = ncbiPanel(base)
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                ncbiQueryField(panel).text = "two records"
+                searchButton.doClick()
+            }
+            awaitCondition { nucleotideTable(panel).rowCount == 2 }
+            onEdt {
+                val table = nucleotideTable(panel)
+                table.setRowSelectionInterval(1, 1)
+                assertTrue(fetchButton.isEnabled)
+                fetchButton.doClick()
+            }
+            awaitCondition { fetched.size == 1 && fetchButton.isEnabled }
+            onEdt {
+                val table = nucleotideTable(panel)
+                popupClick(table, 0)
+                val fetchItem = table.componentPopupMenu.components.filterIsInstance<JMenuItem>().single { it.text == "Fetch GenBank" }
+                assertTrue(fetchItem.isEnabled)
+                fetchItem.doClick()
+            }
+            awaitCondition { fetched.size == 2 }
+
+            assertEquals(listOf("ALT123.1", "J01636.1"), fetched)
+        }
+    }
+
+    @Test
+    fun ncbiFetchRemainsAvailableForZeroSearchResults() {
+        withApiServer(searchIds = emptyList()) { base ->
+            val panel = ncbiPanel(base)
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                ncbiQueryField(panel).text = "no hits"
+                searchButton.doClick()
+            }
+            awaitCondition { descendants(panel, javax.swing.JTextArea::class.java).any { it.text.contains("0 result") } }
+            onEdt {
+                assertEquals(0, nucleotideTable(panel).rowCount)
+                assertTrue(fetchButton.isEnabled)
+            }
         }
     }
 
@@ -165,15 +360,20 @@ class AnalysisPanelTest {
                 ).also { it.selectTool("NCBI / BLAST") }
             }
 
-            onEdt { descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }.doClick() }
+            onEdt {
+                descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }.doClick()
+            }
             awaitCondition { blastTable(panel).rowCount == 1 }
             onEdt {
                 val table = blastTable(panel)
                 assertEquals("NC_000913.3", table.getValueAt(0, 0))
+                assertTrue(descendants(panel, JButton::class.java).none { it.text == "Open BLAST Hit" })
+                table.clearSelection()
+                popupClick(table, 0)
                 assertEquals(0, table.selectedRow)
-                val openButton = descendants(panel, JButton::class.java).single { it.text == "Open BLAST Hit" }
-                assertTrue(openButton.isEnabled)
-                openButton.doClick()
+                val openItem = table.componentPopupMenu.components.filterIsInstance<JMenuItem>().single { it.text == "Open BLAST Hit" }
+                assertTrue(openItem.isEnabled)
+                openItem.doClick()
             }
             awaitCondition { opened != null }
             assertEquals("NC_000913.3", fetchedId.get())
@@ -197,17 +397,331 @@ class AnalysisPanelTest {
                     ncbiPollIntervalMillis = 100,
                 ).also { it.selectTool("NCBI / BLAST") }
             }
-            val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
-            val cancelButton = descendants(panel, JButton::class.java).single { it.text == "Cancel BLAST" }
+            val blastButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
+            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
 
             onEdt {
-                runButton.doClick()
-                assertTrue(cancelButton.isEnabled)
-                cancelButton.doClick()
+                assertTrue(blastButton.isEnabled)
+                blastButton.doClick()
+                assertEquals("Cancel BLAST", blastButton.text)
+                assertTrue(blastButton.isEnabled)
+                blastButton.doClick()
             }
-            awaitCondition { !cancelButton.isEnabled && runButton.isEnabled }
+            awaitCondition { blastButton.text == "Run BLAST" && blastButton.isEnabled }
             assertEquals(0, blastTable(panel).rowCount)
         }
+    }
+
+    @Test
+    fun ncbiNucleotideSearchCanUseTypedSelectedOrWholeSequenceInput() {
+        val searches = ArrayList<String>()
+        withApiServer(onSearch = searches::add) { base ->
+            val doc = SeqDocument(Seq("query", "AAAACCCCGGGG"))
+            val panel = onEdt {
+                doc.select(4, 8)
+                AnalysisPanel(
+                    doc,
+                    {},
+                    { _, _ -> },
+                    NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                    ncbiPollIntervalMillis = 0,
+                ).also { it.selectTool("NCBI / BLAST") }
+            }
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+
+            onEdt {
+                ncbiQueryField(panel).text = "J01636.1"
+                searchButton.doClick()
+            }
+            awaitCondition { searches.size == 1 }
+
+            onEdt {
+                source.selectItem("Selected bases")
+                searchButton.doClick()
+            }
+            awaitCondition { searches.size == 2 }
+
+            onEdt {
+                source.selectItem("Whole sequence")
+                searchButton.doClick()
+            }
+            awaitCondition { searches.size == 3 }
+
+            assertEquals(listOf("J01636.1", "CCCC", "AAAACCCCGGGG"), searches)
+        }
+    }
+
+    @Test
+    fun genBankFetchUsesSelectedAndWholeSequenceSearchResults() {
+        val searches = ArrayList<String>()
+        val fetched = ArrayList<String>()
+        withApiServer(onSearch = searches::add, onFetch = fetched::add) { base ->
+            val doc = SeqDocument(Seq("query", "AAAACCCCGGGG"))
+            val panel = onEdt {
+                doc.select(4, 8)
+                AnalysisPanel(
+                    doc,
+                    {},
+                    { _, _ -> },
+                    NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                    ncbiPollIntervalMillis = 0,
+                ).also { it.selectTool("NCBI / BLAST") }
+            }
+            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                source.selectItem("Selected bases")
+                searchButton.doClick()
+            }
+            awaitCondition { searches.size == 1 && nucleotideTable(panel).rowCount == 1 }
+            onEdt { fetchButton.doClick() }
+            awaitCondition { fetched.size == 1 && fetchButton.isEnabled }
+
+            onEdt {
+                source.selectItem("Whole sequence")
+                assertEquals(0, nucleotideTable(panel).rowCount)
+                searchButton.doClick()
+            }
+            awaitCondition { searches.size == 2 && nucleotideTable(panel).rowCount == 1 }
+            onEdt { fetchButton.doClick() }
+            awaitCondition { fetched.size == 2 && fetchButton.isEnabled }
+
+            assertEquals(listOf("CCCC", "AAAACCCCGGGG"), searches)
+            assertEquals(listOf("J01636.1", "J01636.1"), fetched)
+        }
+    }
+
+    @Test
+    fun changingSharedQueryOrSourceClearsStaleNucleotideResults() {
+        val fetched = ArrayList<String>()
+        withApiServer(onFetch = fetched::add) { base ->
+            val panel = ncbiPanel(base)
+            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+
+            onEdt {
+                ncbiQueryField(panel).text = "record search"
+                searchButton.doClick()
+            }
+            awaitCondition { nucleotideTable(panel).rowCount == 1 }
+            onEdt {
+                ncbiQueryField(panel).text = "different search"
+                assertEquals(0, nucleotideTable(panel).rowCount)
+                searchButton.doClick()
+            }
+            awaitCondition { nucleotideTable(panel).rowCount == 1 }
+            onEdt {
+                source.selectItem("Whole sequence")
+                assertEquals(0, nucleotideTable(panel).rowCount)
+                fetchButton.doClick()
+            }
+            awaitCondition {
+                descendants(panel, javax.swing.JTextArea::class.java)
+                    .any { it.text.contains("then select a result to fetch GenBank") }
+            }
+            assertEquals(emptyList(), fetched)
+        }
+    }
+
+    @Test
+    fun ncbiBlastCanUseSelectionOrWholeSequenceInput() {
+        val blastQueries = ArrayList<String>()
+        withApiServer(onBlastQuery = blastQueries::add) { base ->
+            val doc = SeqDocument(Seq("query", "AAAACCCCGGGG"))
+            val panel = onEdt {
+                doc.select(4, 8)
+                AnalysisPanel(
+                    doc,
+                    {},
+                    { _, _ -> },
+                    NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                    ncbiPollIntervalMillis = 0,
+                ).also { it.selectTool("NCBI / BLAST") }
+            }
+            val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
+            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+
+            onEdt {
+                assertTrue(runButton.isEnabled)
+                runButton.doClick()
+            }
+            awaitCondition { blastQueries.size == 1 }
+            awaitCondition { runButton.text == "Run BLAST" && runButton.isEnabled }
+
+            onEdt {
+                source.selectItem("Whole sequence")
+                runButton.doClick()
+            }
+            awaitCondition { blastQueries.size == 2 }
+            awaitCondition { runButton.text == "Run BLAST" && runButton.isEnabled }
+
+            onEdt {
+                source.selectItem("Selected bases")
+                runButton.doClick()
+            }
+            awaitCondition { blastQueries.size == 3 }
+
+            assertEquals(listOf("CCCC", "AAAACCCCGGGG", "CCCC"), blastQueries)
+        }
+    }
+
+    @Test
+    fun ncbiBlastCanUseTypedNucleotideInput() {
+        val blastQueries = ArrayList<String>()
+        withApiServer(onBlastQuery = blastQueries::add) { base ->
+            val panel = onEdt {
+                AnalysisPanel(
+                    SeqDocument(Seq("query", "AAAACCCCGGGG")),
+                    {},
+                    { _, _ -> },
+                    NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                    ncbiPollIntervalMillis = 0,
+                ).also { it.selectTool("NCBI / BLAST") }
+            }
+            val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
+            val term = ncbiQueryField(panel)
+
+            onEdt {
+                assertTrue(runButton.isEnabled)
+                term.text = "not-an-accession"
+                assertTrue(runButton.isEnabled)
+                runButton.doClick()
+            }
+            awaitCondition { blastQueries.size == 1 }
+            awaitCondition { runButton.text == "Run BLAST" && runButton.isEnabled }
+
+            onEdt {
+                term.text = "AACCGGTT"
+                assertTrue(runButton.isEnabled)
+                runButton.doClick()
+            }
+            awaitCondition { blastQueries.size == 2 }
+
+            assertEquals(listOf("AAAACCCCGGGG", "AACCGGTT"), blastQueries)
+        }
+    }
+
+    @Test
+    fun selectedBaseSearchControlsStayActionableAndExplainMissingSelection() {
+        val searches = ArrayList<String>()
+        val blastQueries = ArrayList<String>()
+        withApiServer(onSearch = searches::add, onBlastQuery = blastQueries::add) { base ->
+            val doc = SeqDocument(Seq("query", "AAAACCCCGGGG"))
+            val panel = onEdt {
+                AnalysisPanel(
+                    doc,
+                    {},
+                    { _, _ -> },
+                    NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                    ncbiPollIntervalMillis = 0,
+                ).also { it.selectTool("NCBI / BLAST") }
+            }
+            val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
+            val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
+            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+
+            onEdt {
+                source.selectItem("Selected bases")
+                assertTrue(searchButton.isEnabled)
+                assertTrue(runButton.isEnabled)
+                assertEquals("No bases selected", ncbiQueryStatus(panel).text)
+
+                searchButton.doClick()
+                assertTrue(descendants(panel, javax.swing.JTextArea::class.java)
+                    .any { it.text.contains("Select bases in the Sequence view") })
+                runButton.doClick()
+                assertTrue(descendants(panel, javax.swing.JTextArea::class.java)
+                    .any { it.text.contains("Select bases in the Sequence view") })
+                assertEquals(emptyList(), searches)
+                assertEquals(emptyList(), blastQueries)
+
+                doc.select(0, 4)
+                assertTrue(searchButton.isEnabled)
+                assertTrue(runButton.isEnabled)
+                assertEquals("4 bases selected", ncbiQueryStatus(panel).text)
+            }
+        }
+    }
+
+    @Test
+    fun sequenceTabSelectionReachesSelectedBasesNcbiSearch() {
+        val searches = ArrayList<String>()
+        withApiServer(onSearch = searches::add) { base ->
+            val content = onEdt {
+                InstaGeneContent(
+                    ncbiClient = NcbiClient(
+                        http = HttpClient.newHttpClient(),
+                        baseUrl = "$base/entrez/eutils",
+                        blastBaseUrl = "$base/Blast.cgi",
+                    ),
+                ).also {
+                    it.openSequence(Seq("query", "AAAACCCCGGGG"))
+                    it.toolTabs.selectedIndex = it.toolTabs.indexOfTab("Sequence")
+                    it.sequenceView.revealRange(4, 8)
+                    it.toolTabs.selectedIndex = it.toolTabs.indexOfTab("Analysis")
+                    it.analysisPanel.selectTool("NCBI / BLAST")
+                }
+            }
+            val source = comboBox(content.analysisPanel, "Typed term", "Selected bases", "Whole sequence")
+            val searchButton = descendants(content.analysisPanel, JButton::class.java)
+                .single { it.text == "Search NCBI" }
+
+            onEdt {
+                source.selectItem("Selected bases")
+                assertEquals("4 bases selected", ncbiQueryStatus(content.analysisPanel).text)
+                assertTrue(searchButton.isEnabled)
+                searchButton.doClick()
+            }
+            awaitCondition { searches.size == 1 }
+            assertEquals(listOf("CCCC"), searches)
+        }
+    }
+
+    @Test
+    fun ncbiSearchGenBankAndBlastShareOneQueryRow() = onEdt {
+        val panel = AnalysisPanel(SeqDocument(Seq("query", "ACGTACGT")), {}, { _, _ -> })
+            .also { it.selectTool("NCBI / BLAST") }
+        panel.setSize(640, 420)
+        panel.doLayout()
+
+        val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+        val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
+        val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
+        val queryButtons = runButton.parent.components.filterIsInstance<JButton>().map { it.text }
+
+        assertEquals("Typed term", source.selectedItem)
+        assertTrue(runButton.isVisible)
+        assertTrue(runButton.isEnabled)
+        assertTrue(fetchButton.isVisible)
+        assertTrue(fetchButton.isEnabled)
+        assertEquals(listOf("Search NCBI", "Fetch GenBank", "Run BLAST"), queryButtons)
+        assertEquals("ncbiSharedQuery", ncbiQueryField(panel).name)
+        assertEquals(runButton.parent, fetchButton.parent)
+        assertTrue(descendants(panel, JButton::class.java).none { it.text == "Cancel BLAST" || it.text == "Open BLAST Hit" })
     }
 
     private fun nucleotideTable(panel: AnalysisPanel): JTable = descendants(panel, JTable::class.java).single {
@@ -219,6 +733,35 @@ class AnalysisPanelTest {
     }
 
     private fun JTable.headers(): List<String> = (0 until columnCount).map { getColumnName(it) }
+
+    private fun ncbiPanel(base: String): AnalysisPanel = onEdt {
+        AnalysisPanel(
+            SeqDocument(Seq("query", "ACGTACGT")),
+            {},
+            { _, _ -> },
+            NcbiClient(
+                http = HttpClient.newHttpClient(),
+                baseUrl = "$base/entrez/eutils",
+                blastBaseUrl = "$base/Blast.cgi",
+            ),
+            ncbiPollIntervalMillis = 0,
+        ).also { it.selectTool("NCBI / BLAST") }
+    }
+
+    private fun JComboBox<*>.selectItem(label: String) {
+        selectedIndex = (0 until itemCount).first { getItemAt(it) == label }
+    }
+
+    private fun comboBox(panel: AnalysisPanel, vararg labels: String): JComboBox<*> =
+        descendants(panel, JComboBox::class.java).single { combo ->
+            labels.all { label -> (0 until combo.itemCount).any { combo.getItemAt(it) == label } }
+        }
+
+    private fun ncbiQueryField(panel: AnalysisPanel): JTextField =
+        descendants(panel, JTextField::class.java).single { it.name == "ncbiSharedQuery" }
+
+    private fun ncbiQueryStatus(panel: AnalysisPanel): javax.swing.JLabel =
+        descendants(panel, javax.swing.JLabel::class.java).single { it.name == "ncbiQueryStatus" }
 
     private fun awaitCondition(timeoutMillis: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMillis
@@ -247,6 +790,24 @@ class AnalysisPanelTest {
         )
     }
 
+    private fun popupClick(table: JTable, row: Int) {
+        val y = row * table.rowHeight + table.rowHeight / 2
+        val event = MouseEvent(
+            table,
+            MouseEvent.MOUSE_RELEASED,
+            System.currentTimeMillis(),
+            0,
+            1,
+            y,
+            1,
+            true,
+            MouseEvent.BUTTON3,
+        )
+        table.mouseListeners
+            .filter { it.javaClass.name.contains("NcbiAnalysisPanel") }
+            .forEach { it.mouseReleased(event) }
+    }
+
     private fun <T : Component> descendants(root: Component, type: Class<T>): List<T> {
         val found = ArrayList<T>()
         fun visit(component: Component) {
@@ -260,6 +821,10 @@ class AnalysisPanelTest {
     private fun withApiServer(
         blastStaysWaiting: Boolean = false,
         blastSubjectId: String = "J01636.1",
+        searchIds: List<String> = listOf("J01636.1"),
+        fetchBody: String? = null,
+        onSearch: (String) -> Unit = {},
+        onBlastQuery: (String) -> Unit = {},
         onFetch: (String) -> Unit = {},
         block: (String) -> Unit,
     ) {
@@ -269,15 +834,27 @@ class AnalysisPanelTest {
             val query = exchange.requestURI.rawQuery.orEmpty()
             val path = exchange.requestURI.path
             val body = when {
-                path.endsWith("/esearch.fcgi") ->
-                    """{"esearchresult":{"count":"1","idlist":["J01636.1"]}}"""
-                path.endsWith("/esummary.fcgi") ->
-                    """{"result":{"uids":["12345"],"12345":{"uid":"12345","accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""
-                path.endsWith("/efetch.fcgi") -> {
-                    onFetch(query.split('&').firstOrNull { it.startsWith("id=") }?.substringAfter("id=").orEmpty())
-                    genBank
+                path.endsWith("/esearch.fcgi") -> {
+                    onSearch(queryParameter(query, "term"))
+                    """{"esearchresult":{"count":"${searchIds.size}","idlist":[${searchIds.joinToString(",") { "\"$it\"" }}]}}"""
                 }
-                path.endsWith("/Blast.cgi") && exchange.requestMethod == "POST" -> "RID = RID123\nRTOE = 1\n"
+                path.endsWith("/esummary.fcgi") -> {
+                    val records = searchIds.joinToString(",") { id ->
+                        val title = if (id == "J01636.1") "Example nucleotide record" else "Example nucleotide record $id"
+                        """"$id":{"uid":"$id","accessionversion":"$id","caption":"${id.substringBefore('.')}",`title`:"$title","organism":"Escherichia coli","slen":8,"moltype":"genomic"}"""
+                            .replace('`', '"')
+                    }
+                    """{"result":{"uids":[${searchIds.joinToString(",") { "\"$it\"" }}]${if (records.isBlank()) "" else ",$records"}}}"""
+                }
+                path.endsWith("/efetch.fcgi") -> {
+                    onFetch(queryParameter(query, "id"))
+                    fetchBody ?: genBank
+                }
+                path.endsWith("/Blast.cgi") && exchange.requestMethod == "POST" -> {
+                    val form = exchange.requestBody.use { String(it.readAllBytes(), StandardCharsets.UTF_8) }
+                    onBlastQuery(queryParameter(form, "QUERY").lineSequence().filterNot { it.startsWith(">") }.joinToString(""))
+                    "RID = RID123\nRTOE = 1\n"
+                }
                 path.endsWith("/Blast.cgi") && query.contains("FORMAT_OBJECT=SearchInfo") ->
                     if (blastStaysWaiting || statusCalls.getAndIncrement() == 0) "Status=WAITING\n" else "Status=READY\n"
                 path.endsWith("/Blast.cgi") ->
@@ -295,6 +872,13 @@ class AnalysisPanelTest {
             server.stop(0)
         }
     }
+
+    private fun queryParameter(query: String, name: String): String =
+        query.split('&')
+            .firstOrNull { it.substringBefore("=") == name }
+            ?.substringAfter("=", "")
+            ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
+            .orEmpty()
 
     private val genBank = """
         LOCUS       J01636.1                 8 bp    DNA     linear   PLN 01-JAN-2024

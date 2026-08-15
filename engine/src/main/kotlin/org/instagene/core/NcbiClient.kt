@@ -1,6 +1,10 @@
 package org.instagene.core
 
 import kotlinx.serialization.json.*
+import org.instagene.core.io.Fasta
+import org.instagene.core.io.GenBank
+import org.instagene.core.io.SeqIO
+import org.instagene.core.io.SeqIOException
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -105,7 +109,28 @@ class NcbiClient(
     fun fetchGenBank(accession: String): Seq {
         require(accession.matches(Regex("[A-Za-z0-9_.-]+"))) { "Invalid NCBI accession" }
         val text = get("$baseUrl/efetch.fcgi?db=nuccore&rettype=gb&retmode=text&id=${encode(accession)}")
-        return org.instagene.core.io.SeqIO.parse(text, accession)
+        if (!GenBank.looksLikeGenBank(text)) {
+            throw SeqIOException("NCBI fetch for $accession did not return GenBank text")
+        }
+        val annotated = SeqIO.parse(text, accession)
+        if (annotated.bases.isNotBlank()) return annotated
+        if ("CONTIG" !in annotated.metadata && "WGS" !in annotated.metadata) {
+            throw SeqIOException("NCBI fetch for $accession did not include sequence bases")
+        }
+
+        val fastaText = get("$baseUrl/efetch.fcgi?db=nuccore&rettype=fasta&retmode=text&id=${encode(accession)}")
+        if (!fastaText.trimStart().startsWith(">")) {
+            throw SeqIOException("NCBI record $accession has no retrievable sequence bases")
+        }
+        val fasta = Fasta.parse(fastaText, accession)
+        if (fasta.bases.isBlank()) {
+            throw SeqIOException("NCBI record $accession has no retrievable sequence bases")
+        }
+        return annotated.copy(
+            bases = fasta.bases,
+            kind = fasta.kind,
+            features = clipFeatures(annotated.features, fasta.length),
+        )
     }
 
     /** Submits a nucleotide BLAST search against an NCBI nucleotide database. */
@@ -186,6 +211,12 @@ class NcbiClient(
     private fun validateRid(rid: String) {
         require(rid.matches(Regex("[A-Za-z0-9_.-]+"))) { "Invalid BLAST request ID" }
     }
+
+    private fun clipFeatures(features: List<Feature>, length: Int): List<Feature> =
+        features.mapNotNull { feature ->
+            val clippedEnd = minOf(feature.end, length)
+            if (clippedEnd > feature.start) feature.copy(end = clippedEnd) else null
+        }.sortedBy { it.start }
 
     private fun get(url: String): String = send(
         HttpRequest.newBuilder(URI.create(url)).GET()

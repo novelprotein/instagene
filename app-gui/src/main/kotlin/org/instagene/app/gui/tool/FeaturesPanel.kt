@@ -1,7 +1,9 @@
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.TableLabels
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.installRowContextMenu
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedFeatureMetadata
@@ -22,6 +24,7 @@ import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JLabel
+import javax.swing.JPopupMenu
 import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
@@ -72,6 +75,7 @@ class FeaturesPanel(
         featureTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
         featureTable.rowHeight = 20
         featureTable.selectionModel.addListSelectionListener(rowSelectionListener)
+        featureTable.installRowContextMenu { row -> featurePopup(row) }
 
         add(buildButtons(), BorderLayout.NORTH)
         add(JScrollPane(featureTable), BorderLayout.CENTER)
@@ -169,6 +173,47 @@ class FeaturesPanel(
         } else {
             "${features.size} feature(s), ${features.sumOf { it.length }} bp annotated"
         }
+    }
+
+    private fun featurePopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val hasRow = row in doc.seq.features.indices
+        val canAddSelection = doc.hasSelection && doc.selectionEnd > doc.selectionStart
+        add(ContextMenus.item(
+            "Add Feature from Selection…",
+            "Annotate the currently selected bases as a new feature.",
+            canAddSelection,
+        ) { addFeatureDialog() })
+        add(ContextMenus.item(
+            "Add Feature Manually…",
+            "Create a feature by typing 1-based start and end coordinates.",
+            doc.seq.length > 0,
+        ) { manualAddDialog() })
+        add(ContextMenus.item(
+            "Auto-annotate…",
+            "Find feature-library patterns in the current nucleotide sequence.",
+            doc.seq.kind != SeqKind.PROTEIN && doc.seq.length > 0,
+        ) { autoAnnotateDialog() })
+        addSeparator()
+        add(ContextMenus.item(
+            "Reveal Feature",
+            "Select this feature's bases in the sequence viewer.",
+            hasRow,
+        ) { revealFeature(row ?: -1) })
+        add(ContextMenus.item(
+            "Edit Element…",
+            "Edit this feature's name, type, coordinates, strand, color, visibility, order, and description.",
+            hasRow,
+        ) { editFeatureElement(row ?: -1) })
+        add(ContextMenus.item(
+            "Save Feature to Library",
+            "Save this feature and its source bases to the reusable library.",
+            savableFeature(row ?: -1) != null,
+        ) { saveFeature(row ?: -1) })
+        add(ContextMenus.item(
+            "Delete",
+            "Remove this feature from the current sequence.",
+            hasRow,
+        ) { deleteFeature(row ?: -1) })
     }
 
     /** Exposed for tests: whether "Add Feature from Selection..." is currently enabled. */

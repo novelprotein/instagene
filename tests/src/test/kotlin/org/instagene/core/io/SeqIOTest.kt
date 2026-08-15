@@ -8,6 +8,7 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SeqIOTest {
@@ -148,6 +149,44 @@ class SeqIOTest {
             assertEquals("chr1", seq.name)
             assertEquals(7, seq.length)
             assertEquals("GATTACA", seq.bases)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun readGenBankFileWithBom() {
+        val dir = createTempDirectory("instagene-test").toFile()
+        try {
+            val gb = File(dir, "bom.gbk")
+            gb.writeText(
+                "\uFEFF" + """
+                LOCUS       bom                      4 bp    DNA     linear
+                ORIGIN
+                        1 atgc
+                //
+                """.trimIndent()
+            )
+
+            val seq = SeqIO.read(gb)
+
+            assertEquals("bom", seq.name)
+            assertEquals("ATGC", seq.bases)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun genBankExtensionDoesNotFallBackToFastaForMalformedContent() {
+        val dir = createTempDirectory("instagene-test").toFile()
+        try {
+            val gb = File(dir, "bad.gb")
+            gb.writeText("not a genbank record\nACGT\n")
+
+            val error = assertFailsWith<SeqIOException> { SeqIO.read(gb) }
+
+            assertTrue(error.message.orEmpty().contains("LOCUS"))
         } finally {
             dir.deleteRecursively()
         }

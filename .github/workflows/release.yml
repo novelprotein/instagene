@@ -41,6 +41,7 @@ jobs:
         run: ./gradlew :app-gui:jpackage -Pjpackage.type=${{ matrix.pkg }} --console=plain
 
       - name: Upload installer
+        if: ${{ matrix.pkg != 'APP_IMAGE' }}
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.pkg }}
@@ -57,6 +58,44 @@ jobs:
         with:
           name: linux-app-image-zip
           path: app-gui/build/jpackage/instagene-app-image.zip
+          if-no-files-found: error
+
+  gui-jar:
+    name: Portable runnable GUI JAR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build and verify runnable GUI JAR
+        run: ./gradlew :app-gui:verifyStandaloneJar --console=plain
+
+      - name: Smoke-test the GUI entry point
+        shell: bash
+        run: |
+          set +e
+          output=$(java -Djava.awt.headless=true -jar app-gui/build/distributions/instagene-gui.jar 2>&1)
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -F "No display available" <<< "$output"
+
+      - name: Upload runnable GUI JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: instagene-gui-jar
+          path: app-gui/build/distributions/instagene-gui.jar
           if-no-files-found: error
 
   linux-cli:
@@ -166,12 +205,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: engine-sources
-          path: engine/build/libs/instagene-engine-*-sources.jar
+          path: engine/build/libs/engine-*-sources.jar
           if-no-files-found: error
 
   publish:
     name: Create GitHub Release
-    needs: [linux, linux-cli, windows, macos, engine-sources]
+    needs: [linux, linux-cli, windows, macos, gui-jar, engine-sources]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

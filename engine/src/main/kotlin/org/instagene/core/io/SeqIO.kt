@@ -67,7 +67,7 @@ object SeqIO {
             if (ChromatogramReader.looksLikeAbi(magic)) return ChromatogramReader.readAbi(file).toSeq()
             if (ChromatogramReader.looksLikeScf(magic)) return ChromatogramReader.readScf(file).toSeq()
             val firstLine = firstNonBlankLine(file)
-            return if (firstLine.startsWith("LOCUS")) {
+            return if (isGenBankFile(file) || firstLine.startsWith("LOCUS")) {
                 file.bufferedReader().use { GenBank.parseFrom(it, file.nameWithoutExtension) }
             } else if (firstLine.startsWith("##gff-version")) {
                 parse(file.readText(), file.nameWithoutExtension)
@@ -94,7 +94,7 @@ object SeqIO {
             if (ChromatogramReader.looksLikeAbi(magic)) return listOf(ChromatogramReader.readAbi(file).toSeq())
             if (ChromatogramReader.looksLikeScf(magic)) return listOf(ChromatogramReader.readScf(file).toSeq())
             val firstLine = firstNonBlankLine(file)
-            return if (firstLine.startsWith("LOCUS")) {
+            return if (isGenBankFile(file) || firstLine.startsWith("LOCUS")) {
                 readGenBankRecords(file)
             } else if (firstLine.startsWith("##gff-version")) {
                 listOf(parse(file.readText(), file.nameWithoutExtension))
@@ -141,7 +141,7 @@ object SeqIO {
         file.bufferedReader().use { reader ->
             while (true) {
                 val line = reader.readLine() ?: break
-                if (line.isNotBlank()) return line
+                if (line.isNotBlank()) return line.normalizedOpeningLine()
             }
         }
         return ""
@@ -175,7 +175,7 @@ object SeqIO {
         val current = StringBuilder()
         for (line in text.lineSequence()) {
             current.append(line).append('\n')
-            if (line.startsWith("//")) {
+            if (line.normalizedOpeningLine().startsWith("//")) {
                 records += current.toString()
                 current.setLength(0)
             }
@@ -191,7 +191,7 @@ object SeqIO {
         file.bufferedReader().useLines { lines ->
             for (line in lines) {
                 current.append(line).append('\n')
-                if (line.startsWith("//")) {
+                if (line.normalizedOpeningLine().startsWith("//")) {
                     records += GenBank.parse(current.toString(), file.nameWithoutExtension)
                     current.setLength(0)
                 }
@@ -200,6 +200,11 @@ object SeqIO {
         if (current.isNotBlank()) records += GenBank.parse(current.toString(), file.nameWithoutExtension)
         return records
     }
+
+    private fun isGenBankFile(file: File): Boolean = file.extension.lowercase() in SeqFormat.GENBANK.extensions
+
+    private fun String.normalizedOpeningLine(): String =
+        trimStart().removePrefix("\uFEFF").trimStart()
 
     /** Bundled example constructs, so the GUI and CLI have something to open immediately. */
     object Samples {

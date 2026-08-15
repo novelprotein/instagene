@@ -8,6 +8,7 @@ import org.instagene.core.Topology
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class GenBankTest {
@@ -55,6 +56,72 @@ class GenBankTest {
         assertEquals(2, seq.features.count { it.name == "split" || it.notes.contains("split") || it.name == "split" })
         // join produces two features sharing a label/note
         assertTrue(seq.features.size >= 4)
+    }
+
+    @Test
+    fun parseAcceptsBomAndLeadingWhitespaceBeforeLocus() {
+        val gb = "\uFEFF  " + minimalGb
+
+        val seq = GenBank.parse(gb)
+
+        assertEquals("mini", seq.name)
+        assertEquals("ATGCATGCATGC", seq.bases)
+    }
+
+    @Test
+    fun parseAcceptsFuzzyLocationBounds() {
+        val gb = """
+            LOCUS       fuzzy                    6 bp    DNA     linear
+            FEATURES             Location/Qualifiers
+                 CDS             <1..>6
+                                 /gene="fuzzy"
+            ORIGIN
+                     1 atgcat
+            //
+        """.trimIndent()
+
+        val feature = GenBank.parse(gb).features.single()
+
+        assertEquals(0, feature.start)
+        assertEquals(6, feature.end)
+        assertEquals("fuzzy", feature.name)
+    }
+
+    @Test
+    fun parseContigRecordWithoutOriginPreservesFeatures() {
+        val gb = """
+            LOCUS       contig                  12 bp    DNA     linear   CON
+            DEFINITION  assembled scaffold.
+            FEATURES             Location/Qualifiers
+                 source          1..12
+                                 /organism="synthetic construct"
+                 CDS             2..8
+                                 /gene="kept"
+            CONTIG      join(ABC123.1:1..12)
+            //
+        """.trimIndent()
+
+        val seq = GenBank.parse(gb)
+
+        assertEquals("contig", seq.name)
+        assertEquals("", seq.bases)
+        assertEquals("join(ABC123.1:1..12)", seq.metadata["CONTIG"])
+        assertEquals(listOf("source", "kept"), seq.features.map { it.name })
+        assertEquals(1, seq.features.single { it.name == "kept" }.start)
+        assertEquals(8, seq.features.single { it.name == "kept" }.end)
+    }
+
+    @Test
+    fun parseFailsClearlyForTruncatedGenBank() {
+        val gb = """
+            LOCUS       truncated                4 bp    DNA     linear
+            ORIGIN
+                    1 atgc
+        """.trimIndent()
+
+        val error = assertFailsWith<SeqIOException> { GenBank.parse(gb) }
+
+        assertTrue(error.message.orEmpty().contains("terminator"))
     }
 
     @Test

@@ -89,6 +89,20 @@ Versions: tagged releases publish exactly `0.0.1`; every other build publishes
 runtime dependency (kotlinx-serialization) and the front-end-free API lives in
 the `org.instagene.core` package.
 
+### Portable GUI JAR
+
+Build the self-contained desktop GUI JAR and run it on any operating system
+with Java 21 or newer:
+
+```bash
+./gradlew :app-gui:verifyStandaloneJar
+java -Xmx8g -jar app-gui/build/distributions/instagene-gui.jar
+```
+
+This runnable JAR includes the GUI, engine, Kotlin runtime, serialization, and
+FlatLaf dependencies. The separate thin `instagene.jar` remains an internal
+input for native `jpackage` builds.
+
 ### Native installers
 
 Cross-platform installers are built with jpackage through the
@@ -106,10 +120,19 @@ installer is built on its own OS:
 
 - `-Pjpackage.dest=RELATIVE_PATH` overrides the output folder (relative to the
   project's `build/` directory; default `jpackage/dist`).
-- The build pins jpackage to the JDK 26 toolchain, so it never falls back to a
+- The build pins jpackage to the JDK 21 toolchain, so it never falls back to a
   random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
 - All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`
   so `--main-jar` stays stable.
+
+### CI build artifacts
+
+Successful pushes to `master` and manually dispatched CI runs publish
+short-lived downloadable artifacts for Linux (`.deb`, `.rpm`, and app-image
+zip), Windows (`.msi`), macOS (unsigned `.dmg`), and the portable runnable GUI
+JAR. Pull requests run the full test suite without the native packaging jobs.
+Tagged releases publish the same GUI JAR alongside the native installers and
+release checksums.
 
 ### Git rules (local hooks)
 

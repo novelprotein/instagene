@@ -18,12 +18,12 @@ import java.io.StringReader
  */
 object GenBank {
 
-    private val LOCATION_RANGE = Regex("""(\d+)\s*\.\.\s*[><]?(\d+)""")
+    private val LOCATION_RANGE = Regex("""[><]?(\d+)\s*\.\.\s*[><]?(\d+)""")
     private val SINGLE_POSITION = Regex("""^\s*[><]?(\d+)\s*$""")
 
     /** True when [text] opens with a LOCUS line, the GenBank signature. */
     fun looksLikeGenBank(text: String): Boolean =
-        text.lineSequence().take(5).any { it.startsWith("LOCUS") }
+        text.lineSequence().take(5).any { it.normalizedKeywordLine().startsWith("LOCUS") }
 
     // ------------------------------------------------------------------ reading
 
@@ -51,11 +51,15 @@ object GenBank {
         val qualifiers = LinkedHashMap<String, MutableList<String>>()
         var lastQualifier: String? = null
         var pendingMetadata: String? = null
+        var sawLocus = false
+        var sawOrigin = false
+        var sawContig = false
+        var sawTerminator = false
 
         fun flushFeature() {
             val loc = pendingLocation ?: return
             pendingLocation = null
-            val strand = if (loc.contains("complement")) Strand.REVERSE else Strand.FORWARD
+            val strand = if (loc.contains("complement", ignoreCase = true)) Strand.REVERSE else Strand.FORWARD
             val label = qualifiers["label"]?.firstOrNull() ?: qualifiers["gene"]?.firstOrNull()
                 ?: qualifiers["product"]?.firstOrNull() ?: qualifiers["note"]?.firstOrNull() ?: pendingType
             for ((start, end) in parseLocations(loc)) {
@@ -77,36 +81,53 @@ object GenBank {
             for (raw in lines) {
                 val line = raw.trimEnd()
                 if (line.isBlank()) continue
+                val keywordLine = line.normalizedKeywordLine()
                 when {
-                    line.startsWith("LOCUS") -> {
+                    keywordLine.startsWith("LOCUS") -> {
                         section = "LOCUS"
-                        val parts = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
+                        sawLocus = true
+                        sawTerminator = false
+                        val parts = keywordLine.split(Regex("\\s+")).filter { it.isNotEmpty() }
                         if (parts.size > 1) name = parts[1]
-                        if (line.contains("circular", ignoreCase = true)) topology = Topology.CIRCULAR
-                        if (Regex("\\bRNA\\b").containsMatchIn(line)) kind = SeqKind.RNA
+                        if (keywordLine.contains("circular", ignoreCase = true)) topology = Topology.CIRCULAR
+                        if (Regex("\\bRNA\\b").containsMatchIn(keywordLine)) kind = SeqKind.RNA
                         pendingMetadata = null
                     }
 
-                    line.startsWith("DEFINITION") -> {
+                    keywordLine.startsWith("DEFINITION") -> {
                         section = "DEFINITION"
-                        description = line.removePrefix("DEFINITION").trim()
+                        description = keywordLine.removePrefix("DEFINITION").trim()
                         pendingMetadata = null
                     }
 
-                    line.startsWith("FEATURES") -> {
+                    keywordLine.startsWith("FEATURES") -> {
                         section = "FEATURES"
                         pendingMetadata = null
                     }
 
-                    line.startsWith("ORIGIN") -> {
+                    keywordLine.startsWith("ORIGIN") -> {
                         flushFeature()
                         section = "ORIGIN"
+                        sawOrigin = true
                         pendingMetadata = null
                     }
 
-                    line.startsWith("//") -> {
+                    keywordLine.startsWith("//") -> {
                         flushFeature()
+                        sawTerminator = true
                         section = ""
+                        return@useLines
+                    }
+
+                    keywordLine == line && line.firstOrNull()?.isWhitespace() == false -> {
+                        flushFeature()
+                        val key = keywordLine.take(12).trim()
+                        if (key.isNotEmpty()) {
+                            if (key == "CONTIG" || key == "WGS") sawContig = true
+                            pendingMetadata = key
+                            metadata[key] = keywordLine.drop(12).trim()
+                            section = "HEADER"
+                        }
                     }
 
                     section == "ORIGIN" -> bases.append(Alphabet.clean(line))
@@ -163,15 +184,6 @@ object GenBank {
                         }
                     }
 
-                    line.firstOrNull()?.isWhitespace() == false -> {
-                        val key = line.take(12).trim()
-                        if (key.isNotEmpty()) {
-                            pendingMetadata = key
-                            metadata[key] = line.drop(12).trim()
-                            section = "HEADER"
-                        }
-                    }
-
                     section == "HEADER" && pendingMetadata != null -> {
                         // ORGANISM is the one standard header subfield which is
                         // indented even though it starts a new value, not a
@@ -189,19 +201,28 @@ object GenBank {
             }
         }
 
+        if (!sawLocus) throw SeqIOException("GenBank input does not start with a LOCUS record")
+        if (!sawOrigin && !sawContig) throw SeqIOException("GenBank input is missing an ORIGIN section")
+        if (!sawTerminator) throw SeqIOException("GenBank input is missing the record terminator '//'")
         val seqBases = bases.toString().uppercase()
+        if (seqBases.isEmpty() && !sawContig) throw SeqIOException("GenBank input contains no sequence bases")
         if (kind == SeqKind.DNA) kind = Fasta.detectKind(seqBases)
+        val parsedFeatures = if (seqBases.isEmpty()) {
+            features
+        } else {
+            // Features beyond the sequence end are clipped rather than dropped, so a
+            // record whose sequence got truncated still keeps its annotations.
+            features.mapNotNull { f ->
+                val end = minOf(f.end, seqBases.length)
+                if (end > f.start) f.copy(end = end) else null
+            }
+        }
         return Seq(
             name = name,
             bases = seqBases,
             kind = kind,
             topology = topology,
-            // Features beyond the sequence end are clipped rather than dropped, so a
-            // record whose sequence got truncated still keeps its annotations.
-            features = features.mapNotNull { f ->
-                val end = minOf(f.end, seqBases.length)
-                if (end > f.start) f.copy(end = end) else null
-            }.sortedBy { it.start },
+            features = parsedFeatures.sortedBy { it.start },
             description = description,
             metadata = metadata,
         )
@@ -279,4 +300,7 @@ object GenBank {
             i += 60
         }
     }
+
+    private fun String.normalizedKeywordLine(): String =
+        trimStart().removePrefix("\uFEFF").trimStart()
 }

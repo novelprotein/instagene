@@ -8,7 +8,7 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
-import javax.swing.JMenuItem
+import org.instagene.app.gui.ContextMenus
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
 import javax.swing.JTree
@@ -197,13 +197,21 @@ class ProjectTreePanel(
         tree.selectionPath = treePath(node)
         val popup = JPopupMenu()
         if (!file.isDirectory) {
-            popup.add(JMenuItem("Open").apply { addActionListener { onOpenFile(file) } })
-            popup.add(JMenuItem("Open with System App").apply { addActionListener { onOpenWithSystem(file) } })
+            popup.add(ContextMenus.item(
+                "Open",
+                "Open this project file in InstaGene.",
+            ) { onOpenFile(file) })
+            popup.add(ContextMenus.item(
+                "Open with System App",
+                "Open this file with the operating system's default application.",
+            ) { onOpenWithSystem(file) })
         }
-        popup.add(JMenuItem("Open in Folder").apply {
-            addActionListener { onOpenInFolder(if (file.isDirectory) file else file.parentFile!!) }
-        })
-        popup.show(tree, e.x, e.y)
+        popup.add(ContextMenus.item(
+            "Open in Folder",
+            "Reveal this item in its containing folder.",
+        ) { onOpenInFolder(if (file.isDirectory) file else file.parentFile!!) })
+        tree.componentPopupMenu = popup
+        if (tree.isShowing) popup.show(tree, e.x, e.y)
     }
 
     /** Relative labels for project files; bold type for files already open in a tab. */
