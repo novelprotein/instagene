@@ -250,6 +250,8 @@ tasks.check {
 }
 
 val macDmgStage = layout.buildDirectory.dir("jpackage/mac-dmg-stage")
+val stagedMacApp = macDmgStage.map { it.dir("InstaGene.app") }
+val macApplicationsLinkTarget = "/Applications"
 val macDmgOutput = layout.buildDirectory.file(
     instaGeneVersion.map { "jpackage/dist/InstaGene-$it.dmg" },
 )
@@ -264,7 +266,6 @@ val prepareMacDmgStage = tasks.register<Exec>("prepareMacDmgStage") {
     dependsOn(macAppImage, cleanMacDmgStage)
 
     val sourceApp = macAppImage.flatMap { it.destination.dir("InstaGene.app") }
-    val stagedApp = macDmgStage.map { it.dir("InstaGene.app") }
     inputs.dir(sourceApp)
 
     if (!System.getProperty("os.name").lowercase().contains("mac")) {
@@ -278,12 +279,12 @@ val prepareMacDmgStage = tasks.register<Exec>("prepareMacDmgStage") {
             """
                 /bin/mkdir -p "${'$'}2"
                 /usr/bin/ditto "${'$'}1" "${'$'}3"
-                /bin/ln -s /Applications "${'$'}2/Applications"
+                /bin/ln -s "$macApplicationsLinkTarget" "${'$'}2/Applications"
             """.trimIndent(),
             "prepareMacDmgStage",
             sourceApp.get().asFile.absolutePath,
             macDmgStage.get().asFile.absolutePath,
-            stagedApp.get().asFile.absolutePath,
+            stagedMacApp.get().asFile.absolutePath,
         )
     }
 }
@@ -292,7 +293,8 @@ tasks.register<Exec>("macDmg") {
     group = "distribution"
     description = "Builds the unsigned macOS DMG using the packaged InstaGene.app image."
     dependsOn(prepareMacDmgStage)
-    inputs.dir(macDmgStage)
+    inputs.dir(stagedMacApp).withPropertyName("stagedMacApp")
+    inputs.property("applicationsLinkTarget", macApplicationsLinkTarget)
     outputs.file(macDmgOutput)
 
     if (!System.getProperty("os.name").lowercase().contains("mac")) {
