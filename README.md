@@ -89,6 +89,23 @@ Versions: tagged releases publish exactly `0.0.1`; every other build publishes
 runtime dependency (kotlinx-serialization) and the front-end-free API lives in
 the `org.instagene.core` package.
 
+### Launching the GUI from the command line
+
+`instagene gui [FILE ...]` hands off to the desktop GUI, opening the given
+file(s) in the editor:
+
+```bash
+instagene gui plasmid.gb
+instagene gui --launcher /path/to/InstaGene plasmid.gb
+```
+
+The launcher is resolved in this order: `--launcher`, then the
+`$INSTAGENE_GUI` environment variable, then an `instagene`/`InstaGene`
+executable on `PATH`, then the standard Linux install locations
+(`/opt/instagene/bin/instagene`, `/opt/instagene/bin/InstaGene`). If the
+launcher is a `.jar`, it is run with `java -jar`. The CLI forwards its own exit
+code, so scripts can tell whether the GUI ran successfully.
+
 ### Portable GUI JAR
 
 Build the self-contained desktop GUI JAR and run it on any operating system
@@ -125,6 +142,12 @@ installer is built on its own OS:
   random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
 - All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`
   so `--main-jar` stays stable.
+- The Linux `.deb` adds a `/usr/bin/instagene` wrapper and the app image
+  contains an `instagene` script, so the desktop app can be launched from a
+  terminal (`instagene gui`, or just `instagene <file>`); both exec the bundled
+  `InstaGene` launcher. jpackage itself has no hook for PATH-level binaries, so
+  the wrapper is injected by the `injectAppImageLauncher` (app image) and
+  `repackDebWithLauncher` (deb) tasks, which run automatically after packaging.
 
 ### CI build artifacts
 

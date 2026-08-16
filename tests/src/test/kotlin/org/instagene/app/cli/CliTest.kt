@@ -154,4 +154,88 @@ class CliTest {
         assertTrue(out.trim().matches(Regex("""InstaGene \d+(\.\d+)+(\+[\w-]+)?""")))
         assertTrue(!out.contains("\u001b["))
     }
+
+    @Test
+    fun guiForwardsFilesAndExitCode() {
+        val dir = createTempDirectory("cli-gui").toFile()
+        try {
+            val argsFile = File(dir, "args.txt")
+            val fakeGui = File(dir, "fake-gui.sh")
+            fakeGui.writeText("#!/bin/sh\necho \"\$@\" > \"$argsFile\"\nexit 42\n")
+            fakeGui.setExecutable(true)
+            val (code, _) = capture { Cli.run(listOf("gui", "--launcher", fakeGui.absolutePath, "plasmid.gb", "gfp.fa")) }
+            assertEquals(42, code)
+            val received = argsFile.readText().trim()
+            assertTrue(received.contains("plasmid.gb"))
+            assertTrue(received.contains("gfp.fa"))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun guiWithMissingLauncherFailsCleanly() {
+        val (code, out) = capture { Cli.run(listOf("gui", "--launcher", "/no/such/gui", "x.fa")) }
+        assertEquals(1, code)
+        assertTrue(out.contains("instagene:"))
+    }
+
+    @Test
+    fun guiResolutionHonorsInstageneGuiEnv() {
+        val dir = createTempDirectory("cli-gui-env").toFile()
+        try {
+            val fakeGui = File(dir, "fake-gui.sh")
+            fakeGui.writeText("#!/bin/sh\nexit 0\n")
+            fakeGui.setExecutable(true)
+            val resolved = Cli.resolveGuiLauncher(
+                env = mapOf("INSTAGENE_GUI" to fakeGui.absolutePath, "PATH" to "/bin"),
+                pathVar = "/bin",
+            )
+            assertEquals(fakeGui.absolutePath, resolved)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun guiResolutionFindsLauncherOnPath() {
+        val dir = createTempDirectory("cli-gui-path").toFile()
+        try {
+            val fakeGui = File(dir, "instagene")
+            fakeGui.writeText("#!/bin/sh\nexit 0\n")
+            fakeGui.setExecutable(true)
+            val resolved = Cli.resolveGuiLauncher(env = mapOf(), pathVar = dir.absolutePath)
+            assertEquals(fakeGui.absolutePath, resolved)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun guiResolutionReturnsNullWhenNothingFound() {
+        val resolved = Cli.resolveGuiLauncher(
+            env = mapOf(),
+            pathVar = "/nonexistent-dir-that-does-not-exist",
+            installCandidates = emptyList(),
+        )
+        assertEquals(null, resolved)
+    }
+
+    @Test
+    fun guiResolutionFallsBackToInstallLocation() {
+        val dir = createTempDirectory("cli-gui-install").toFile()
+        try {
+            val installed = File(dir, "InstaGene")
+            installed.writeText("#!/bin/sh\nexit 0\n")
+            installed.setExecutable(true)
+            val resolved = Cli.resolveGuiLauncher(
+                env = mapOf(),
+                pathVar = "/nonexistent-dir",
+                installCandidates = listOf(installed.absolutePath),
+            )
+            assertEquals(installed.absolutePath, resolved)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

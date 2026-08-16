@@ -41,8 +41,12 @@ object Cli {
         val colors = Colors.enabled(argv.drop(1).contains("--no-colors"))
         return try {
             val args = Args(envDefaults(argv.drop(1)) + argv.drop(1))
-            dispatch(command, args)
-            0
+            if (command == "gui") {
+                gui(args)
+            } else {
+                dispatch(command, args)
+                0
+            }
         } catch (e: CliException) {
             System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
@@ -544,6 +548,73 @@ object Cli {
         emit(seq, args)
     }
 
+    // ------------------------------------------------------------------- gui
+
+    /**
+     * Hands off to the desktop GUI: resolves the InstaGene launcher and starts
+     * it in a separate process, forwarding any positional file paths so
+     * `instagene gui plasmid.gb` opens the editor with that file. The CLI must
+     * not link the GUI module (separation rule), so the launcher is found the
+     * way a user would: an explicit [--launcher], `$INSTAGENE_GUI`, the GUI on
+     * PATH, or the standard jpackage install location. The child process
+     * inherits the terminal, and its exit code becomes the CLI's exit code.
+     */
+    private fun gui(args: Args): Int {
+        val launcher = args.opt("launcher") ?: resolveGuiLauncher()
+            ?: throw CliException(
+                "Could not find the InstaGene desktop GUI. Install it, add its launcher " +
+                    "to PATH, or set INSTAGENE_GUI to the GUI launcher " +
+                    "(e.g. /opt/instagene/bin/InstaGene)."
+            )
+        val command = if (launcher.endsWith(".jar")) {
+            buildList {
+                add(javaBin())
+                add("-jar")
+                add(launcher)
+                addAll(args.positionals)
+            }
+        } else {
+            buildList {
+                add(launcher)
+                addAll(args.positionals)
+            }
+        }
+        val process = ProcessBuilder(command).inheritIO().start()
+        return process.waitFor()
+    }
+
+    private fun javaBin(): String {
+        val home = System.getProperty("java.home")
+        val exe = if (File.separatorChar == '\\') "java.exe" else "java"
+        return File(home, "bin").resolve(exe).absolutePath
+    }
+
+    /**
+     * Locates the InstaGene desktop launcher in order of preference:
+     * `$INSTAGENE_GUI`, an `instagene`/`InstaGene` executable on PATH, then the
+     * jpackage Linux install locations. Injectable for tests.
+     */
+    fun resolveGuiLauncher(
+        env: Map<String, String> = System.getenv(),
+        pathVar: String = env["PATH"] ?: "",
+        instageneGui: String? = env["INSTAGENE_GUI"],
+        installCandidates: List<String> = listOf(
+            "/opt/instagene/bin/instagene",
+            "/opt/instagene/bin/InstaGene",
+        ),
+    ): String? {
+        instageneGui?.takeIf { it.isNotBlank() }?.let { return it }
+        findOnPath("instagene", pathVar)?.let { return it }
+        findOnPath("InstaGene", pathVar)?.let { return it }
+        return installCandidates.firstOrNull { File(it).canExecute() }
+    }
+
+    fun findOnPath(name: String, pathVar: String): String? =
+        pathVar.split(File.pathSeparator).firstNotNullOfOrNull { dir ->
+            val candidate = File(dir, name)
+            if (candidate.canExecute()) candidate.absolutePath else null
+        }
+
     private fun round(v: Double): Double = (v * 10).roundToInt() / 10.0
 
     fun usage(colors: Boolean = false): String {
@@ -602,6 +673,11 @@ object Cli {
           tools --run seqkit-stats FILE
           tools --run emboss-restrict FILE
           tools --run seqkit-locate --pattern GGATCC FILE
+
+        Desktop
+          gui [FILE ...]                  launch the desktop GUI (opens FILE if given)
+          gui --launcher PATH             run a specific GUI launcher instead of auto-detecting
+          ${'$'}{INSTAGENE_GUI}           environment variable pointing at the GUI launcher
 
         Other
           sample [pUC19_MCS|GFP_CDS]      write a bundled example sequence

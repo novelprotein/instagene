@@ -193,6 +193,72 @@ tasks.jpackage {
     winMenu = useWindowsOpts
     winShortcut = useWindowsOpts
     winPerUserInstall = useWindowsOpts
+
+    // Add the terminal wrapper after packaging: the 'instagene' script into the
+    // app image root (APP_IMAGE), and /usr/bin/instagene into the .deb. The
+    // tasks no-op for other package types.
+    finalizedBy("injectAppImageLauncher", "repackDebWithLauncher")
+}
+
+// A terminal wrapper (`instagene`) so the desktop app can be launched from a
+// shell: the CLI's `instagene gui` finds it on PATH, and users can just type
+// `instagene`. jpackage only generates a launcher whose name matches the app
+// (InstaGene), so the wrapper is injected after packaging.
+val linuxLauncherScript = layout.projectDirectory.file("src/dist/linux/instagene")
+
+// APP_IMAGE: drop the wrapper into the app image root, next to bin/InstaGene.
+// The script resolves its own directory and execs bin/InstaGene, so users can
+// run ./instagene (or add the app image dir to PATH) straight after unzipping.
+val injectAppImageLauncher = tasks.register("injectAppImageLauncher") {
+    group = "distribution"
+    description = "Adds the 'instagene' terminal wrapper to the jpackage app image."
+    dependsOn(tasks.jpackage)
+    val scriptFile = linuxLauncherScript.asFile
+    val launcherFile = tasks.jpackage.map { it.destination.get().dir(appImageName).file("instagene") }
+    val isAppImage = jpackageType.map { it == "APP_IMAGE" }
+    inputs.file(scriptFile)
+    outputs.file(launcherFile)
+    onlyIf { isAppImage.get() }
+    doLast {
+        val destination = launcherFile.get().asFile
+        scriptFile.copyTo(destination, overwrite = true)
+        destination.setExecutable(true, false)
+    }
+}
+
+// DEB: jpackage has no hook for PATH-level binaries, so repack the generated
+// .deb to add /usr/bin/instagene (the wrapper falls back to /opt/instagene).
+// dpkg-deb is available everywhere the .deb is built (Linux CI, local).
+val repackDebWithLauncher = tasks.register("repackDebWithLauncher") {
+    group = "distribution"
+    description = "Repacks the built .deb to add /usr/bin/instagene."
+    dependsOn(tasks.jpackage)
+    val scriptFile = linuxLauncherScript.asFile
+    val debDir = tasks.jpackage.map { it.destination.get().asFile }
+    val workDir = layout.buildDirectory.dir("jpackage/deb-repack")
+    val execProviders = providers
+    val isDeb = jpackageType.map { it == "DEB" }
+    val isLinux = osIs("linux")
+    inputs.file(scriptFile)
+    outputs.dir(workDir)
+    onlyIf { isDeb.get() && isLinux.get() }
+    doLast {
+        val deb = debDir.get().listFiles { it.name.endsWith(".deb") }
+            ?.firstOrNull() ?: error("No .deb produced by jpackage")
+        val work = workDir.get().asFile
+        work.deleteRecursively()
+        work.mkdirs()
+        execProviders.exec { commandLine("dpkg-deb", "-x", deb.absolutePath, work.absolutePath) }
+            .result.get()
+        execProviders.exec { commandLine("dpkg-deb", "-e", deb.absolutePath, File(work, "DEBIAN").absolutePath) }
+            .result.get()
+        val usrBin = File(work, "usr/bin").apply { mkdirs() }
+        scriptFile.copyTo(File(usrBin, "instagene"), overwrite = true)
+        File(usrBin, "instagene").setExecutable(true, false)
+        execProviders.exec {
+            commandLine("dpkg-deb", "-b", "--root-owner-group", work.absolutePath, deb.absolutePath)
+        }.result.get()
+    }
 }
 
 // The low-friction fallback: a plain zip of the app image, so users get a
@@ -200,7 +266,7 @@ tasks.jpackage {
 tasks.register<Zip>("jpackageAppImageZip") {
     group = "distribution"
     description = "Zips the jpackage app image (run with -PjpackageType=APP_IMAGE first)."
-    dependsOn(tasks.jpackage)
+    dependsOn(tasks.jpackage, injectAppImageLauncher)
     archiveFileName = "instagene-app-image.zip"
     destinationDirectory = layout.buildDirectory.dir("jpackage")
     from(tasks.jpackage.flatMap { it.destination.dir(appImageName) })

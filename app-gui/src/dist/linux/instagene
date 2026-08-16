@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+SCRIPT="$0"
+while [ -L "$SCRIPT" ]; do
+    DIR=$(cd -P -- "$(dirname -- "$SCRIPT")" && pwd -P)
+    SCRIPT=$(readlink -- "$SCRIPT")
+    case "$SCRIPT" in
+        /*) ;;
+        *) SCRIPT="$DIR/$SCRIPT" ;;
+    esac
+done
+DIR=$(cd -P -- "$(dirname -- "$SCRIPT")" && pwd -P)
+
+if [ -x "$DIR/bin/InstaGene" ]; then
+    exec "$DIR/bin/InstaGene" "$@"
+fi
+
+if [ -x /opt/instagene/bin/InstaGene ]; then
+    exec /opt/instagene/bin/InstaGene "$@"
+fi
+
+echo "instagene: InstaGene launcher not found" >&2
+exit 127
