@@ -1,13 +1,46 @@
 # InstaGene
 
+[![CI](https://github.com/novelprotein/instagene/actions/workflows/ci.yml/badge.svg)](https://github.com/novelprotein/instagene/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-0.0.3-blue)
+![Java](https://img.shields.io/badge/Java-21+-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-This project contains 5 packages:
-- InstaGene-CLI is a tool for gaining insights from nucleic acid sequences or protein sequences, good for scripting.
-- InstaGene-GUI is a tool for creating and manipulating nucleic acid sequences or protein sequences.
-- InstaGene-WEB is a tool functioning as an InstaGene-GUI lite and uses the web as an interface. It is a client and server.
-- InstaGene-Engine is a library which functions as the backbone for the project. It does not force the other projects as a dependency, allowing it to be used in other gene editing projects without the overhead of an entire program.
-- InstaGene-Test is a unit testing suit which tests each project in this repo for bugs automatically. Tests are added each time a bug is discovered to prevent reintroduction of similar bugs.
+InstaGene is a suite of tools for reading, editing, and constructing nucleic
+acid and protein sequences. It is built as a reusable engine wrapped in three
+independent front-ends:
 
+| Package      | What it is                                             | Run with                              |
+|--------------|--------------------------------------------------------|---------------------------------------|
+| `engine`     | reusable core library (`org.instagene.core`)           | dependency                            |
+| `app-cli`    | command-line tool, good for scripting                  | `./gradlew :app-cli:runCli`           |
+| `app-gui`    | desktop front-end for creating/editing sequences (Swing) | `./gradlew :app-gui:runGui`         |
+| `app-web`    | GUI-lite, web interface (client and server)            | `./gradlew :app-web:runWeb`           |
+| `tests`      | cross-module test suite; a test is added with every bug fix | `./gradlew test`                 |
+
+## Quick start
+
+Install the desktop app from the Linux `.deb` and open a file straight from
+the terminal:
+
+```bash
+sudo apt install ./instagene_0.0.3_amd64.deb
+instagene plasmid.gb
+```
+
+Or run the portable self-contained GUI JAR (Java 21+):
+
+```bash
+java -Xmx8g -jar instagene-gui.jar
+```
+
+Or build from source:
+
+```bash
+./gradlew run                    # desktop GUI (default front-end)
+./gradlew :app-cli:runCli --args="help"
+./gradlew :app-gui:runGui
+./gradlew :app-web:runWeb --args="--port 8080"
+```
 
 ## Project Status
 
@@ -26,6 +59,25 @@ This project contains 5 packages:
 - [ ] Installer icons & signing
 - [ ] Performance optimization
 
+## Project structure & engine separation
+
+The core engine is kept separate from the modules that access its features,
+separating computation from the human interface. Each platform front-end is its
+own standalone application that shares the engine:
+
+* `engine` — the reusable core library (`org.instagene.core`): sequence model, IO, digest, assembly, etc.
+* `app-cli` — command-line platform (`./gradlew :app-cli:runCli`).
+* `app-gui` — desktop platform, Swing (`./gradlew :app-gui:runGui`).
+* `app-web` — web platform: embedded HTTP server + browser UI (`./gradlew :app-web:runWeb`).
+* `tests` — integration tests across all modules.
+
+The root `run` task picks exactly one front-end via `-Pplatform=cli|gui|web`
+(default `gui`), so `./gradlew run` never launches all three at once. The web
+server opens **only** when the web platform is run explicitly
+(`:app-web:runWeb`); the desktop and CLI apps never start it. Each front-end
+launches exactly once per process.
+
+## Building & running with Gradle
 
 This project uses [Gradle](https://gradle.org/). To build and run the application, use the *Gradle* tool window by
 clicking the Gradle icon in the right-hand toolbar, or run it directly from the terminal:
@@ -44,21 +96,6 @@ Note the usage of the Gradle Wrapper (`./gradlew`). This is the suggested way to
 [Learn more about the Gradle Wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html).
 
 [Learn more about Gradle tasks](https://docs.gradle.org/current/userguide/command_line_interface.html#common_tasks).
-
-### Automated testing (CI)
-
-Every push and pull request to `master` is checked automatically by the GitHub
-Actions workflow in `.github/workflows/ci.yml`: it builds **all** modules
-(`engine`, `app-cli`, `app-gui`, `app-web`, `tests`) and runs the **entire test
-suite** (including the headless Swing smoke tests) with `./gradlew build` on JDK
-26. Test reports are uploaded as a build artifact whenever a run finishes.
-
-Run the same gate locally at any time:
-
-* `./gradlew build` — compiles every module and runs every check and test.
-* `./gradlew verifySeparation` — enforces the separation rules: the engine
-  must never reference `org.instagene.app`, the front-ends must never reference
-  each other, and the published engine jar must contain only core classes.
 
 ### Using instagene-engine
 
@@ -79,15 +116,31 @@ repositories {
 }
 
 dependencies {
-    // "0.0.1" for an official release tag; developer builds publish "-<sha>".
-    implementation("org.instagene:instagene-engine:0.0.1")
+    // The version is defined once in gradle.properties (instagene.version).
+    implementation("org.instagene:instagene-engine:0.0.3")
 }
 ```
 
-Versions: tagged releases publish exactly `0.0.1`; every other build publishes
-`0.0.1-<short-sha>` (with a `-sources` jar alongside). The engine has a single
-runtime dependency (kotlinx-serialization) and the front-end-free API lives in
-the `org.instagene.core` package.
+Versions: tagged releases publish exactly the `instagene.version` from
+`gradle.properties`; every other build publishes `0.0.3-<short-sha>` (with a
+`-sources` jar alongside). The engine has a single runtime dependency
+(kotlinx-serialization) and the front-end-free API lives in the
+`org.instagene.core` package.
+
+### Command-line interface
+
+The CLI (`app-cli`) turns the engine into scriptable tools for gaining insights
+from sequences. Run `instagene help` (or `app-cli help`) for the full list of
+commands; the main groups are:
+
+* **Inspecting** — `info`, `gc`, `tm`, `orf`, `find`, `align`, `gel`, `identity`, `digest`, `sites`, `enzymes`
+* **Editing** — `revcomp`, `complement`, `transcribe`, `translate`, `edit`, `extract`, `annotate`, `topology`, `convert`
+* **Building plasmids** — `plasmid`, `gibson`, `golden-gate`, `recombine`, `primers`
+* **Extras** — `sample`, `dilute`, `mix`, `blast-url`, `ncbi-search`, `ncbi-fetch`, `tools`, `gui`
+
+When distributed, the CLI's launcher script is named `app-cli` (inside the
+`instagene-cli` distribution); symlink or rename it to `instagene` to match the
+documented examples.
 
 ### Launching the GUI from the command line
 
@@ -157,6 +210,35 @@ zip), Windows (`.msi`), and the portable runnable GUI JAR. Pull requests run
 the full test suite without the native packaging jobs. Tagged releases publish
 the same GUI JAR alongside the native installers and release checksums.
 
+To grab the latest builds without building anything yourself, open the
+[Actions tab](https://github.com/novelprotein/instagene/actions), select the
+most recent successful `CI` run, scroll to the bottom **Artifacts** section,
+and download the archive that matches your platform: `instagene-gui-jar`,
+`instagene-linux-deb`, `instagene-linux-rpm`, `instagene-linux-app-image`, or
+`instagene-windows-msi`. Note that GitHub wraps each artifact in a `.zip`
+download.
+
+> **Heads-up:** these are untested snapshots of the latest commit, not stable
+> releases. They can be broken or half-finished at any time — use them for
+> previews and feedback, and prefer tagged releases for anything you depend on.
+
+## Development
+
+### Automated testing (CI)
+
+Every push and pull request to `master` is checked automatically by the GitHub
+Actions workflow in `.github/workflows/ci.yml`: it builds **all** modules
+(`engine`, `app-cli`, `app-gui`, `app-web`, `tests`) and runs the **entire test
+suite** (including the headless Swing smoke tests) with `./gradlew build` on
+JDK 26. Test reports are uploaded as a build artifact whenever a run finishes.
+
+Run the same gate locally at any time:
+
+* `./gradlew build` — compiles every module and runs every check and test.
+* `./gradlew verifySeparation` — enforces the separation rules: the engine
+  must never reference `org.instagene.app`, the front-ends must never reference
+  each other, and the published engine jar must contain only core classes.
+
 ### Git rules (local hooks)
 
 The repository ships git hooks under `.githooks/` that run automatically on every
@@ -175,29 +257,22 @@ Install them once (they stay in version control, nothing is copied into
 
 Skip the gates for a single commit with `git commit --no-verify`.
 
-This project has the core engine separated from the modules which access features from it. This separates the computation tasks from the human interface.
-Each platform front-end is its own standalone application that shares
-the engine:
+### Build & configuration notes
 
-* `engine` — the reusable core library (`org.instagene.core`): sequence model, IO, digest, assembly, etc.
-* `app-cli` — command-line platform (`./gradlew :app-cli:runCli`).
-* `app-gui` — desktop platform, Swing (`./gradlew :app-gui:runGui`).
-* `app-web` — web platform: embedded HTTP server + browser UI (`./gradlew :app-web:runWeb`).
-* `tests` — integration tests across all modules.
+The version is defined once — `instagene.version` in `gradle.properties` — and
+surfaces everywhere it is displayed: the CLI `version` command, the `About`
+dialog and window titles of the desktop GUI, and the web-server banner.
 
-The root `run` task picks exactly one front-end via `-Pplatform=cli|gui|web` (default `gui`),
-so `./gradlew run` never launches all three at once. The web server opens **only** when the web
-platform is run explicitly (`:app-web:runWeb`); the desktop and CLI apps never start it. Each front-end launches exactly once per process.
+The CLI accepts two global options: `--env FILE` applies defaults from a
+`KEY=VALUE` file (command-line values win) and `--no-colors` forces plain
+output (styling is otherwise only used when stdout is a real terminal;
+`NO_COLOR` has the same effect).
 
-The version is defined once — `instagene.version` in `gradle.properties` — and surfaces
-everywhere it is displayed: the CLI `version` command, the `About` dialog and window titles
-of the desktop GUI, and the web-server banner.
+The shared build logic was extracted to a convention plugin located in
+`buildSrc`. Dependencies are declared in the version catalog
+(`gradle/libs.versions.toml`); both a build cache and a configuration cache are
+enabled (see `gradle.properties`).
 
-The CLI accepts two global options: `--env FILE` applies defaults from a `KEY=VALUE` file
-(command-line values win) and `--no-colors` forces plain output (styling is otherwise only
-used when stdout is a real terminal; `NO_COLOR` has the same effect).
+## License
 
-The shared build logic was extracted to a convention plugin located in `buildSrc`.
-
-This project uses a version catalog (see `gradle/libs.versions.toml`) to declare and version dependencies and both a
-build cache and a configuration cache (see `gradle.properties`).
+InstaGene is released under the [MIT License](LICENSE).

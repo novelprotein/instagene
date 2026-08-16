@@ -189,7 +189,7 @@ tasks.jpackage {
     linuxPackageName = useLinuxCommonOpts.map { if (it) "instagene" else null }
     linuxAppCategory = useLinuxCommonOpts.map { if (it) "Science" else null }
     linuxDebMaintainer = useDebOpts.map { if (it) "InstaGene <instagene@novelprotein.github.io>" else null }
-    linuxRpmLicenseType = useRpmOpts.map { if (it) "Apache-2.0" else null }
+    linuxRpmLicenseType = useRpmOpts.map { if (it) "MIT" else null }
     winMenu = useWindowsOpts
     winShortcut = useWindowsOpts
     winPerUserInstall = useWindowsOpts
