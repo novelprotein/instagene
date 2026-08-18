@@ -97,7 +97,7 @@ object Cli {
             "blast-url" -> blastUrl(load(args), args)
             "ncbi-search" -> ncbiSearch(args)
             "ncbi-fetch" -> emit(NcbiClient().fetchGenBank(args.require("accession")), args)
-            "bench", "benchmark" -> benchmark(load(args))
+            "bench", "benchmark" -> benchmark(args)
             "digest" -> digest(load(args), args)
             "sites" -> uniqueSites(load(args))
             "edit" -> emit(edit(load(args), args), args)
@@ -225,7 +225,14 @@ object Cli {
         }
     }
 
-    private fun benchmark(seq: Seq) {
+    private fun benchmark(args: Args) {
+        val seq = try {
+            load(args)
+        } catch (_: CliException) {
+            println("No input file. Fetching pUC19 (U03453) from NCBI...")
+            println()
+            NcbiClient().fetchGenBank("U03453")
+        }
         val len = seq.length
         val unit = if (seq.kind == org.instagene.core.SeqKind.PROTEIN) "aa" else "bp"
         println("== Benchmark: ${seq.name} ($len $unit) ==")

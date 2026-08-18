@@ -29,8 +29,9 @@ tasks.register<JavaExec>("runCli") {
 
 tasks.register<JavaExec>("bench") {
     group = "application"
-    description = "Run performance benchmarks on an input file. Usage: ./gradlew :app-cli:bench -Pinput=sequence.fa"
+    description = "Run performance benchmarks. Usage: ./gradlew :app-cli:bench [-Pinput=sequence.fa]"
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("org.instagene.app.cli.CliMainKt")
-    args = listOf("bench", project.findProperty("input") as? String ?: "")
+    val input = providers.gradleProperty("input").orNull
+    args = if (input.isNullOrBlank()) listOf("bench") else listOf("bench", input)
 }
