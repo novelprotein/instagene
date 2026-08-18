@@ -1,0 +1,41 @@
+package org.instagene.core
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class PlasmidDatabaseTest {
+
+    @Test
+    fun searchFindsPUC19() {
+        val result = PlasmidDatabase.search("pUC19")
+        assertEquals(1, result.results.size)
+        assertEquals("pUC19", result.results[0].name)
+    }
+
+    @Test
+    fun searchByMarker() {
+        val result = PlasmidDatabase.search("KanR")
+        assertTrue(result.results.isNotEmpty(), "Should find plasmids with KanR marker")
+    }
+
+    @Test
+    fun getByNameReturnsRecord() {
+        val record = PlasmidDatabase.getByName("pcDNA3.1")
+        assertNotNull(record)
+        assertEquals("pcDNA3.1", record.name)
+        assertEquals("Mammalian", record.organism)
+    }
+
+    @Test
+    fun getByNameReturnsNullForUnknown() {
+        assertNull(PlasmidDatabase.getByName("NonExistent"))
+    }
+
+    @Test
+    fun allReturnsBuiltInSet() {
+        assertTrue(PlasmidDatabase.all().size >= 8, "Should have at least 8 built-in plasmids")
+    }
+}

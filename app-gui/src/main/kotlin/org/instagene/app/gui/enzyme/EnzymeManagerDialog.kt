@@ -13,7 +13,6 @@ import java.awt.Frame
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JDialog
 import javax.swing.JLabel
 import javax.swing.JPopupMenu
@@ -22,7 +21,6 @@ import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JSpinner
 import javax.swing.JTable
-import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SpinnerNumberModel
@@ -34,8 +32,8 @@ import javax.swing.table.AbstractTableModel
  * [EnzymeManagerModel] and persist only when the user selects Done.
  */
 class EnzymeManagerDialog(
-    prefs: Prefs,
-    owner: Frame? = null,
+    private val prefs: Prefs,
+    private val owner: Frame? = null,
     initialName: String? = null,
 ) : JDialog(owner, "Manage Enzymes", true) {
 
@@ -175,51 +173,9 @@ class EnzymeManagerDialog(
 
     private fun editSelected(row: Int) {
         val enzyme = tableModel.enzymeAt(row)
-        val name = JTextField(enzyme.name, 18)
-        val site = JTextField(enzyme.site, 18)
-        val topCut = JSpinner(SpinnerNumberModel(enzyme.topCut, 0, 40, 1))
-        val bottomCut = JSpinner(SpinnerNumberModel(enzyme.bottomCut, 0, 40, 1))
-        val enabled = JCheckBox("Enabled in working set", model.isEnabled(enzyme))
-        val description = JTextArea(model.working.enzymeDescriptionFor(enzyme), 6, 36).apply {
-            lineWrap = true
-            wrapStyleWord = true
-        }
-        val form = JPanel(BorderLayout(0, 8)).apply {
-            add(JPanel(java.awt.GridLayout(5, 2, 8, 8)).apply {
-                add(JLabel("Name")); add(name)
-                add(JLabel("Recognition site")); add(site)
-                add(JLabel("Top cut")); add(topCut)
-                add(JLabel("Bottom cut")); add(bottomCut)
-                add(JLabel("")); add(enabled)
-            }, BorderLayout.NORTH)
-            add(JPanel(BorderLayout(0, 4)).apply {
-                add(JLabel("Description"), BorderLayout.NORTH)
-                add(JScrollPane(description), BorderLayout.CENTER)
-            }, BorderLayout.CENTER)
-        }
-        val ok = JOptionPane.showConfirmDialog(
-            this,
-            form,
-            "Edit Enzyme",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.PLAIN_MESSAGE,
-        )
-        if (ok != JOptionPane.OK_OPTION) return
-        val error = model.editEnzyme(
-            enzyme = enzyme,
-            name = name.text,
-            site = site.text,
-            topCut = (topCut.value as Number).toInt(),
-            bottomCut = (bottomCut.value as Number).toInt(),
-            enabled = enabled.isSelected,
-            description = description.text,
-        )
-        if (error == null) {
-            val selected = model.pool.indexOfFirst { it.name.equals(name.text.trim(), ignoreCase = true) }
-            if (selected >= 0) enzymeTable.selectionModel.setSelectionInterval(selected, selected)
-        } else {
-            JOptionPane.showMessageDialog(this, error, "Edit Enzyme", JOptionPane.ERROR_MESSAGE)
-        }
+        EnzymeElementDialog(prefs, enzyme, owner).isVisible = true
+        val selected = model.pool.indexOfFirst { it.name.equals(enzyme.name, ignoreCase = true) }
+        if (selected >= 0) enzymeTable.selectionModel.setSelectionInterval(selected, selected)
     }
 
     private class EnzymeTableModel(private val model: EnzymeManagerModel) : AbstractTableModel() {

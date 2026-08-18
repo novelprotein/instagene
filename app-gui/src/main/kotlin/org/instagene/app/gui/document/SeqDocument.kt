@@ -168,7 +168,6 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         file = savedTo
         savedSeq = seq
         isDirty = false
-        notify(Reason.SEQUENCE)
         fireEdit(if (savedAs) EditKind.SAVE_AS else EditKind.SAVE, null, null)
     }
 

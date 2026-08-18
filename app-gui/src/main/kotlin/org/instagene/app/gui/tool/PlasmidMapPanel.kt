@@ -265,7 +265,25 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                     val start = pressPosition ?: return
                     if (abs(current - start) < 2) return
                     dragged = true
-                    onSelect?.invoke(minOf(start, current), maxOf(start, current))
+                    val seq = doc.seq
+                    if (seq.isCircular && start != current) {
+                        val shortStart: Int
+                        val shortEnd: Int
+                        if (start < current) {
+                            val shortArc = current - start
+                            val longArc = seq.length - shortArc
+                            if (shortArc <= longArc) { shortStart = start; shortEnd = current }
+                            else { shortStart = current; shortEnd = start }
+                        } else {
+                            val shortArc = start - current
+                            val longArc = seq.length - shortArc
+                            if (shortArc <= longArc) { shortStart = current; shortEnd = start }
+                            else { shortStart = start; shortEnd = current }
+                        }
+                        onSelect?.invoke(shortStart, shortEnd)
+                    } else {
+                        onSelect?.invoke(minOf(start, current), maxOf(start, current))
+                    }
                 }
             })
         }
@@ -572,11 +590,22 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
             if (showRestrictionSites.isSelected && doc.cutSites.isNotEmpty()) {
                 g2.font = labelFont
+                val fm = g2.fontMetrics
+                val occupiedX = mutableListOf<IntRange>()
+                var lastLane = 0
+                val laneOccupied = mutableListOf(mutableListOf<IntRange>())
                 for (site in doc.cutSites) {
                     val x = left + (site.topCut.toDouble() / seq.length * span).roundToInt()
                     g2.color = Palette.CUT_MARK
                     g2.drawLine(x, axisY - 8, x, axisY + 8)
-                    g2.drawString(site.enzyme.name, x + 2, axisY + 44)
+                    val label = site.enzyme.name
+                    val labelWidth = fm.stringWidth(label)
+                    val interval = (x - 2)..(x + labelWidth + 2)
+                    var lane = 0
+                    while (lane < laneOccupied.size && laneOccupied[lane].any { rangesOverlap(it, interval) }) lane++
+                    if (lane >= laneOccupied.size) laneOccupied.add(mutableListOf())
+                    laneOccupied[lane].add(interval)
+                    g2.drawString(label, x + 2, axisY + 44 + lane * (fm.height + 2))
                 }
             }
 

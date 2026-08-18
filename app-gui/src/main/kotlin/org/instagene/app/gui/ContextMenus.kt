@@ -1,5 +1,6 @@
 package org.instagene.app.gui
 
+import java.awt.FlowLayout
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
@@ -7,6 +8,8 @@ import java.awt.event.MouseEvent
 import javax.swing.JMenuItem
 import javax.swing.JPopupMenu
 import javax.swing.JTable
+import javax.swing.JPanel
+import javax.swing.JTextArea
 import javax.swing.JTree
 import javax.swing.tree.TreePath
 
@@ -24,6 +27,18 @@ internal object ContextMenus {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
     }
 }
+
+/** Creates a JPanel with a LEFT-aligned FlowLayout containing [components]. */
+internal fun row(vararg components: java.awt.Component): JPanel =
+    JPanel(FlowLayout(FlowLayout.LEFT, 6, 3)).apply { components.forEach(::add) }
+
+/** Creates a read-only, non-wrapping, monospaced JTextArea. */
+internal fun monospacedTextArea(rows: Int = 12, cols: Int = 80, text: String = ""): JTextArea =
+    JTextArea(text, rows, cols).apply {
+        isEditable = false
+        lineWrap = false
+        font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12)
+    }
 
 internal fun JTable.installRowContextMenu(popupForRow: (modelRow: Int?) -> JPopupMenu?) {
     fun maybeShow(e: MouseEvent) {

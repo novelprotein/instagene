@@ -33,7 +33,7 @@ data class Enzyme(
 
     /** True when the recognition [site] reads identically on the reverse strand, i.e. equals its reverse complement. */
     val isPalindromic: Boolean
-        get() = site == site.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
+        get() = site == Alphabet.reverseComplement(site)
 
     /** Human-readable cut notation, e.g. `G^AATTC`. */
     fun notation(): String = buildString {

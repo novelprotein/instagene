@@ -19,8 +19,6 @@ import org.instagene.app.gui.prefs.SavedKind
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -223,7 +221,7 @@ class PrimersPanel(
             val text = candidates.take(100).joinToString("\n") {
                 "${it.primer.name}\t${it.start + 1}..${it.end}\t${it.primer.bases}\tTm=${"%.1f".format(it.primer.tm)}\tGC=${"%.1f".format(it.primer.gc)}\tscore=${"%.2f".format(it.score)}\tself=${it.selfComplementarity}"
             }.ifBlank { "No candidates passed the filters." }
-            val area = JTextArea(text, 24, 110).apply { isEditable = false; font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12) }
+            val area = org.instagene.app.gui.monospacedTextArea(24, 110, text)
             JOptionPane.showMessageDialog(null, JScrollPane(area), "Advanced Primer Candidates", JOptionPane.INFORMATION_MESSAGE)
         }.onFailure { JOptionPane.showMessageDialog(null, it.message ?: "Primer search failed", "Advanced Primer Candidates", JOptionPane.ERROR_MESSAGE) }
     }
@@ -465,7 +463,7 @@ class PrimersPanel(
     fun copyAsFasta() {
         val pair = result ?: return
         val fasta = listOf(pair.first, pair.second).joinToString("\n") { ">${it.name}\n${it.bases}" }
-        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(fasta), null)
+        ContextMenus.copyToClipboard(fasta)
     }
 
     /** Opens the visible GUI editor for the primer currently selected in the results table. */

@@ -18,6 +18,7 @@ import org.instagene.core.Strand
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
+import java.awt.event.ActionListener
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.JButton
@@ -354,14 +355,14 @@ class FeaturesPanel(
         return null
     }
 
-    /** Adds a feature over the current editor selection (undoable). */
-    fun addFeature(name: String, type: String = "misc_feature", notes: String = "") {
-        if (!doc.hasSelection || doc.selectionEnd <= doc.selectionStart) return
+    /** Adds a feature over the specified coordinates (undoable). */
+    fun addFeature(name: String, type: String = "misc_feature", notes: String = "", start: Int = doc.selectionStart, end: Int = doc.selectionEnd) {
+        if (start >= end) return
         val feature = Feature(
             name = name.ifBlank { "feature" },
             type = type.ifBlank { "misc_feature" },
-            start = doc.selectionStart,
-            end = doc.selectionEnd,
+            start = start,
+            end = end,
             notes = notes,
         )
         doc.mutate("add feature") { it.withFeature(feature) }
@@ -402,8 +403,10 @@ class FeaturesPanel(
 
     fun addFeatureDialog() {
         if (!doc.hasSelection || doc.selectionEnd <= doc.selectionStart) return
+        val capturedStart = doc.selectionStart
+        val capturedEnd = doc.selectionEnd
         val nameField = JTextField(20)
-        val typeField = JComboBox(TYPES.toTypedArray())
+        val typeField = JComboBox(TYPES.toTypedArray()).apply { isEditable = true }
         val notesField = JTextField(20)
         val form = JPanel(GridLayout(3, 2, 6, 6)).apply {
             add(JLabel("Name"))
@@ -413,8 +416,8 @@ class FeaturesPanel(
             add(JLabel("Description"))
             add(notesField)
         }
-        val start = doc.selectionStart + 1
-        val end = doc.selectionEnd
+        val start = capturedStart + 1
+        val end = capturedEnd
         val ok = JOptionPane.showConfirmDialog(
             null,
             JPanel(BorderLayout(0, 6)).apply {
@@ -426,7 +429,7 @@ class FeaturesPanel(
             JOptionPane.PLAIN_MESSAGE,
         )
         if (ok == JOptionPane.OK_OPTION) {
-            addFeature(nameField.text, typeField.selectedItem as String, notesField.text)
+            addFeature(nameField.text, typeField.selectedItem as String, notesField.text, capturedStart, capturedEnd)
         }
     }
 
@@ -481,43 +484,116 @@ class FeaturesPanel(
     /** Applies simple pattern-backed feature definitions to the current sequence. */
     fun autoAnnotateDialog() {
         if (doc.seq.kind == SeqKind.PROTEIN || doc.seq.length == 0) return
+
+        val presetNames = arrayOf("<None>") + FeatureLibrary.BUILTIN_PRESETS.keys.toTypedArray()
+        val presetCombo = JComboBox(presetNames)
+        val strandCombo = JComboBox(arrayOf("Forward strand", "Reverse strand", "Both strands"))
+        val matchCountLabel = JLabel(" ")
+        matchCountLabel.toolTipText = "Preview shows how many matches each pattern finds."
+        val previewButton = JButton("Preview matches")
+        previewButton.toolTipText = "Count matches for each pattern without applying changes."
+
         val patterns = JTextArea(
             prefs.value.featureLibrary.takeIf { it.isNotEmpty() }?.joinToString("\n") { "${it.name}|${it.type}|${it.pattern}" }
-                ?: "promoter|promoter|TATAAA\n\n# and + mean variable-length nucleotide wildcards",
-            8,
-            42,
-        ).apply {
-            lineWrap = true
-            wrapStyleWord = false
+                ?: "promoter|promoter|TATAAA",
+            10,
+            50,
+        ).apply { lineWrap = true; wrapStyleWord = false }
+
+        val helpText = JTextArea(
+            buildString {
+                appendLine("Pattern syntax:")
+                appendLine("  ACGT  — literal IUPAC sequence")
+                appendLine("  R, Y, S, W, K, M, B, D, H, V, N — degenerate bases")
+                appendLine("  # or + — zero or more nucleotides (wildcard)")
+                appendLine("  {n}    — exactly n nucleotides")
+                appendLine("  {n,m}  — between n and m nucleotides")
+                appendLine("  !pattern — exclude regions matching this pattern")
+                appendLine()
+                appendLine("Format: name|type|pattern")
+                appendLine("  name   — feature name (e.g. His6 tag)")
+                appendLine("  type   — SO term (CDS, promoter, misc_feature, etc.)")
+                appendLine("  pattern — IUPAC pattern with wildcards")
+                appendLine()
+                appendLine("Examples:")
+                appendLine("  My plasmid|rep_origin|{100,500}")
+                appendLine("  Polylinker|MCS|GAATTCGGATCC")
+                appendLine("  Exclude poly-A|misc_feature|!AAAAAAAAAA")
+            },
+            18,
+            50,
+        ).apply { isEditable = false; lineWrap = false; font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12) }
+
+        val presetListener = ActionListener {
+            val selected = presetCombo.selectedItem?.toString() ?: "<None>"
+            if (selected != "<None>") {
+                val presets = FeatureLibrary.BUILTIN_PRESETS[selected] ?: emptyList()
+                val presetText = presets.joinToString("\n") { "${it.name}|${it.type}|${it.pattern}" }
+                patterns.text = presetText
+            }
         }
+        presetCombo.addActionListener(presetListener)
+
+        val previewListener = ActionListener {
+            val defs = parseAutoAnnotateDefinitions(patterns.text)
+            if (defs.isEmpty()) {
+                matchCountLabel.text = "No valid definitions."
+                return@ActionListener
+            }
+            val strandIdx = strandCombo.selectedIndex
+            val searchBoth = strandIdx == 2
+            val matches = FeatureLibrary.previewMatches(doc.seq, defs, searchBoth)
+            val byName = matches.filter { !it.definition.exclude }.groupBy { it.name }
+            val excluded = matches.filter { it.definition.exclude }.size
+            val total = matches.count { !it.definition.exclude }
+            matchCountLabel.text = "<html>${defs.size} pattern(s): <b>${total}</b> match(es)${if (excluded > 0) ", $excluded excluded" else ""}</html>"
+            matchCountLabel.toolTipText = byName.entries.joinToString("\n") { (name, list) -> "$name: ${list.size} match(es)" }
+        }
+        previewButton.addActionListener(previewListener)
+
+        val strandPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
+            add(JLabel("Search:")); add(strandCombo); add(previewButton); add(matchCountLabel)
+        }
+
+        val topPanel = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = BorderFactory.createEmptyBorder(6, 6, 6, 6)
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
+                add(JLabel("Preset:")); add(presetCombo)
+            })
+            add(strandPanel)
+            add(JLabel("One definition per line: name|type|pattern"))
+        }
+
+        val rightPanel = JPanel(BorderLayout()).apply {
+            add(JLabel("Pattern Reference"), BorderLayout.NORTH)
+            add(JScrollPane(helpText), BorderLayout.CENTER)
+        }
+
+        val splitPane = javax.swing.JSplitPane(
+            javax.swing.JSplitPane.HORIZONTAL_SPLIT,
+            JScrollPane(patterns),
+            rightPanel,
+        ).apply { dividerLocation = 400; isOneTouchExpandable = true }
+
         val panel = JPanel(BorderLayout(0, 6)).apply {
-            add(JLabel("One definition per line: name|type|pattern"), BorderLayout.NORTH)
-            add(JScrollPane(patterns), BorderLayout.CENTER)
+            add(topPanel, BorderLayout.NORTH)
+            add(splitPane, BorderLayout.CENTER)
         }
+
         val ok = JOptionPane.showConfirmDialog(
             null, panel, "Auto-annotate from Feature Library", JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.PLAIN_MESSAGE,
         )
         if (ok != JOptionPane.OK_OPTION) return
-        val definitions = patterns.text.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
-            .mapNotNull { line ->
-                val fields = line.split('|', limit = 3).map(String::trim)
-                when {
-                    fields.size == 3 && fields[0].isNotEmpty() && fields[2].isNotEmpty() ->
-                        FeatureDefinition(fields[0], fields[2], fields[1].ifBlank { "misc_feature" })
-                    fields.size == 2 && fields[0].isNotEmpty() && fields[1].isNotEmpty() ->
-                        FeatureDefinition(fields[0], fields[1])
-                    else -> null
-                }
-            }
-            .toList()
+        val definitions = parseAutoAnnotateDefinitions(patterns.text)
         if (definitions.isEmpty()) {
             JOptionPane.showMessageDialog(null, "No valid feature definitions were entered.", "Auto-annotate", JOptionPane.INFORMATION_MESSAGE)
             return
         }
-        val annotated = FeatureLibrary.annotate(doc.seq, definitions)
+        val strandIdx = strandCombo.selectedIndex
+        val searchBoth = strandIdx == 2
+        val annotated = FeatureLibrary.annotate(doc.seq, definitions, searchBothStrands = searchBoth)
         val added = annotated.features.size - doc.seq.features.size
         prefs.update { current ->
             current.copy(featureLibrary = (current.featureLibrary + definitions.map {
@@ -527,6 +603,21 @@ class FeaturesPanel(
         doc.mutate("auto-annotate features") { annotated }
         summary.text = "Auto-annotated $added feature(s) from ${definitions.size} definition(s)."
     }
+
+    private fun parseAutoAnnotateDefinitions(text: String): List<FeatureDefinition> = text.lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .mapNotNull { line ->
+            val fields = line.split('|', limit = 3).map(String::trim)
+            when {
+                fields.size == 3 && fields[0].isNotEmpty() && fields[2].isNotEmpty() ->
+                    FeatureDefinition(fields[0], fields[2], fields[1].ifBlank { "misc_feature" })
+                fields.size == 2 && fields[0].isNotEmpty() && fields[1].isNotEmpty() ->
+                    FeatureDefinition(fields[0], fields[1])
+                else -> null
+            }
+        }
+        .toList()
 
     /** Deletes the feature currently selected in the table (undoable). */
     fun deleteSelectedFeature() {

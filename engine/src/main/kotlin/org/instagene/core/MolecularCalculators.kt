@@ -84,4 +84,44 @@ object MolecularCalculators {
                 ?: return@mapNotNull null
             match.groupValues[1].trim() to match.groupValues[2].toDouble()
         }
+
+    /**
+     * Molar extinction coefficient at 280 nm (ε₂₈₀) for a protein sequence.
+     *
+     * Uses the Gill & von Hippel (1990) method: counts Trp, Tyr, and Cys
+     * residues plus disulfide bridges. If [disulfideBonds] is -1 (default),
+     * all Cys residues are assumed to be in disulfide bonds.
+     *
+     * Reference: Gill SC, von Hippel PH. (1990) Anal Biochem. 182:319-326.
+     */
+    fun extinctionCoefficient(
+        protein: Seq,
+        disulfideBonds: Int = -1,
+    ): Double {
+        require(protein.kind == SeqKind.PROTEIN) { "Extinction coefficient requires a protein sequence" }
+        var trp = 0
+        var tyr = 0
+        var cys = 0
+        for (c in protein.bases.uppercase()) when (c) {
+            'W' -> trp++
+            'Y' -> tyr++
+            'C' -> cys++
+        }
+        // Gill & von Hippel (1990) coefficients
+        val base = trp * 5500.0 + tyr * 1490.0 + cys * 125.0
+        // Disulfide bond correction: -2.0 * disulfideBonds * 125.0
+        val ds = if (disulfideBonds >= 0) disulfideBonds else cys / 2
+        return base - 2.0 * ds * 125.0
+    }
+
+    /**
+     * Absorbance at 280 nm for a 1 mg/mL solution in a 1 cm cuvette.
+     *
+     * A(1%, 280) = ε₂₈₀ * 10 / MW(Da)
+     */
+    fun absorbanceAt1Percent(protein: Seq, disulfideBonds: Int = -1): Double {
+        val ec = extinctionCoefficient(protein, disulfideBonds)
+        val mw = molecularWeight(protein)
+        return if (mw > 0) ec * 10.0 / mw else 0.0
+    }
 }

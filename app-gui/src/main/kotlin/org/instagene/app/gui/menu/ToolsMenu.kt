@@ -198,6 +198,27 @@ class ToolsMenu(
             toolTipText = "Open the configurable virtual agarose gel workspace."
             addActionListener { onAnalysis("Virtual Gel") }
         })
+        addSeparator()
+        add(JMenuItem("CRISPR Guide RNA Design").apply {
+            toolTipText = "Design SpCas9 guide RNAs with PAM scanning and off-target scoring."
+            addActionListener { onAnalysis("CRISPR / gRNA") }
+        })
+        add(JMenuItem("Primer Thermodynamic Analysis").apply {
+            toolTipText = "Analyze primer Tm, ΔG, self-dimers, and hairpin potential."
+            addActionListener { onAnalysis("Primer Thermo") }
+        })
+        add(JMenuItem("Sanger Read Alignment").apply {
+            toolTipText = "Align ABI/SCF chromatogram reads to a reference sequence."
+            addActionListener { onAnalysis("Sanger Alignment") }
+        })
+        add(JMenuItem("Plasmid Database").apply {
+            toolTipText = "Browse the built-in plasmid database by name, marker, or organism."
+            addActionListener { onAnalysis("Plasmid DB") }
+        })
+        add(JMenuItem("Site Domestication").apply {
+            toolTipText = "Find and silently remove internal Golden Gate Type IIS enzyme sites."
+            addActionListener { onAnalysis("Site Domestication") }
+        })
     }
 
     /** Feature annotation actions, mirroring the Features panel buttons. */
@@ -274,7 +295,7 @@ class ToolsMenu(
     }
 
     private fun createAnalysisMenu(): JMenu = JMenu("Analysis Workspace").apply {
-        listOf("Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram").forEach { name ->
+        listOf("Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication").forEach { name ->
             add(JMenuItem(name).apply { addActionListener { onAnalysis(name) } })
         }
     }
@@ -321,7 +342,10 @@ class ToolsMenu(
                     })
                 }
                 if (enzymes.size > 10) {
-                    add(JMenuItem("... and ${enzymes.size - 10} more"))
+                    add(JMenuItem("... and ${enzymes.size - 10} more").apply {
+                        isEnabled = false
+                        toolTipText = "Use Manage Enzymes to browse all ${enzymes.size} enzymes in this category."
+                    })
                 }
             })
         }

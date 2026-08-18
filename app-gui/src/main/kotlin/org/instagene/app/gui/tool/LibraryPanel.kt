@@ -18,8 +18,6 @@ import org.instagene.core.Topology
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -381,7 +379,7 @@ class LibraryPanel(
 
     fun copySelected(row: Int) {
         val item = prefs.value.library.getOrNull(row) ?: return
-        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(item.bases), null)
+        ContextMenus.copyToClipboard(item.bases)
     }
 
     private fun openSelected(row: Int) {

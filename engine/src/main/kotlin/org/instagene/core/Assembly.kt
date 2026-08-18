@@ -13,8 +13,7 @@ object Assembly {
         EndType.THREE_PRIME_OVERHANG -> -overhang.length
     }
 
-    private fun revComp(s: String): String =
-        s.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
+    private fun revComp(s: String): String = Alphabet.reverseComplement(s)
 
     /**
      * Flips a fragment end-for-end. The molecule is unchanged; it is simply read

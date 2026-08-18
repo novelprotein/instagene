@@ -135,8 +135,7 @@ object Digest {
         // rather than per candidate position.
         val palindromic = enzyme.isPalindromic
         val siteBitmaps = site.map { symbolBitmap(it) }
-        val rcBitmaps = if (palindromic) siteBitmaps else site.reversed().map { Alphabet.complement(it, SeqKind.DNA) }
-            .let { rc -> rc.map { symbolBitmap(it) } }
+        val rcBitmaps = if (palindromic) siteBitmaps else Alphabet.reverseComplement(site).map { symbolBitmap(it) }
         // Only positions whose first base can begin a match are examined at all.
         val firstBitmap = siteBitmaps[0]
         val rcBitmap = rcBitmaps[0]

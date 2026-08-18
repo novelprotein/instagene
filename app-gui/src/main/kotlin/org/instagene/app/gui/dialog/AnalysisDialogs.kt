@@ -1,5 +1,6 @@
 package org.instagene.app.gui.dialog
 
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.*
 import org.instagene.core.io.SeqIO
@@ -21,7 +22,7 @@ object AnalysisDialogs {
             "Close",
         )
         when (choice) {
-            0 -> java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(java.awt.datatransfer.StringSelection(id), null)
+            0 -> ContextMenus.copyToClipboard(id)
             1 -> doc.mutate("apply sequence identity") { it.withUniqueIdentifier(id) }
         }
     }
@@ -86,11 +87,7 @@ object AnalysisDialogs {
     }
 
     private fun showText(frame: JFrame?, title: String, text: String) {
-        val area = JTextArea(text, 24, 80).apply {
-            isEditable = false
-            lineWrap = false
-            font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12)
-        }
+        val area = org.instagene.app.gui.monospacedTextArea(24, 80, text)
         JOptionPane.showMessageDialog(frame, JScrollPane(area), title, JOptionPane.INFORMATION_MESSAGE)
     }
 }

@@ -126,7 +126,7 @@ object CloningWorkflows {
         val diagnostics = buildList {
             if (duplicate != null) add(WorkflowDiagnostic(DiagnosticSeverity.WARNING, "Overhang $duplicate is reused and may permit an unintended ligation."))
             normalized.forEach { overhang ->
-                if (overhang == reverseComplement(overhang)) {
+                if (overhang == Alphabet.reverseComplement(overhang)) {
                     add(WorkflowDiagnostic(DiagnosticSeverity.WARNING, "Palindromic overhang $overhang can ligate in either orientation."))
                 }
             }
@@ -208,13 +208,10 @@ object CloningWorkflows {
     }
 
     private fun cleanDna(value: String, label: String): String {
-        val cleaned = value.filterNot(Char::isWhitespace).uppercase().replace('U', 'T')
+        val cleaned = Alphabet.normalizeDna(value)
         require(cleaned.isNotEmpty() && cleaned.all { it in "ACGT" }) { "$label must contain only A, C, G, and T" }
         return cleaned
     }
-
-    private fun reverseComplement(value: String): String =
-        value.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
 
     private fun defaultOverlap(method: CloningMethod): Int = when (method) {
         CloningMethod.IN_FUSION -> 15
@@ -257,7 +254,7 @@ object PcrWorkflows {
         require(template.kind != SeqKind.PROTEIN) { "PCR requires a nucleotide template" }
         val f = clean(forward.hybridizingSequence)
         val r = clean(reverse.hybridizingSequence)
-        val reverseTarget = reverseComplement(r)
+        val reverseTarget = Alphabet.reverseComplement(r)
         val fStart = uniqueBinding(template, f, "forward primer")
         val rStart = uniqueBinding(template, reverseTarget, "reverse primer")
         val core = if (!inverse) {
@@ -267,7 +264,7 @@ object PcrWorkflows {
             require(template.isCircular) { "Inverse PCR requires a circular template" }
             template.sub(rStart, fStart + template.length + f.length)
         }
-        val productBases = clean(forward.extension) + core + reverseComplement(clean(reverse.extension))
+        val productBases = clean(forward.extension) + core + Alphabet.reverseComplement(clean(reverse.extension))
         val forwardAnnotation = PrimerAnnotation(forward.name, f, 0, f.length, Strand.FORWARD, clean(forward.extension))
         val reverseStartInProduct = productBases.length - r.length
         val reverseAnnotation = PrimerAnnotation(reverse.name, r, reverseStartInProduct, productBases.length, Strand.REVERSE, clean(reverse.extension))
@@ -320,7 +317,7 @@ object PcrWorkflows {
     fun anneal(first: String, second: String, name: String = "annealed_oligos"): Seq {
         val a = clean(first)
         val b = clean(second)
-        val bReverse = reverseComplement(b)
+        val bReverse = Alphabet.reverseComplement(b)
         val overlap = bestOffsetOverlap(a, bReverse)
         require(overlap.third > 0) { "The oligos have no complementary overlap" }
         val left = minOf(0, overlap.first)
@@ -369,13 +366,11 @@ object PcrWorkflows {
     }
 
     private fun clean(value: String): String {
-        val cleaned = value.filterNot(Char::isWhitespace).uppercase().replace('U', 'T')
+        val cleaned = Alphabet.normalizeDna(value)
         require(cleaned.all { it in "ACGTN" }) { "Sequence contains non-DNA characters" }
         return cleaned
     }
 
-    private fun reverseComplement(value: String): String =
-        value.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
 }
 
 data class PrimerStructureResult(
@@ -386,12 +381,12 @@ data class PrimerStructureResult(
 
 /** Deterministic primer hairpin/homodimer screening for interactive design feedback. */
 object PrimerStructure {
-    fun homodimer(bases: String): PrimerStructureResult = compare(clean(bases), reverseComplement(clean(bases)), minimumLoop = 0)
+    fun homodimer(bases: String): PrimerStructureResult = compare(clean(bases), Alphabet.reverseComplement(clean(bases)), minimumLoop = 0)
 
     fun hairpin(bases: String, minimumLoop: Int = 3): PrimerStructureResult {
         require(minimumLoop >= 0) { "Minimum loop cannot be negative" }
         val clean = clean(bases)
-        return compare(clean, reverseComplement(clean), minimumLoop)
+        return compare(clean, Alphabet.reverseComplement(clean), minimumLoop)
     }
 
     private fun compare(a: String, b: String, minimumLoop: Int): PrimerStructureResult {
@@ -413,8 +408,7 @@ object PrimerStructure {
         return PrimerStructureResult(bestRun, deltaG, structure)
     }
 
-    private fun clean(value: String): String = value.filterNot(Char::isWhitespace).uppercase().replace('U', 'T')
-    private fun reverseComplement(value: String): String = value.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
+    private fun clean(value: String): String = Alphabet.normalizeDna(value)
 }
 
 data class CodonUsageProfile(val name: String, val preferredCodons: Map<Char, String>)
@@ -435,7 +429,34 @@ object CodonDesign {
         'S' to "AGC", 'T' to "ACC", 'W' to "TGG", 'Y' to "TAC", 'V' to "GTG", '*' to "TGA",
     ))
 
-    val PROFILES = listOf(ECOLI, HUMAN)
+    /** Yeast (S. cerevisiae) preferred codons — from Kazusa CUTG database. */
+    val YEAST = CodonUsageProfile("Yeast (S. cerevisiae)", mapOf(
+        'A' to "GCT", 'R' to "AGA", 'N' to "AAC", 'D' to "GAC", 'C' to "TGT",
+        'Q' to "CAA", 'E' to "GAA", 'G' to "GGT", 'H' to "CAT", 'I' to "ATT",
+        'L' to "TTG", 'K' to "AAA", 'M' to "ATG", 'F' to "TTT", 'P' to "CCT",
+        'S' to "AGT", 'T' to "ACT", 'W' to "TGG", 'Y' to "TAT", 'V' to "GTT", '*' to "TAA",
+    ))
+
+    /** CHO (Chinese Hamster Ovary) — shares mammalian codon bias with Human. */
+    val CHO = CodonUsageProfile("CHO (Chinese Hamster Ovary)", HUMAN.preferredCodons)
+
+    /** Drosophila (Insect) — from Kazusa CUTG database. */
+    val DROSOPHILA = CodonUsageProfile("Drosophila", mapOf(
+        'A' to "GCC", 'R' to "CGC", 'N' to "AAC", 'D' to "GAC", 'C' to "TGC",
+        'Q' to "CAG", 'E' to "GAG", 'G' to "GGC", 'H' to "CAC", 'I' to "ATC",
+        'L' to "CTG", 'K' to "AAG", 'M' to "ATG", 'F' to "TTC", 'P' to "CCC",
+        'S' to "AGC", 'T' to "ACC", 'W' to "TGG", 'Y' to "TAC", 'V' to "GTG", '*' to "TGA",
+    ))
+
+    /** Arabidopsis (Plant) — from Kazusa CUTG database. */
+    val ARABIDOPSIS = CodonUsageProfile("Arabidopsis", mapOf(
+        'A' to "GCT", 'R' to "AGG", 'N' to "AAC", 'D' to "GAT", 'C' to "TGT",
+        'Q' to "CAA", 'E' to "GAA", 'G' to "GGT", 'H' to "CAT", 'I' to "ATC",
+        'L' to "CTG", 'K' to "AAA", 'M' to "ATG", 'F' to "TTC", 'P' to "CCT",
+        'S' to "AGC", 'T' to "ACC", 'W' to "TGG", 'Y' to "TAT", 'V' to "GTT", '*' to "TGA",
+    ))
+
+    val PROFILES = listOf(ECOLI, HUMAN, YEAST, CHO, DROSOPHILA, ARABIDOPSIS)
 
     fun reverseTranslate(protein: Seq, profile: CodonUsageProfile = ECOLI, name: String = "${protein.name}_dna"): Seq {
         require(protein.kind == SeqKind.PROTEIN) { "Reverse translation requires a protein sequence" }

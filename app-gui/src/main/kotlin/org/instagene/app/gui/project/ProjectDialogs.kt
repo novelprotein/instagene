@@ -2,6 +2,7 @@ package org.instagene.app.gui.project
 
 import org.instagene.app.gui.file.FileType
 import org.instagene.app.gui.file.FileTypes
+import org.instagene.app.gui.row
 import org.instagene.core.FeatureDefinition
 import org.instagene.core.MoleculeProperties
 import org.instagene.core.Strandedness
@@ -194,9 +195,6 @@ class ProjectCollectionsPanel(
         val file = if (File(raw).isAbsolute) File(raw) else project.resolvePath(raw)
         return file?.takeIf { project.relativePath(it) != null }
     }
-
-    private fun row(vararg components: java.awt.Component): JPanel =
-        JPanel(FlowLayout(FlowLayout.LEFT, 6, 3)).apply { components.forEach(::add) }
 }
 
 class BatchOperationPanel(
@@ -382,7 +380,4 @@ class BatchOperationPanel(
     private fun refreshStatus() {
         statusLabel.text = "${selectedFiles().size} selected file(s)."
     }
-
-    private fun row(vararg components: java.awt.Component): JPanel =
-        JPanel(FlowLayout(FlowLayout.LEFT, 6, 3)).apply { components.forEach(::add) }
 }

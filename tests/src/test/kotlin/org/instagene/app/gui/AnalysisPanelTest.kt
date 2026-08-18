@@ -34,6 +34,7 @@ class AnalysisPanelTest {
             listOf(
                 "Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
                 "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram",
+                "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication",
             ),
             panel.toolNames(),
         )

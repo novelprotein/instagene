@@ -31,7 +31,7 @@ object EnzymeAnalysis {
 
     fun insertRecognitionSite(enzyme: Enzyme, reverse: Boolean = false): String {
         val concrete = enzyme.site.map { Alphabet.expansion(it)?.firstOrNull() ?: 'N' }.joinToString("")
-        return if (reverse) concrete.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("") else concrete
+        return if (reverse) Alphabet.reverseComplement(concrete) else concrete
     }
 
     fun diagnosticSites(

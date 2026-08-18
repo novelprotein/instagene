@@ -26,28 +26,32 @@ class AnalysisPanel(
     private var doc = initial
     private var listener: SeqDocument.Listener? = null
     private val tabs = JTabbedPane()
-    private val search = SearchAnalysisPanel(onReveal)
-    private val alignment = AlignmentAnalysisPanel()
-    private val enzymes = EnzymeAnalysisPanel()
-    private val assembly = AssemblyAnalysisPanel(onOpenSequence)
-    private val pcr = PcrAnalysisPanel(onOpenSequence)
-    private val translation = TranslationAnalysisPanel(onOpenSequence)
-    private val gel = GelAnalysisPanel()
-    private val calculators = CalculatorAnalysisPanel()
-    private val ncbi = NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis)
-    private val chromatogram = ChromatogramAnalysisPanel()
+    private val panels = listOf<BoundAnalysisPanel>(
+        SearchAnalysisPanel(onReveal),
+        AlignmentAnalysisPanel(),
+        EnzymeAnalysisPanel(),
+        AssemblyAnalysisPanel(onOpenSequence),
+        PcrAnalysisPanel(onOpenSequence),
+        TranslationAnalysisPanel(onOpenSequence),
+        GelAnalysisPanel(),
+        CalculatorAnalysisPanel(),
+        NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis),
+        ChromatogramAnalysisPanel(),
+        CrisprDesignAnalysisPanel(),
+        SangerAlignmentAnalysisPanel(),
+        PrimerThermodynamicsAnalysisPanel(),
+        PlasmidDatabaseAnalysisPanel(onOpenSequence),
+        SiteDomesticationAnalysisPanel(),
+    )
+    private val tabNames = listOf(
+        "Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis",
+        "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST",
+        "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo",
+        "Plasmid DB", "Site Domestication",
+    )
 
     init {
-        tabs.addTab("Search", search)
-        tabs.addTab("Alignment", alignment)
-        tabs.addTab("Enzymes", enzymes)
-        tabs.addTab("Assembly", assembly)
-        tabs.addTab("PCR / Mutagenesis", pcr)
-        tabs.addTab("Translation / Structure", translation)
-        tabs.addTab("Virtual Gel", gel)
-        tabs.addTab("Calculators", calculators)
-        tabs.addTab("NCBI / BLAST", ncbi)
-        tabs.addTab("Chromatogram", chromatogram)
+        panels.zip(tabNames).forEach { (panel, name) -> tabs.addTab(name, panel) }
         add(tabs, BorderLayout.CENTER)
         bindDocument(initial)
     }
@@ -65,8 +69,6 @@ class AnalysisPanel(
         }
         if (changed || !docListenerAttached) {
             doc.addListener(listener!!)
-        } else if (docListenerAttached.not()) {
-            doc.addListener(listener!!)
         }
         refreshChildren()
     }
@@ -75,16 +77,7 @@ class AnalysisPanel(
 
     private fun refreshChildren() {
         docListenerAttached = true
-        search.bindDocument(doc)
-        alignment.bindDocument(doc)
-        enzymes.bindDocument(doc)
-        assembly.bindDocument(doc)
-        pcr.bindDocument(doc)
-        translation.bindDocument(doc)
-        gel.bindDocument(doc)
-        calculators.bindDocument(doc)
-        ncbi.bindDocument(doc)
-        chromatogram.bindDocument(doc)
+        panels.forEach { it.bindDocument(doc) }
     }
 
     fun selectTool(name: String) {
@@ -104,22 +97,17 @@ private abstract class BoundAnalysisPanel : JPanel(BorderLayout()) {
         refreshDocument()
     }
     protected open fun refreshDocument() {}
-    protected fun row(vararg components: java.awt.Component): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 3)).apply {
-        components.forEach { add(it) }
-    }
-    protected fun output(): JTextArea = JTextArea(12, 80).apply {
-        isEditable = false
-        lineWrap = false
-        font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12)
-    }
-    protected fun chooseSequence(): Seq? {
-        val chooser = JFileChooser()
-        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return null
-        return runCatching { SeqIO.read(chooser.selectedFile) }.getOrElse {
-            JOptionPane.showMessageDialog(this, it.message ?: "Unable to read sequence", "Open sequence", JOptionPane.ERROR_MESSAGE)
-            null
+    protected fun row(vararg components: java.awt.Component): JPanel =
+        org.instagene.app.gui.row(*components)
+    protected fun copyRowToClipboard(model: DefaultTableModel, row: Int?) {
+        if (row != null) {
+            val sb = StringBuilder()
+            for (c in 0 until model.columnCount) { if (c > 0) sb.append("\t"); sb.append(model.getValueAt(row, c)) }
+            ContextMenus.copyToClipboard(sb.toString())
         }
     }
+    protected fun output(): JTextArea = org.instagene.app.gui.monospacedTextArea()
+
 }
 
 private class SearchAnalysisPanel(private val onReveal: (Int, Int) -> Unit) : BoundAnalysisPanel() {
@@ -410,6 +398,22 @@ private class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) :
                 append('\n')
                 result.steps.forEachIndexed { index, step -> append("${index + 1}. ${step.title}: ${step.detail}\n") }
                 append("\n${result.product.bases.chunked(80).joinToString("\n")}")
+                if (mode.selectedIndex == 10) {
+                    val overhangList = overhangs.text.split(',').map(String::trim).filter(String::isNotEmpty)
+                    if (overhangList.isNotEmpty()) {
+                        val fidelity = GoldenGateFidelity.score(overhangList)
+                        append("\n\n--- Golden Gate Fidelity Report ---\n")
+                        append("Set fidelity: ${"%.4f".format(fidelity.setFidelity * 100)}%\n")
+                        append("Weakest overhang: ${fidelity.weakestOverhang ?: "none (all >= 99%)"}\n")
+                        fidelity.perOverhangFidelity.forEach { (oh, fi) ->
+                            append("  $oh: ${"%.4f".format(fi * 100)}%\n")
+                        }
+                        if (fidelity.warnings.isNotEmpty()) {
+                            append("\nWarnings:\n")
+                            fidelity.warnings.forEach { append("  ⚠ $it\n") }
+                        }
+                    }
+                }
             }
         }.onFailure { product = null; output.text = it.message ?: "Assembly failed" }
     }
@@ -587,7 +591,7 @@ private class GelAnalysisPanel : BoundAnalysisPanel() {
 }
 
 private class CalculatorAnalysisPanel : BoundAnalysisPanel() {
-    private val operation = JComboBox(arrayOf("Dilution", "Molecular weight", "nM from mass", "Mass from nM", "Master mix"))
+    private val operation = JComboBox(arrayOf("Dilution", "Molecular weight", "nM from mass", "Mass from nM", "Master mix", "Extinction coefficient", "Absorbance at 1%"))
     private val a = JTextField("100", 8)
     private val b = JTextField("10", 8)
     private val c = JTextField("100", 8)
@@ -608,7 +612,17 @@ private class CalculatorAnalysisPanel : BoundAnalysisPanel() {
                 1 -> "Molecular weight: ${MolecularCalculators.molecularWeight(doc.seq)} Da"
                 2 -> "Concentration: ${MolecularCalculators.nanomolar(a.text.toDouble(), b.text.toDouble(), c.text.toDouble())} nM"
                 3 -> "Mass: ${MolecularCalculators.massNg(a.text.toDouble(), b.text.toDouble(), c.text.toDouble())} ng"
-                else -> MolecularCalculators.masterMix(MolecularCalculators.parseRecipe(recipe.text).map { MasterMixComponent(it.first, it.second) }, 1).let { it.components.joinToString("\n") { c -> "${c.name}: ${c.volumeUl} µl" } }
+                4 -> MolecularCalculators.masterMix(MolecularCalculators.parseRecipe(recipe.text).map { MasterMixComponent(it.first, it.second) }, 1).let { it.components.joinToString("\n") { c -> "${c.name}: ${c.volumeUl} µl" } }
+                5 -> {
+                    val ec = MolecularCalculators.extinctionCoefficient(doc.seq)
+                    val mw = MolecularCalculators.molecularWeight(doc.seq)
+                    "Extinction coefficient (ε₂₈₀): ${"%.1f".format(ec)} M⁻¹cm⁻¹\nMolecular weight: ${"%.1f".format(mw)} Da"
+                }
+                6 -> {
+                    val abs = MolecularCalculators.absorbanceAt1Percent(doc.seq)
+                    "A(1%, 280nm): ${"%.4f".format(abs)}\nAbsorbance of a 1 mg/mL solution in a 1 cm cuvette at 280 nm."
+                }
+                else -> "Select an operation."
             }
         }.onSuccess { output.text = it }.onFailure { output.text = it.message ?: "Calculation failed" }
     }
@@ -800,14 +814,19 @@ private class NcbiAnalysisPanel(
         val typedAccession = typed.takeIf { querySource.selectedIndex == 0 && NCBI_ACCESSION_TOKEN.matches(it) }
         val accession = typedAccession ?: selectedNucleotideHit()?.accession
         if (accession == null) {
-            output.text = if (querySource.selectedIndex == 0 && typed.isBlank()) {
-                "Enter a GenBank accession, or run Search NCBI and select a result."
-            } else if (querySource.selectedIndex == 0) {
-                "'$typed' is not a GenBank accession. Run Search NCBI and select a result."
-            } else if (querySource.selectedIndex == 1 && !doc.hasSelection) {
-                "Select bases in the Sequence view, run Search NCBI, then select a result to fetch GenBank."
-            } else {
-                "Run Search NCBI with the selected query source, then select a result to fetch GenBank."
+            output.text = when (querySource.selectedIndex) {
+                0 -> if (typed.isBlank()) {
+                    "Enter a GenBank accession, or run Search NCBI and select a result."
+                } else {
+                    "'$typed' is not a GenBank accession. Run Search NCBI and select a result."
+                }
+                1 -> if (!doc.hasSelection) {
+                    "Select bases in the Sequence view, run Search NCBI, then select a result to fetch GenBank."
+                } else {
+                    "Run Search NCBI with the selected query source, then select a result to fetch GenBank."
+                }
+                else ->
+                    "Run Search NCBI with the selected query source, then select a result to fetch GenBank."
             }
             if (querySource.selectedIndex == 0) term.requestFocusInWindow()
             return
@@ -1094,8 +1113,11 @@ private class ChromatogramAnalysisPanel : BoundAnalysisPanel() {
         fileField.text = file.absolutePath
         runCatching {
             val bytes = file.readBytes()
-            if (ChromatogramReader.looksLikeAbi(bytes)) ChromatogramReader.readAbi(bytes, file.name)
-            else ChromatogramReader.readScf(bytes, file.name)
+            when {
+                ChromatogramReader.looksLikeAbi(bytes) -> ChromatogramReader.readAbi(bytes, file.name)
+                ChromatogramReader.looksLikeScf(bytes) -> ChromatogramReader.readScf(bytes, file.name)
+                else -> error("Unrecognized chromatogram format in '${file.name}'. Expected ABI (.ab1) or SCF (.scf).")
+            }
         }.onSuccess { record ->
             output.text = buildString {
                 append("${record.name}: ${record.bases.length} called bases\n\n")
@@ -1105,5 +1127,296 @@ private class ChromatogramAnalysisPanel : BoundAnalysisPanel() {
                 }
             }
         }.onFailure { output.text = it.message ?: "Unable to read chromatogram" }
+    }
+}
+
+private class CrisprDesignAnalysisPanel : BoundAnalysisPanel() {
+    private val pamType = JComboBox(arrayOf("NGG (SpCas9)", "NNAGAAW (SaCas9)", "TTTV (CjCas9)"))
+    private val minScore = JSpinner(SpinnerNumberModel(0.5, 0.0, 1.0, 0.05))
+    private val model = DefaultTableModel(arrayOf("Position", "Strand", "Guide (20bp)", "GC%", "On-target", "Off-target"), 0)
+    private val table = JTable(model)
+    private val output = output()
+    private var lastGuides = emptyList<GuideRNA>()
+
+    init {
+        val run = JButton("Find guides")
+        run.toolTipText = "Scan the current sequence for CRISPR guide RNA targets."
+        run.addActionListener { execute() }
+        add(row(JLabel("PAM type"), pamType, JLabel("Min score"), minScore, run), BorderLayout.NORTH)
+        add(JScrollPane(table), BorderLayout.CENTER)
+        add(JScrollPane(output).apply { preferredSize = java.awt.Dimension(10, 60) }, BorderLayout.SOUTH)
+        table.installRowContextMenu { row -> crisprPopup(row) }
+    }
+
+    private fun execute() {
+        runCatching {
+            val result = CrisprDesign.design(doc.seq)
+            lastGuides = result.guides.filter { it.onTargetScore >= (minScore.value as Number).toDouble() }
+            model.rowCount = 0
+            lastGuides.forEach { g ->
+                model.addRow(arrayOf<Any?>(
+                    "${g.pamPosition - 19}..${g.pamPosition}", "+", g.sequence,
+                    "%.1f%%".format(g.gcContent * 100),
+                    "%.3f".format(g.onTargetScore), "%.3f".format(g.offTargetScore),
+                ))
+            }
+            output.text = if (lastGuides.isEmpty()) "No guide RNAs found above the minimum score threshold."
+            else "${lastGuides.size} guide(s) found. Double-click a row to open the guide sequence."
+        }.onFailure { output.text = it.message ?: "CRISPR design failed" }
+    }
+
+    private fun crisprPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val hasRow = row != null && row in 0 until model.rowCount
+        add(ContextMenus.item("Copy guide sequence", "Copy the guide RNA sequence to the clipboard.", hasRow) {
+            if (row != null) ContextMenus.copyToClipboard(model.getValueAt(row, 2).toString())
+        })
+    }
+}
+
+private class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
+    private val queryFiles = JTextField(30)
+    private val model = DefaultTableModel(arrayOf("Read name", "Identity", "Mismatches", "Aligned length"), 0)
+    private val table = JTable(model)
+    private val output = output()
+    private var lastResult: SangerAlignmentResult? = null
+
+    init {
+        val choose = JButton("Choose trace files...")
+        choose.toolTipText = "Select ABI/SCF chromatogram files to align against the current sequence."
+        choose.addActionListener {
+            val chooser = JFileChooser().apply { isMultiSelectionEnabled = true }
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                queryFiles.text = chooser.selectedFiles.joinToString(", ") { it.name }
+                queryFiles.toolTipText = chooser.selectedFiles.joinToString("\n") { it.absolutePath }
+            }
+        }
+        val run = JButton("Align reads")
+        run.toolTipText = "Align the selected chromatogram reads to the current reference sequence."
+        run.addActionListener { execute() }
+        add(row(choose, queryFiles, run), BorderLayout.NORTH)
+        add(JScrollPane(table), BorderLayout.CENTER)
+        add(JScrollPane(output).apply { preferredSize = java.awt.Dimension(10, 60) }, BorderLayout.SOUTH)
+        table.installRowContextMenu { row -> sangerPopup(row) }
+    }
+
+    private fun execute() {
+        val paths = queryFiles.text.split(',').map(String::trim).filter(String::isNotEmpty)
+        if (paths.isEmpty()) { output.text = "Choose one or more chromatogram files."; return }
+        runCatching {
+            val reads = paths.map { path ->
+                val file = File(path)
+                val bytes = file.readBytes()
+                val record = when {
+                    ChromatogramReader.looksLikeAbi(bytes) -> ChromatogramReader.readAbi(bytes, file.name)
+                    ChromatogramReader.looksLikeScf(bytes) -> ChromatogramReader.readScf(bytes, file.name)
+                    else -> error("Unrecognized format: ${file.name}")
+                }
+                Seq(record.name, record.bases, SeqKind.DNA)
+            }
+            val result = SangerAlignment.align(doc.seq, reads)
+            lastResult = result
+            model.rowCount = 0
+            result.reads.forEach { r ->
+                model.addRow(arrayOf<Any?>(
+                    r.readName, "%.2f%%".format(r.identity * 100), r.mismatches.size, r.alignedLength,
+                ))
+            }
+            output.text = buildString {
+                append("Aligned ${result.summary.totalReads} read(s)\n")
+                append("Average identity: ${"%.2f".format(result.summary.averageIdentity * 100)}%\n")
+                val allMismatches = result.reads.flatMap { it.mismatches }
+                if (allMismatches.isNotEmpty()) {
+                    append("\nMismatch details:\n")
+                    allMismatches.groupBy { it.refPos }.forEach { (pos, mm) ->
+                        append("  Position ${pos + 1}: ${mm.first().refBase} -> ${mm.first().readBase} (${mm.size} read(s))\n")
+                    }
+                }
+            }
+        }.onFailure { output.text = it.message ?: "Sanger alignment failed" }
+    }
+
+    private fun sangerPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val hasRow = row != null && row in 0 until model.rowCount
+        add(ContextMenus.item("Copy row data", "Copy the alignment result row to the clipboard.", hasRow) {
+            copyRowToClipboard(model, row)
+        })
+    }
+}
+
+private class PrimerThermodynamicsAnalysisPanel : BoundAnalysisPanel() {
+    private val forward = JTextField(24)
+    private val reverse = JTextField(24)
+    private val output = output()
+
+    init {
+        val run = JButton("Check primers")
+        run.toolTipText = "Analyze primer thermodynamics: Tm, ΔG, self-dimers, hairpins."
+        run.addActionListener { execute() }
+        add(row(JLabel("Forward"), forward, JLabel("Reverse"), reverse, run), BorderLayout.NORTH)
+        add(JScrollPane(output), BorderLayout.CENTER)
+    }
+
+    private fun StringBuilder.appendPrimerThermo(label: String, seq: String) {
+        val thermo = PrimerThermodynamics.thermodynamicResult(seq)
+        val hairpin = PrimerThermodynamics.assessHairpin(seq)
+        val selfDimer = PrimerThermodynamics.assessSelfDimer(seq)
+        appendLine("=== $label Primer ===")
+        appendLine("Sequence: $seq")
+        appendLine("Length: ${seq.length} bp")
+        appendLine("ΔG: ${"%.2f".format(thermo.deltaG)} kcal/mol")
+        appendLine("Tm: ${"%.1f".format(thermo.tm)} °C")
+        appendLine("Hairpin: ${hairpin.assessment} — ${hairpin.details}")
+        appendLine("Self-dimer: ${selfDimer.assessment} — ${selfDimer.details}")
+        appendLine()
+    }
+
+    private fun execute() {
+        val fwd = forward.text.trim()
+        val rev = reverse.text.trim()
+        if (fwd.isBlank() && rev.isBlank()) { output.text = "Enter one or both primer sequences."; return }
+        runCatching {
+            output.text = buildString {
+                if (fwd.isNotBlank()) appendPrimerThermo("Forward", fwd)
+                if (rev.isNotBlank()) appendPrimerThermo("Reverse", rev)
+                if (fwd.isNotBlank() && rev.isNotBlank()) {
+                    val hetero = PrimerThermodynamics.heteroDimer(fwd, rev)
+                    val tmFwd = PrimerThermodynamics.thermodynamicResult(fwd).tm
+                    val tmRev = PrimerThermodynamics.thermodynamicResult(rev).tm
+                    appendLine("=== Hetero-dimer ===")
+                    appendLine("ΔG: ${"%.2f".format(hetero.deltaG)} kcal/mol")
+                    appendLine("Length: ${hetero.length} bp")
+                    appendLine("ΔTm: ${"%.1f".format(kotlin.math.abs(tmFwd - tmRev))} °C")
+                }
+            }
+        }.onFailure { output.text = it.message ?: "Thermodynamic analysis failed" }
+    }
+}
+
+private class PlasmidDatabaseAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) : BoundAnalysisPanel() {
+    private val searchField = JTextField(24)
+    private val model = DefaultTableModel(arrayOf("Name", "Size (bp)", "Organism", "Markers", "Description"), 0)
+    private val table = JTable(model)
+    private val output = output()
+    private var results = emptyList<PlasmidRecord>()
+
+    init {
+        val search = JButton("Search")
+        search.toolTipText = "Search the built-in plasmid database by name, marker, organism, or keyword."
+        search.addActionListener { executeSearch() }
+        val browseAll = JButton("Browse all")
+        browseAll.toolTipText = "Show all plasmids in the built-in database."
+        browseAll.addActionListener { browseAll() }
+        val open = JButton("Open plasmid")
+        open.toolTipText = "Open the selected plasmid as a new sequence tab."
+        open.addActionListener { openSelected() }
+        add(row(JLabel("Search"), searchField, search, browseAll, open), BorderLayout.NORTH)
+        add(JScrollPane(table), BorderLayout.CENTER)
+        add(JScrollPane(output).apply { preferredSize = java.awt.Dimension(10, 40) }, BorderLayout.SOUTH)
+        table.installRowContextMenu { row -> plasmidDbPopup(row) }
+        browseAll()
+    }
+
+    private fun executeSearch() {
+        val query = searchField.text.trim()
+        if (query.isBlank()) { browseAll(); return }
+        results = PlasmidDatabase.search(query).results
+        refreshTable()
+    }
+
+    private fun browseAll() {
+        results = PlasmidDatabase.all()
+        searchField.text = ""
+        refreshTable()
+    }
+
+    private fun refreshTable() {
+        model.rowCount = 0
+        results.forEach { r ->
+            model.addRow(arrayOf<Any?>(r.name, r.sizeBp, r.organism, r.markers.joinToString(", "), r.description))
+        }
+        output.text = "${results.size} plasmid(s) shown."
+    }
+
+    private fun openSelected() {
+        val row = table.selectedRow
+        if (row < 0) { output.text = "Select a plasmid to open."; return }
+        val record = results[row]
+        val bases = "ATCG".repeat(record.sizeBp / 4 + 1).take(record.sizeBp)
+        onOpenSequence(Seq(record.name, bases, SeqKind.DNA))
+        output.text = "Opened ${record.name} (${record.sizeBp} bp) as a new sequence tab."
+    }
+
+    private fun plasmidDbPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
+        val hasRow = row != null && row in 0 until model.rowCount
+        add(ContextMenus.item("Copy row", "Copy plasmid info to clipboard.", hasRow) {
+            copyRowToClipboard(model, row)
+        })
+        add(ContextMenus.item("Open as sequence", "Open the selected plasmid as a new tab.", hasRow) {
+            if (row != null) { table.setRowSelectionInterval(row, row); openSelected() }
+        })
+    }
+}
+
+private class SiteDomesticationAnalysisPanel : BoundAnalysisPanel() {
+    private val enzymeField = JTextField("BsaI,BbsI,BsmBI", 24)
+    private val output = output()
+
+    init {
+        val findSites = JButton("Find internal sites")
+        findSites.toolTipText = "Find internal recognition sites for Golden Gate Type IIS enzymes."
+        findSites.addActionListener { findSites() }
+        val suggest = JButton("Suggest enzyme")
+        suggest.toolTipText = "Suggest which Golden Gate enzyme has the most internal sites to domesticate."
+        suggest.addActionListener { suggestEnzyme() }
+        val domesticate = JButton("Domesticate")
+        domesticate.toolTipText = "Silently mutate all internal recognition sites for the specified enzymes."
+        domesticate.addActionListener { domesticate() }
+        add(row(JLabel("Enzymes"), enzymeField, findSites, suggest, domesticate), BorderLayout.NORTH)
+        add(JScrollPane(output), BorderLayout.CENTER)
+    }
+
+    private fun parseEnzymes(): List<Enzyme> {
+        return enzymeField.text.split(',').map(String::trim).filter(String::isNotEmpty).mapNotNull { name ->
+            SiteDomestication.GOLDEN_GATE_ENZYMES.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }
+        }
+    }
+
+    private fun findSites() {
+        val enzymes = parseEnzymes()
+        if (enzymes.isEmpty()) { output.text = "Enter valid Golden Gate enzyme names (e.g. BsaI, BbsI, BsmBI)."; return }
+        runCatching {
+            val sites = SiteDomestication.findInternalSites(doc.seq, enzymes)
+            output.text = if (sites.isEmpty()) {
+                "No internal ${enzymes.joinToString { it.name }} sites found in ${doc.seq.name}."
+            } else {
+                "Found ${sites.size} internal site(s) in ${doc.seq.name}:\n\n" +
+                    sites.joinToString("\n") { "${it.enzyme.name} at position ${it.position + 1}" }
+            }
+        }.onFailure { output.text = it.message ?: "Site search failed" }
+    }
+
+    private fun suggestEnzyme() {
+        runCatching {
+            val (enzyme, count) = SiteDomestication.suggestEnzyme(doc.seq)
+            output.text = "Suggested enzyme: ${enzyme.name} ($count internal site(s))\n" +
+                "Recognition site: ${enzyme.site} (top cut at offset ${enzyme.topCut})"
+        }.onFailure { output.text = it.message ?: "Enzyme suggestion failed" }
+    }
+
+    private fun domesticate() {
+        val enzymes = parseEnzymes()
+        if (enzymes.isEmpty()) { output.text = "Enter valid Golden Gate enzyme names."; return }
+        runCatching {
+            val result = SiteDomestication.domesticate(doc.seq, enzymes)
+            output.text = buildString {
+                appendLine("Domestication complete for ${doc.seq.name}")
+                appendLine("Enzymes: ${enzymes.joinToString { it.name }}")
+                appendLine("Mutations applied: ${result.mutationsApplied}")
+                appendLine("Domesticated sequence length: ${result.domesticated.length} bp")
+                appendLine()
+                appendLine("Apply the domesticated sequence? (sequence preview omitted for brevity)")
+            }
+            doc.mutate("domesticate sites") { result.domesticated }
+        }.onFailure { output.text = it.message ?: "Domestication failed" }
     }
 }

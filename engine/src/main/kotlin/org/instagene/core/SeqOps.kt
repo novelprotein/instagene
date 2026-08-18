@@ -269,7 +269,7 @@ object SeqOps {
             if (p.indices.all { Alphabet.matches(p[it], window[it]) }) hits += i to Strand.FORWARD
         }
         if (bothStrands) {
-            val rcPattern = p.reversed().map { Alphabet.complement(it, SeqKind.DNA) }.joinToString("")
+            val rcPattern = Alphabet.reverseComplement(p)
             // A palindromic pattern would be found again on the reverse strand at the
             // very same positions; skip it to avoid double-reporting each hit.
             if (rcPattern != p) {

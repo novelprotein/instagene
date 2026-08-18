@@ -1,10 +1,6 @@
 package org.instagene.core
 
-import org.instagene.core.io.Gff3
-import org.instagene.core.io.FileSniffer
-import org.instagene.core.io.FileType
-import org.instagene.core.io.SeqIO
-import org.instagene.core.io.SeqFormat
+import org.instagene.core.io.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -63,6 +59,65 @@ class CoreWorkflowTest {
         val annotated = FeatureLibrary.annotate(seq, listOf(FeatureDefinition("tag", "GGATCN", "misc_feature")))
         assertEquals(1, annotated.features.size)
         assertEquals(4, annotated.features.single().start)
+    }
+
+    @Test
+    fun featureLibraryRepeatWildcards() {
+        val seq = Seq(name = "x", bases = "AAACCCCCCAAAGGGGAAAA")
+        val def1 = FeatureDefinition("five-c", "CCCCC", "misc_feature")
+        assertEquals(1, FeatureLibrary.find(seq, def1).size)
+        val def2 = FeatureDefinition("four-g", "GGGG", "misc_feature")
+        assertEquals(1, FeatureLibrary.find(seq, def2).size)
+        val def3 = FeatureDefinition("six-c-specific", "CCCCCC", "misc_feature")
+        assertEquals(1, FeatureLibrary.find(seq, def3).size)
+    }
+
+    @Test
+    fun featureLibraryPatternRegexGeneration() {
+        assertEquals("[ACGT]{5}", FeatureLibrary.patternRegex("{5}"))
+        assertEquals("[ACGT]{3,6}", FeatureLibrary.patternRegex("{3,6}"))
+        assertEquals("[ACGT]*", FeatureLibrary.patternRegex("#"))
+        assertEquals("[A]", FeatureLibrary.patternRegex("A"))
+        assertEquals("[G][ACGT]{4}", FeatureLibrary.patternRegex("G{4}"))
+    }
+
+    @Test
+    fun featureLibraryExclusionPatterns() {
+        val seq = Seq(name = "x", bases = "GGATCCAAAAAAAAAAGGATCC")
+        val main = FeatureDefinition("site", "GGATCC", "misc_feature")
+        val exclude = FeatureDefinition("exclude poly-A", "!AAAAAAAAAAA", strand = Strand.FORWARD, exclude = true)
+        val annotated = FeatureLibrary.annotate(seq, listOf(main, exclude))
+        assertEquals(2, annotated.features.size)
+    }
+
+    @Test
+    fun featureLibraryBidirectionalSearch() {
+        val seq = Seq(name = "x", bases = "AAAGGATCCAAAA")
+        val def = FeatureDefinition("tag", "GGATCC", "misc_feature")
+        val both = FeatureLibrary.previewMatches(seq, listOf(def), searchBothStrands = true)
+        assertTrue(both.size >= 1)
+    }
+
+    @Test
+    fun featureLibraryPreviewMatchesDoesNotMutate() {
+        val seq = Seq(name = "x", bases = "AAAGGATCCAAAA")
+        val def = FeatureDefinition("tag", "GGATCC", "misc_feature")
+        val matches = FeatureLibrary.previewMatches(seq, listOf(def), searchBothStrands = false)
+        assertEquals(1, matches.size)
+        assertEquals("GGATCC", matches[0].matchedSequence)
+        assertEquals(0, seq.features.size)
+    }
+
+    @Test
+    fun featureLibraryPresetsAreNonEmpty() {
+        assertTrue(FeatureLibrary.BUILTIN_PRESETS.isNotEmpty())
+        FeatureLibrary.BUILTIN_PRESETS.values.forEach { presets ->
+            assertTrue(presets.isNotEmpty())
+            presets.forEach { def ->
+                assertTrue(def.name.isNotEmpty())
+                assertTrue(def.pattern.isNotEmpty())
+            }
+        }
     }
 
     @Test

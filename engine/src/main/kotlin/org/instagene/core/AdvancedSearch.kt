@@ -43,7 +43,7 @@ object AdvancedSearch {
         val out = ArrayList<SequenceMatch>()
         for (strand in strands) {
             val oriented = if (strand == Strand.FORWARD) pattern else
-                pattern.reversed().map { Alphabet.complement(it, seq.kind) }.joinToString("")
+                Alphabet.reverseComplement(pattern, seq.kind)
             val maxStart = if (seq.isCircular) seq.length - 1 else seq.length - oriented.length
             if (maxStart < 0) continue
             for (start in 0..maxStart) {

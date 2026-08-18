@@ -25,6 +25,25 @@ class CodonTable(
         // Amino acids in the canonical NCBI ordering of TTT, TTC, TTA, ... GGG.
         private const val AA_STANDARD =
             "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+        // NCBI table 2: Mold, Protozoan, Coelenterate, and Mycoplasma/Spiroplasma
+        // Differences from standard: TGA = Trp, AGR = Ser
+        private const val AA_MOLD =
+            "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+        // NCBI table 3: Yeast (Saccharomyces cerevisiae)
+        // Differences from standard: CTN = Thr (not Leu), TGA = Trp
+        private const val AA_YEAST =
+            "FFLLSSSSYY**CCWWTTTTPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+        // NCBI table 5: Invertebrate (Drosophila, C. elegans, etc.)
+        // Differences from standard: AGA/S = Ser, TGA = Trp
+        private const val AA_INVERTEBRATE =
+            "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSSSVVVVAAAADDEEGGGG"
+        // NCBI table 9: Euplotid Nuclear (ciliated protozoa)
+        private const val AA_EUPLOTID =
+            "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+        // NCBI table 10: bacterial/plasmid (same as 11 but only ATG start)
+        // NCBI table 12: Spiroplasma and Entomoplasma
+        private const val AA_SPIROPLASMA =
+            "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
 
         private fun codonOrder(): List<String> {
             val bases = "TCAG"
@@ -44,6 +63,38 @@ class CodonTable(
             startCodons = setOf("ATG"),
         )
 
+        /** Table 2: Mold, Protozoan, Coelenterate, and Mycoplasma/Spiroplasma. */
+        val MOLD = CodonTable(
+            id = 2,
+            displayName = "2 - Mold / Protozoan / Mycoplasma",
+            codons = tableOf(AA_MOLD),
+            startCodons = setOf("ATG", "TTG", "CTG", "ATT", "ATC", "ATA", "GTG"),
+        )
+
+        /** Table 3: Yeast (Saccharomyces cerevisiae). CTN = Thr, TGA = Trp. */
+        val YEAST = CodonTable(
+            id = 3,
+            displayName = "3 - Yeast (S. cerevisiae)",
+            codons = tableOf(AA_YEAST),
+            startCodons = setOf("ATG"),
+        )
+
+        /** Table 5: Invertebrate (Drosophila, C. elegans, etc.). AGA/S = Ser, TGA = Trp. */
+        val INVERTEBRATE = CodonTable(
+            id = 5,
+            displayName = "5 - Invertebrate",
+            codons = tableOf(AA_INVERTEBRATE),
+            startCodons = setOf("ATG", "TTG", "CTG", "ATT", "ATC", "ATA", "GTG"),
+        )
+
+        /** Table 9: Euplotid Nuclear (ciliated protozoa). */
+        val EUPLOTID = CodonTable(
+            id = 9,
+            displayName = "9 - Euplotid Nuclear",
+            codons = tableOf(AA_EUPLOTID),
+            startCodons = setOf("ATG"),
+        )
+
         /** Table 11: same amino acids, many more permitted start codons. */
         val BACTERIAL = CodonTable(
             id = 11,
@@ -52,8 +103,16 @@ class CodonTable(
             startCodons = setOf("ATG", "GTG", "TTG", "ATT", "ATC", "ATA", "CTG"),
         )
 
-        /** The bundled tables: standard, then bacterial/plasmid. */
-        val ALL = listOf(STANDARD, BACTERIAL)
+        /** Table 12: Spiroplasma and Entomoplasma. */
+        val SPIROPLASMA = CodonTable(
+            id = 12,
+            displayName = "12 - Spiroplasma / Entomoplasma",
+            codons = tableOf(AA_SPIROPLASMA),
+            startCodons = setOf("ATG", "TTG", "CTG", "ATT", "ATC", "ATA", "GTG"),
+        )
+
+        /** The bundled tables. */
+        val ALL = listOf(STANDARD, MOLD, YEAST, INVERTEBRATE, EUPLOTID, BACTERIAL, SPIROPLASMA)
 
         /** The table with the NCBI [id], throwing [IllegalArgumentException] when it is not bundled. */
         fun byId(id: Int): CodonTable =

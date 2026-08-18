@@ -65,6 +65,13 @@ object Alphabet {
     /** Strips whitespace, digits and FASTA-style noise, leaving sequence characters. */
     fun clean(raw: String): String = raw.filter { !it.isWhitespace() && !it.isDigit() }
 
+    /** Strips whitespace, uppercases, converts U→T. */
+    fun normalizeDna(value: String): String = value.filterNot(Char::isWhitespace).uppercase().replace('U', 'T')
+
+    /** Reverse-complement of a DNA string. */
+    fun reverseComplement(value: String, kind: SeqKind = SeqKind.DNA): String =
+        value.reversed().map { complement(it, kind) }.joinToString("")
+
     /** Returns the offending characters in [seq], or an empty set when it is valid. */
     fun invalidCharacters(seq: String): Set<Char> =
         seq.filterNot { isNucleotide(it) }.toSet()

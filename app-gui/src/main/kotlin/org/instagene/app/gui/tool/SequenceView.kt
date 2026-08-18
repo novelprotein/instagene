@@ -1,5 +1,6 @@
 package org.instagene.app.gui.tool
 
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.theme.Palette
 import org.instagene.core.Alphabet
@@ -379,13 +380,13 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
             g2.color = color
             g2.drawRoundRect(x, y, w, laneHeight - 2, 4, 4)
             // Strand arrowhead at the leading edge.
-            if (f.strand == Strand.FORWARD && f.end in s..e) {
+            if (f.strand == Strand.FORWARD && f.end in s until e) {
                 g2.fillPolygon(
                     intArrayOf(x + w, x + w, x + w + 4),
                     intArrayOf(y, y + laneHeight - 2, y + (laneHeight - 2) / 2),
                     3,
                 )
-            } else if (f.strand == Strand.REVERSE && f.start in s..e) {
+            } else if (f.strand == Strand.REVERSE && f.start in s until e) {
                 g2.fillPolygon(
                     intArrayOf(x, x, x - 4),
                     intArrayOf(y, y + laneHeight - 2, y + (laneHeight - 2) / 2),
@@ -560,7 +561,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
     /** Copies the selection to the system clipboard, or the whole sequence when nothing is selected. */
     fun copySelection() {
         val text = if (doc.hasSelection) doc.selectedBases else doc.seq.bases
-        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+        ContextMenus.copyToClipboard(text)
     }
 
     /** Pastes text from the system clipboard at the caret (via [insertBases]). */
