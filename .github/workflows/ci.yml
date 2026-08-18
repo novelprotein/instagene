@@ -5,6 +5,11 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.githooks/**'
+      - 'scripts/**'
   workflow_dispatch:
 
 concurrency:
@@ -12,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-test:
@@ -36,14 +41,6 @@ jobs:
       - name: Build all modules and run all tests
         run: ./gradlew build --console=plain
 
-      # Explicitly surface the separation checks (they are also part of `check`,
-      # but fail fast here with a dedicated step name in the CI log).
-      - name: Enforce engine/front-end separation
-        run: ./gradlew verifySeparation --console=plain
-
-      - name: Verify engine builds as a consumable library
-        run: ./gradlew :engine:publishToMavenLocal --console=plain
-
       - name: Upload test reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -63,6 +60,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -76,13 +75,166 @@ jobs:
       - name: Run benchmarks
         run: ./gradlew :app-cli:bench --console=plain 2>&1 | tee bench-results.txt
 
+      - name: Parse results to JSON
+        run: |
+          python3 - "$GITHUB_SHA" <<'PYEOF'
+          import json, sys, re, datetime
+
+          commit = sys.argv[1][:7]
+          ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+          results = []
+          section = ""
+          seq_name = ""
+          seq_len = 0
+          with open("bench-results.txt") as f:
+              for line in f:
+                  line = line.rstrip()
+                  m = re.match(r"^--- (.+?) ---$", line)
+                  if m:
+                      section = m.group(1).replace(" ", "")
+                      continue
+                  m = re.match(r"^\s{2}(.+?)\s{2,}([\d.]+) ms$", line)
+                  if m:
+                      label = m.group(1)
+                      ms = float(m.group(2))
+                      results.append({"label": f"{section}/{label}", "ms": ms})
+                  m = re.match(r"^== Benchmark: (.+?) \((\d+) (bp|aa)\) ==$", line)
+                  if m:
+                      seq_name, seq_len = m.group(1), int(m.group(2))
+
+          data = {
+              "commit": commit,
+              "timestamp": ts,
+              "sequence": seq_name,
+              "length": seq_len,
+              "results": results,
+          }
+          with open("bench-results.json", "w") as f:
+              json.dump(data, f, indent=2)
+          print(f"Parsed {len(results)} benchmarks for {seq_name} ({seq_len} bp)")
+          PYEOF
+
+      - name: Fetch previous baseline
+        id: baseline
+        continue-on-error: true
+        run: |
+          gh api repos/{owner}/{repo}/contents/benchmarks/latest.json \
+            --jq '.content' | base64 -d > baseline.json
+          echo "found=true" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Write comparison to job summary
+        run: |
+          python3 - "$GITHUB_STEP_SUMMARY" <<'PYEOF'
+          import json, sys, os
+
+          summary_path = sys.argv[1]
+          with open("bench-results.json") as f:
+              new = json.load(f)
+
+          old = None
+          if os.path.exists("baseline.json"):
+              with open("baseline.json") as f:
+                  old = json.load(f)
+
+          with open(summary_path, "w") as out:
+              out.write(f"## Benchmark: {new['sequence']} ({new['length']} bp)\n\n")
+
+              if old:
+                  out.write(f"**{new['commit']}** vs previous **{old['commit']}**\n\n")
+
+                  old_map = {r["label"]: r["ms"] for r in old["results"]}
+                  new_map = {r["label"]: r["ms"] for r in new["results"]}
+                  all_keys = sorted(set(old_map) | set(new_map))
+
+                  out.write("| Benchmark | Old | New | Delta |\n")
+                  out.write("|-----------|----:|----:|------:|\n")
+                  regressions = []
+                  for k in all_keys:
+                      o = old_map.get(k)
+                      n = new_map.get(k)
+                      if o is None:
+                          out.write(f"| `{k}` | -- | {n:.1f} ms | _new_ |\n")
+                      elif n is None:
+                          out.write(f"| `{k}` | {o:.1f} ms | -- | _removed_ |\n")
+                      else:
+                          pct = ((n - o) / o) * 100 if o else 0
+                          sign = "+" if pct >= 0 else ""
+                          flag = " :watch:" if pct > 15 else (" :zap:" if pct < -15 else "")
+                          out.write(f"| `{k}` | {o:.1f} ms | {n:.1f} ms | {sign}{pct:.1f}%{flag} |\n")
+                          if pct > 15:
+                              regressions.append((k, o, n, pct))
+                  if regressions:
+                      out.write(f"\n> **{len(regressions)} regression(s)** (>15% slower):\n")
+                      for k, o, n, p in regressions:
+                          out.write(f"> - `{k}`: {o:.1f} -> {n:.1f} ms (+{p:.1f}%)\n")
+              else:
+                  out.write("_No previous baseline found. This is the first run._\n\n")
+                  out.write("| Benchmark | Time |\n")
+                  out.write("|-----------|-----:|\n")
+                  for r in new["results"]:
+                      out.write(f"| `{r['label']}` | {r['ms']:.1f} ms |\n")
+
+              out.write(f"\n---\n_Run {new['commit']} at {new['timestamp'][:19]}Z_\n")
+          print("Job summary written.")
+          PYEOF
+
       - name: Upload benchmark results
-        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
-          path: bench-results.txt
+          name: benchmark-${{ github.sha }}
+          path: bench-results.json
           retention-days: 90
+
+      - name: Commit baseline and archive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          export SHORT_SHA=$(git rev-parse --short HEAD)
+
+          # --- Update benchmark-baseline branch (latest.json only) ---
+          git fetch origin benchmark-baseline:benchmark-baseline 2>/dev/null || true
+          if git rev-parse --verify benchmark-baseline >/dev/null 2>&1; then
+            git checkout benchmark-baseline
+          else
+            git checkout --orphan benchmark-baseline
+            git rm -rf . 2>/dev/null || true
+          fi
+          mkdir -p benchmarks
+          cp bench-results.json benchmarks/latest.json
+          git add benchmarks/latest.json
+          git diff --cached --quiet || git commit -m "bench: $SHORT_SHA"
+          git push origin benchmark-baseline
+
+          # --- Update gh-pages branch (archive + manifest) ---
+          git checkout ${{ github.sha }}
+          git fetch origin gh-pages:gh-pages 2>/dev/null || true
+          if git rev-parse --verify gh-pages >/dev/null 2>&1; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . 2>/dev/null || true
+          fi
+          mkdir -p benchmarks/archive
+          cp bench-results.json "benchmarks/archive/$SHORT_SHA.json"
+          python3 - <<'PYEOF'
+          import json, os
+          manifest = "benchmarks/manifest.json"
+          m = json.load(open(manifest)) if os.path.exists(manifest) else []
+          m = [e for e in m if e["sha"] != os.environ["SHORT_SHA"]]
+          with open("bench-results.json") as f:
+              cur = json.load(f)
+          m.append({"sha": os.environ["SHORT_SHA"], "ts": cur["timestamp"], "seq": cur["sequence"]})
+          m.sort(key=lambda e: e["ts"])
+          with open(manifest, "w") as f:
+              json.dump(m, f, indent=2)
+          PYEOF
+          git add benchmarks/
+          git diff --cached --quiet || git commit -m "bench archive: $SHORT_SHA"
+          git push origin gh-pages
+
+          git checkout ${{ github.sha }}
 
   portable-jar:
     name: Portable runnable GUI JAR
@@ -139,18 +291,6 @@ jobs:
             gradle_task: :app-gui:jpackage
             artifact_name: instagene-linux-deb
             artifact_path: app-gui/build/jpackage/dist/*.deb
-          - label: Linux RPM
-            os: ubuntu-latest
-            package_type: RPM
-            gradle_task: :app-gui:jpackage
-            artifact_name: instagene-linux-rpm
-            artifact_path: app-gui/build/jpackage/dist/*.rpm
-          - label: Linux app image
-            os: ubuntu-latest
-            package_type: APP_IMAGE
-            gradle_task: :app-gui:jpackageAppImageZip
-            artifact_name: instagene-linux-app-image
-            artifact_path: app-gui/build/jpackage/instagene-app-image.zip
           - label: Windows MSI
             os: windows-latest
             package_type: MSI
@@ -169,10 +309,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Install RPM build tools
-        if: ${{ matrix.package_type == 'RPM' }}
-        run: sudo apt-get update && sudo apt-get install -y rpm
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6

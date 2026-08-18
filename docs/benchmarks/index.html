@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InstaGene Benchmarks</title>
+<style>
+  :root { --bg: #0d1117; --fg: #c9d1d9; --border: #30363d; --accent: #58a6ff; --red: #f85149; --green: #3fb950; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); padding: 2rem; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .meta { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  .meta a { color: var(--accent); text-decoration: none; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
+  th, td { text-align: left; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+  th { color: #8b949e; font-weight: 600; position: sticky; top: 0; background: var(--bg); }
+  td:last-child, th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.regression td:last-child { color: var(--red); }
+  tr.improvement td:last-child { color: var(--green); }
+  .chart-container { margin-top: 2rem; }
+  .chart-container h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+  select { background: var(--bg); color: var(--fg); border: 1px solid var(--border); padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem; }
+  canvas { width: 100%; height: 300px; }
+  .empty { color: #8b949e; text-align: center; padding: 4rem; }
+  .loading { color: #8b949e; text-align: center; padding: 2rem; }
+  .controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  label { font-size: 0.85rem; color: #8b949e; }
+</style>
+</head>
+<body>
+<h1>InstaGene Performance Benchmarks</h1>
+<div class="meta" id="meta">Loading...</div>
+
+<div class="chart-container">
+  <h2>Trends</h2>
+  <div class="controls">
+    <label>Benchmark:
+      <select id="benchmarkSelect"></select>
+    </label>
+  </div>
+  <canvas id="chart"></canvas>
+</div>
+
+<h2 style="margin-top:2rem">Latest Results</h2>
+<div id="table"></div>
+
+<script>
+const BASE = location.href.replace(/\/[^/]*$/, '/') + 'archive/';
+const MANIFEST = location.href.replace(/\/[^/]*$/, '/') + 'manifest.json';
+const REPO_URL = 'https://github.com/anomalyco/instagene/commit/';
+
+async function load() {
+  const el = document.getElementById('meta');
+  try {
+    const manifest = await (await fetch(MANIFEST)).json();
+    if (!manifest.length) { el.textContent = 'No benchmark data yet.'; return; }
+    el.innerHTML = `<a href="${REPO_URL}${manifest[manifest.length-1].sha}">${manifest[manifest.length-1].sha}</a> &mdash; ${manifest.length} runs tracked &mdash; ${manifest[manifest.length-1].ts.slice(0,10)}`;
+
+    // Load all JSON files
+    const runs = [];
+    for (const entry of manifest) {
+      try {
+        const r = await (await fetch(BASE + entry.sha + '.json')).json();
+        runs.push(r);
+      } catch(e) { /* skip missing */ }
+    }
+    if (!runs.length) { el.textContent = 'No benchmark data found.'; return; }
+
+    // Populate benchmark selector
+    const labels = [...new Set(runs.flatMap(r => r.results.map(x => x.label)))].sort();
+    const sel = document.getElementById('benchmarkSelect');
+    labels.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; sel.appendChild(o); });
+    sel.addEventListener('change', () => drawChart(runs, sel.value));
+    drawChart(runs, labels[0]);
+
+    // Latest results table
+    const latest = runs[runs.length - 1];
+    const prev = runs.length > 1 ? runs[runs.length - 2] : null;
+    const prevMap = prev ? Object.fromEntries(prev.results.map(r => [r.label, r.ms])) : {};
+    let html = '<table><thead><tr><th>Benchmark</th><th>Time</th><th>vs Previous</th></tr></thead><tbody>';
+    for (const r of latest.results) {
+      const cls = prevMap[r.label] != null ? ((r.ms > prevMap[r.label] * 1.15) ? ' class="regression"' : (r.ms < prevMap[r.label] * 0.85 ? ' class="improvement"' : '')) : '';
+      let delta = '—';
+      if (prevMap[r.label] != null) {
+        const pct = ((r.ms - prevMap[r.label]) / prevMap[r.label] * 100);
+        const sign = pct >= 0 ? '+' : '';
+        delta = `${sign}${pct.toFixed(1)}%`;
+      }
+      html += `<tr${cls}><td>${r.label}</td><td>${r.ms.toFixed(1)} ms</td><td>${delta}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('table').innerHTML = html;
+  } catch(e) {
+    el.textContent = 'Failed to load benchmark data: ' + e.message;
+  }
+}
+
+function drawChart(runs, label) {
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = 300 * dpr;
+  ctx.scale(dpr, dpr);
+  const W = canvas.clientWidth, H = 300;
+
+  ctx.clearRect(0, 0, W, H);
+  const points = runs.map(r => {
+    const found = r.results.find(x => x.label === label);
+    return found ? { x: r.timestamp, y: found.ms, sha: r.commit } : null;
+  }).filter(Boolean);
+
+  if (!points.length) {
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data for this benchmark', W/2, H/2);
+    return;
+  }
+
+  const pad = { top: 20, right: 60, bottom: 30, left: 60 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+  const minY = Math.min(...points.map(p => p.y)) * 0.9;
+  const maxY = Math.max(...points.map(p => p.y)) * 1.1;
+  const xScale = i => pad.left + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
+  const yScale = v => pad.top + plotH - ((v - minY) / (maxY - minY)) * plotH;
+
+  // Grid
+  ctx.strokeStyle = '#21262d';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText((maxY - (maxY - minY) * i / 4).toFixed(1) + ' ms', pad.left - 8, y + 4);
+  }
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 2;
+  points.forEach((p, i) => {
+    const x = xScale(i), y = yScale(p.y);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Points
+  points.forEach((p, i) => {
+    const x = xScale(i), y = yScale(p.y);
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#58a6ff'; ctx.fill();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(p.sha, x, H - 8);
+  });
+}
+
+load();
+</script>
+</body>
+</html>

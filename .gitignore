@@ -43,3 +43,8 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Benchmarks ###
+bench-results.txt
+bench-results.json
+baseline.json
