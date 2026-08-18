@@ -22,13 +22,17 @@ object SeqOps {
 
     /** DNA -> RNA (T becomes U). Idempotent on RNA. */
     fun transcribe(seq: Seq): Seq = seq.copy(
-        bases = seq.bases.map { if (it == 'T') 'U' else if (it == 't') 'u' else it }.joinToString(""),
+        bases = buildString(seq.length) {
+            for (c in seq.bases) append(if (c == 'T') 'U' else if (c == 't') 'u' else c)
+        },
         kind = SeqKind.RNA,
     )
 
     /** RNA -> DNA (U becomes T). Idempotent on DNA. */
     fun backTranscribe(seq: Seq): Seq = seq.copy(
-        bases = seq.bases.map { if (it == 'U') 'T' else if (it == 'u') 't' else it }.joinToString(""),
+        bases = buildString(seq.length) {
+            for (c in seq.bases) append(if (c == 'U') 'T' else if (c == 'u') 't' else c)
+        },
         kind = SeqKind.DNA,
     )
 
@@ -88,8 +92,18 @@ object SeqOps {
     fun gcContent(seq: Seq): Double = gcContent(seq.bases)
 
     /** Counts of each uppercase character in [bases], in sorted character order. */
-    fun baseCounts(bases: String): Map<Char, Int> =
-        bases.uppercase().groupingBy { it }.eachCount().toSortedMap()
+    fun baseCounts(bases: String): Map<Char, Int> {
+        val counts = IntArray(128)
+        for (i in bases.indices) {
+            val code = bases[i].uppercaseChar().code
+            if (code in 0 until 128) counts[code]++
+        }
+        val result = sortedMapOf<Char, Int>()
+        for (code in counts.indices) {
+            if (counts[code] > 0) result[code.toChar()] = counts[code]
+        }
+        return result
+    }
 
     /**
      * Melting temperature in degrees Celsius.
@@ -168,7 +182,10 @@ object SeqOps {
         val counts = LinkedHashMap<String, Int>()
         var i = frame
         while (i + 3 <= bases.length) {
-            val codon = bases.substring(i, i + 3).uppercase()
+            val c0 = bases[i].uppercaseChar()
+            val c1 = bases[i + 1].uppercaseChar()
+            val c2 = bases[i + 2].uppercaseChar()
+            val codon = "$c0$c1$c2"
             counts[codon] = (counts[codon] ?: 0) + 1
             i += 3
         }

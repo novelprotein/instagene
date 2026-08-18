@@ -6,7 +6,6 @@ import org.instagene.app.gui.installRowContextMenu
 import org.instagene.core.*
 import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
-import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
@@ -42,12 +41,13 @@ class AnalysisPanel(
         PrimerThermodynamicsAnalysisPanel(),
         PlasmidDatabaseAnalysisPanel(onOpenSequence),
         SiteDomesticationAnalysisPanel(),
+        GraphAnalysisPanel(),
     )
     private val tabNames = listOf(
         "Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis",
         "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST",
         "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo",
-        "Plasmid DB", "Site Domestication",
+        "Plasmid DB", "Site Domestication", "Statistics / Graphs",
     )
 
     init {
@@ -90,8 +90,8 @@ class AnalysisPanel(
     fun selectedTool(): String = tabs.getTitleAt(tabs.selectedIndex)
 }
 
-private abstract class BoundAnalysisPanel : JPanel(BorderLayout()) {
-    protected lateinit var doc: SeqDocument
+internal abstract class BoundAnalysisPanel : JPanel(BorderLayout()) {
+    internal lateinit var doc: SeqDocument
     fun bindDocument(value: SeqDocument) {
         doc = value
         refreshDocument()

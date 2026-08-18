@@ -341,8 +341,9 @@ data class Seq(
     }
 
     /** Plain complement, without reversing. */
-    fun complement(): Seq =
-        copy(bases = bases.map { Alphabet.complement(it, kind) }.joinToString(""))
+    fun complement(): Seq = copy(
+        bases = buildString(length) { for (c in bases) append(Alphabet.complement(c, kind)) }
+    )
 
     /** Joins another sequence onto the 3' end; both must be linear. */
     operator fun plus(other: Seq): Seq {

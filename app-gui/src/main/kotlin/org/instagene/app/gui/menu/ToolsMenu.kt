@@ -219,6 +219,11 @@ class ToolsMenu(
             toolTipText = "Find and silently remove internal Golden Gate Type IIS enzyme sites."
             addActionListener { onAnalysis("Site Domestication") }
         })
+        addSeparator()
+        add(JMenuItem("Statistics & Graphs").apply {
+            toolTipText = "Comprehensive sequence statistics, GC profiles, codon usage, and more."
+            addActionListener { onAnalysis("Statistics / Graphs") }
+        })
     }
 
     /** Feature annotation actions, mirroring the Features panel buttons. */
@@ -295,7 +300,7 @@ class ToolsMenu(
     }
 
     private fun createAnalysisMenu(): JMenu = JMenu("Analysis Workspace").apply {
-        listOf("Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication").forEach { name ->
+        listOf("Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication", "Statistics / Graphs").forEach { name ->
             add(JMenuItem(name).apply { addActionListener { onAnalysis(name) } })
         }
     }

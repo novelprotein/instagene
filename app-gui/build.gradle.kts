@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.kotlinxSerialization)
     implementation(libs.flatlaf)
     implementation(libs.flatlafIntelliJ)
+    implementation(libs.jfreechart)
 }
 
 tasks.register<JavaExec>("runGui") {

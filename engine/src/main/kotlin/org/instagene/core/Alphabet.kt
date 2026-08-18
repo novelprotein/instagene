@@ -8,9 +8,6 @@ object Alphabet {
     /** Unambiguous DNA bases. */
     const val DNA_BASES = "ACGT"
 
-    /** Unambiguous RNA bases. */
-    const val RNA_BASES = "ACGU"
-
     /** Every character accepted in a nucleotide sequence, including gaps. */
     const val NUCLEOTIDES = "ACGTURYSWKMBDHVN-"
 
@@ -70,7 +67,7 @@ object Alphabet {
 
     /** Reverse-complement of a DNA string. */
     fun reverseComplement(value: String, kind: SeqKind = SeqKind.DNA): String =
-        value.reversed().map { complement(it, kind) }.joinToString("")
+        buildString(value.length) { for (i in value.indices.reversed()) append(complement(value[i], kind)) }
 
     /** Returns the offending characters in [seq], or an empty set when it is valid. */
     fun invalidCharacters(seq: String): Set<Char> =
