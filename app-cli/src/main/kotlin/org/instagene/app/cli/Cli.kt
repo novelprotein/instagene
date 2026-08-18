@@ -6,8 +6,10 @@ import org.instagene.core.AssemblyWorkflows
 import org.instagene.core.AdvancedSearch
 import org.instagene.core.Alignment
 import org.instagene.core.AlignmentParameters
+import org.instagene.core.CodonDesign
 import org.instagene.core.CodonTable
 import org.instagene.core.Digest
+import org.instagene.core.EnzymeAnalysis
 import org.instagene.core.Enzymes
 import org.instagene.core.ExternalTools
 import org.instagene.core.Feature
@@ -15,12 +17,15 @@ import org.instagene.core.GelLane
 import org.instagene.core.MasterMixComponent
 import org.instagene.core.MolecularCalculators
 import org.instagene.core.NcbiClient
+import org.instagene.core.PrimerThermodynamics
 import org.instagene.core.Recombination
 import org.instagene.core.SearchMode
 import org.instagene.core.SearchRequest
 import org.instagene.core.Seq
 import org.instagene.core.SeqOps
 import org.instagene.core.SequenceIdentity
+import org.instagene.core.SequenceStatistics
+import org.instagene.core.SiteDomestication
 import org.instagene.core.Topology
 import org.instagene.core.VirtualGel
 import org.instagene.core.Version
@@ -29,6 +34,7 @@ import org.instagene.core.io.SeqIO
 import java.io.File
 import java.io.IOException
 import kotlin.math.roundToInt
+import kotlin.system.measureNanoTime
 
 /**
  * The command-line half of InstaGene. Every operation the GUI offers is also
@@ -91,6 +97,7 @@ object Cli {
             "blast-url" -> blastUrl(load(args), args)
             "ncbi-search" -> ncbiSearch(args)
             "ncbi-fetch" -> emit(NcbiClient().fetchGenBank(args.require("accession")), args)
+            "bench", "benchmark" -> benchmark(load(args))
             "digest" -> digest(load(args), args)
             "sites" -> uniqueSites(load(args))
             "edit" -> emit(edit(load(args), args), args)
@@ -216,6 +223,131 @@ object Cli {
         if (cutters.isNotEmpty()) {
             println("Unique cutters (${cutters.size}): ${cutters.joinToString(", ") { it.name }}")
         }
+    }
+
+    private fun benchmark(seq: Seq) {
+        val len = seq.length
+        val unit = if (seq.kind == org.instagene.core.SeqKind.PROTEIN) "aa" else "bp"
+        println("== Benchmark: ${seq.name} ($len $unit) ==")
+        println()
+
+        val repeats = 3
+        fun bench(label: String, block: () -> Unit): Double {
+            var total = 0L
+            repeat(repeats) { total += measureNanoTime { block() } }
+            val ms = (total / repeats) / 1_000_000.0
+            println("  %-40s %8.1f ms".format(label, ms))
+            return ms
+        }
+
+        if (seq.kind != org.instagene.core.SeqKind.PROTEIN) {
+            // --- SequenceStatistics ---
+            println("--- SequenceStatistics ---")
+            bench("computeStats") { SequenceStatistics.computeStats(seq) }
+            if (len >= 200) {
+                bench("gcContentProfile(100, 50)") { SequenceStatistics.gcContentProfile(seq, 100, 50) }
+                bench("gcSkewProfile(100, 50)") { SequenceStatistics.gcSkewProfile(seq, 100, 50) }
+                bench("cumulativeGcSkew(100, 50)") { SequenceStatistics.cumulativeGcSkew(seq, 100, 50) }
+            }
+            if (len >= 40) {
+                bench("meltingTempProfile(20, 10)") { SequenceStatistics.meltingTempProfile(seq, 20, 10) }
+            }
+            bench("nucleotideComposition") { SequenceStatistics.nucleotideComposition(seq) }
+            bench("codonUsage") { SequenceStatistics.codonUsage(seq) }
+            bench("dinucleotideFrequencies") { SequenceStatistics.dinucleotideFrequencies(seq) }
+            bench("tandemRepeats(1..10, minRepeats=3)") {
+                SequenceStatistics.tandemRepeats(seq, 1, 10, 3)
+            }
+            println()
+
+            // --- SeqOps ---
+            println("--- SeqOps ---")
+            bench("transcribe") { SeqOps.transcribe(seq) }
+            bench("backTranscribe") { SeqOps.backTranscribe(seq) }
+            bench("translateBases(frame=0)") { SeqOps.translateBases(seq.bases, 0) }
+            bench("baseCounts") { SeqOps.baseCounts(seq.bases) }
+            bench("find(ATGCATGC)") { SeqOps.find(seq, "ATGCATGC") }
+            println()
+
+            // --- Digest ---
+            println("--- Digest ---")
+            val eco = Enzymes.require("EcoRI")
+            bench("cutSites(EcoRI)") { Digest.cutSites(seq, eco) }
+            bench("cutCounts(ALL ${Enzymes.ALL.size} enzymes)") { Digest.cutCounts(seq, Enzymes.ALL) }
+            bench("digest(EcoRI + HindIII)") {
+                Digest.digest(seq, listOf(eco, Enzymes.require("HindIII")))
+            }
+            println()
+
+            // --- Enzyme Analysis ---
+            if (len >= 10_000) {
+                println("--- Enzyme Analysis ---")
+                bench("reports(ALL)") { EnzymeAnalysis.reports(seq, Enzymes.ALL) }
+                bench("unique(ALL)") { EnzymeAnalysis.unique(seq, Enzymes.ALL) }
+                bench("absent(ALL)") { EnzymeAnalysis.absent(seq, Enzymes.ALL) }
+                val regionEnd = (100_000).coerceAtMost(len - 1)
+                bench("diagnosticSites(0..$regionEnd)") {
+                    EnzymeAnalysis.diagnosticSites(seq, 0..regionEnd, Enzymes.ALL)
+                }
+                bench("silentSites(0..$regionEnd)") {
+                    EnzymeAnalysis.silentSites(seq, 0..regionEnd, Enzymes.ALL)
+                }
+                println()
+            }
+
+            // --- ORFs and Search ---
+            println("--- ORFs and Search ---")
+            bench("findOrfs(30aa)") { SeqOps.findOrfs(seq, 30) }
+            bench("orfDensity(200, 100)") { SequenceStatistics.orfDensity(seq, 200, 100) }
+            bench("AdvancedSearch.find(ATGC, DNA, 2strands)") {
+                AdvancedSearch.find(seq, SearchRequest("ATGC", SearchMode.DNA_DEGENERATE, bothStrands = true))
+            }
+            bench("AdvancedSearch.find(MVSK, AA, 2strands)") {
+                AdvancedSearch.find(seq, SearchRequest("MVSK", SearchMode.AMINO_ACID, bothStrands = true))
+            }
+            println()
+
+            // --- Primer Thermodynamics (on a 30-nt primer extracted from the sequence) ---
+            if (len >= 30) {
+                println("--- Primer Thermodynamics (30 nt) ---")
+                val primer = seq.bases.substring(0, 30)
+                val rc = org.instagene.core.Alphabet.reverseComplement(primer)
+                bench("thermodynamicResult") { PrimerThermodynamics.thermodynamicResult(primer) }
+                bench("selfDimer") { PrimerThermodynamics.selfDimer(primer) }
+                bench("heteroDimer(primer, rc)") { PrimerThermodynamics.heteroDimer(primer, rc) }
+                bench("assessHairpin") { PrimerThermodynamics.assessHairpin(primer) }
+                bench("fullScreen") { PrimerThermodynamics.fullScreen(primer) }
+                println()
+            }
+
+            // --- Site Domestication ---
+            if (len >= 100) {
+                println("--- Site Domestication ---")
+                bench("findInternalSites(8 enzymes)") { SiteDomestication.findInternalSites(seq) }
+                bench("suggestEnzyme(8 enzymes)") { SiteDomestication.suggestEnzyme(seq) }
+                bench("domesticate(8 enzymes)") {
+                    SiteDomestication.domesticate(seq, SiteDomestication.GOLDEN_GATE_ENZYMES)
+                }
+                println()
+            }
+
+            // --- Codon Optimization ---
+            println("--- Codon Optimization ---")
+            bench("reverseTranslate(1000 aa)") {
+                val aaBases = seq.bases.take(3000).chunked(3).joinToString("") {
+                    SeqOps.translateBases(it, 0).first().toString()
+                }
+                CodonDesign.reverseTranslate(Seq(bases = aaBases, name = "protein", kind = org.instagene.core.SeqKind.PROTEIN))
+            }
+            bench("optimize(codon usage)") { CodonDesign.optimize(seq) }
+            println()
+        } else {
+            println("--- Amino Acid Composition ---")
+            bench("aminoAcidComposition") { SequenceStatistics.aminoAcidComposition(seq) }
+            println()
+        }
+
+        println("Done. (${repeats} repeats, averaged)")
     }
 
     private fun translate(seq: Seq, args: Args) {
@@ -648,6 +780,7 @@ object Cli {
           ncbi-fetch --accession ACCESSION [--to genbank]
           enzymes [--filter eco]          the built-in restriction enzyme list
           sites FILE                      unique cutters and non-cutters
+          bench | benchmark FILE           time all engine operations on the input
 
         Editing
           revcomp | complement | transcribe | backtranscribe
