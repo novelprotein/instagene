@@ -118,9 +118,12 @@ jobs:
         id: baseline
         continue-on-error: true
         run: |
-          gh api repos/{owner}/{repo}/contents/benchmarks/latest.json \
-            --jq '.content' | base64 -d > baseline.json
-          echo "found=true" >> "$GITHUB_OUTPUT"
+          gh api "repos/${{ github.repository }}/contents/benchmarks/latest.json" \
+            --jq '.content' > /tmp/b64.txt 2>/dev/null || true
+          if [ -s /tmp/b64.txt ]; then
+            base64 -d /tmp/b64.txt > baseline.json
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -135,8 +138,11 @@ jobs:
 
           old = None
           if os.path.exists("baseline.json"):
-              with open("baseline.json") as f:
-                  old = json.load(f)
+              try:
+                  with open("baseline.json") as f:
+                      old = json.load(f)
+              except (json.JSONDecodeError, ValueError):
+                  old = None
 
           with open(summary_path, "w") as out:
               out.write(f"## Benchmark: {new['sequence']} ({new['length']} bp)\n\n")
