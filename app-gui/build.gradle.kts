@@ -123,7 +123,7 @@ val verifyJpackageInput = tasks.register("verifyJpackageInput") {
         val file = packagedJar.get().asFile
         check(file.isFile) { "Missing packaged GUI jar: $file" }
         JarFile(file).use { jar ->
-            val panelClass = jar.getJarEntry("org/instagene/app/gui/tool/NcbiAnalysisPanel.class")
+            val panelClass = jar.getJarEntry("org/instagene/app/gui/analysis/NcbiAnalysisPanel.class")
                 ?: error("Packaged GUI jar is stale: NcbiAnalysisPanel.class is missing")
             val bytecode = jar.getInputStream(panelClass).use { it.readBytes() }.toString(Charsets.ISO_8859_1)
             check("ncbiSharedQuery" in bytecode) {
