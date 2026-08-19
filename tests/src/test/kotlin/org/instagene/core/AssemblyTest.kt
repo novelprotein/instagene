@@ -78,7 +78,7 @@ class AssemblyTest {
 
     @Test
     fun buildPlasmidFromMcsAndGfp() {
-        val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HinDIII"))
+        val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HindIII"))
         val result = Assembly.buildPlasmid(
             backbone = SeqIO.Samples.PUC19_MCS.copy(topology = Topology.CIRCULAR),
             insert = SeqIO.Samples.GFP_CDS,

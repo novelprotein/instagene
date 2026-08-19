@@ -19,7 +19,6 @@ import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JOptionPane
-import kotlin.collections.iterator
 
 class ToolsMenu(
     private val doc: SeqDocument,

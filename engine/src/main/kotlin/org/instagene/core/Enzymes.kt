@@ -80,7 +80,7 @@ object Enzymes {
         Enzyme("EcoRI", "GAATTC", 1, 5),
         Enzyme("EcoRV", "GATATC", 3, 3),
         Enzyme("HaeIII", "GGCC", 2, 2),
-        Enzyme("HinDIII", "AAGCTT", 1, 5),
+        Enzyme("HindIII", "AAGCTT", 1, 5),
         Enzyme("HpaII", "CCGG", 1, 3),
         Enzyme("HpaI", "GTTAAC", 3, 3),
         Enzyme("KpnI", "GGTACC", 5, 1),

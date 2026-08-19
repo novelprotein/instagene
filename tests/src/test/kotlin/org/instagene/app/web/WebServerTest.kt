@@ -143,7 +143,7 @@ class WebServerTest {
             val base = "http://localhost:${server.address.port}"
             val opened = post("$base/api/open", """{"sample":"GFP_CDS"}""")
 
-            val digest = post("$base/api/op", """{"op":"digest","seq":$opened,"args":{"enzymes":"EcoRI,HinDIII"}}""")
+            val digest = post("$base/api/op", """{"op":"digest","seq":$opened,"args":{"enzymes":"EcoRI,HindIII"}}""")
             assertTrue(digest.contains("Fragments"))
             assertTrue(digest.contains("GAATTC") || digest.contains("EcoRI"))
 

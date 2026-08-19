@@ -44,7 +44,7 @@ class DigestTest {
     @Test
     fun linearDoubleDigestFragmentCount() {
         val seq = SeqIO.Samples.PUC19_MCS
-        val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HinDIII"))
+        val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HindIII"))
         val sites = Digest.cutSites(seq, enzymes)
         val frags = Digest.digest(seq, enzymes)
         assertEquals(sites.size + 1, frags.size)

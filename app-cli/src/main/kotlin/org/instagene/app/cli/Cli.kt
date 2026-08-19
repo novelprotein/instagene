@@ -801,7 +801,7 @@ object Cli {
           convert --to genbank|gff3
 
         Building plasmids
-          plasmid --backbone vec.gb --insert gene.fa --enzymes EcoRI,HinDIII [--name pMyGene]
+          plasmid --backbone vec.gb --insert gene.fa --enzymes EcoRI,HindIII [--name pMyGene]
           gibson --parts a.fa,b.fa,c.fa [--min-overlap 20] [--linear]
           golden-gate --parts a.fa,b.fa --overhangs A,G,A [--linear]
           recombine --target target.fa --donor donor.fa --arm 20 [--candidate 1]
@@ -826,8 +826,8 @@ object Cli {
         Examples
           instagene sample GFP_CDS > gfp.fa
           cat gfp.fa | instagene translate --stop-at-stop
-          instagene digest --enzymes EcoRI,HinDIII gfp.fa
-          instagene plasmid --backbone puc19.gb --insert gfp.fa --enzymes EcoRI,HinDIII -o pGFP.gb
+          instagene digest --enzymes EcoRI,HindIII gfp.fa
+          instagene plasmid --backbone puc19.gb --insert gfp.fa --enzymes EcoRI,HindIII -o pGFP.gb
     """.trimIndent()
     }
 }

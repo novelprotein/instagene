@@ -91,8 +91,8 @@ class EnzymesTest {
 
     @Test
     fun parseListSplitsOnCommonSeparators() {
-        val list = Enzymes.parseList("EcoRI, BamHI; HinDIII  XbaI")
-        assertEquals(listOf("EcoRI", "BamHI", "HinDIII", "XbaI"), list.map { it.name })
+        val list = Enzymes.parseList("EcoRI, BamHI; HindIII  XbaI")
+        assertEquals(listOf("EcoRI", "BamHI", "HindIII", "XbaI"), list.map { it.name })
         assertTrue(Enzymes.parseList(" , ; ").isEmpty())
         assertFailsWith<IllegalArgumentException> { Enzymes.parseList("EcoRI,Fake") }
     }

@@ -77,7 +77,7 @@ class CliTest {
             val fa = File(dir, "s.fa")
             fa.writeText(">s\nGAATTCATGGCCTAAGCTT\n")
             val (dCode, dOut) = capture {
-                Cli.run(listOf("digest", "--enzymes", "EcoRI,HinDIII", fa.absolutePath))
+                Cli.run(listOf("digest", "--enzymes", "EcoRI,HindIII", fa.absolutePath))
             }
             assertEquals(0, dCode)
             assertTrue(dOut.isNotBlank())

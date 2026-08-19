@@ -708,7 +708,6 @@ class InstaGeneContent(
             isFocusable = false
             isContentAreaFilled = false
             isOpaque = false
-            border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
             margin = Insets(0, 0, 0, 0)
             preferredSize = Dimension(16, 16)
             toolTipText = "Close tab"

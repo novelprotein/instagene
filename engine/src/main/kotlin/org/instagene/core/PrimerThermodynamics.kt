@@ -1,5 +1,6 @@
 package org.instagene.core
 
+import kotlin.math.ln
 import kotlin.math.log10
 import kotlin.math.sqrt
 
@@ -60,8 +61,8 @@ object PrimerThermodynamics {
      * For non-self-complementary: Tm = ΔH*1000 / (ΔS + R*ln(CT/4)) - 273.15
      */
     private fun calcTm1M(dh: Double, ds: Double, conc: Double = 250e-9): Double {
-        if (ds + R_CAL * log10(conc / 4.0) >= 0.0) return 120.0
-        val tm = dh * 1000.0 / (ds + R_CAL * log10(conc / 4.0)) - 273.15
+        if (ds + R_CAL * ln(conc / 4.0) >= 0.0) return 120.0
+        val tm = dh * 1000.0 / (ds + R_CAL * ln(conc / 4.0)) - 273.15
         return tm.coerceIn(0.0, 120.0)
     }
 
@@ -71,9 +72,9 @@ object PrimerThermodynamics {
      */
     private fun correctMonovalent(tm1M: Double, naConc: Double, gcFraction: Double): Double {
         if (naConc <= 0.0 || naConc >= 1.0) return tm1M
-        val lnNa = log10(naConc)
+        val logNa = log10(naConc)
         val tm1K = tm1M + 273.15
-        val invTm = 1.0 / tm1K + (4.29 * gcFraction - 3.95) * 1e-5 * lnNa + 9.40e-6 * lnNa * lnNa
+        val invTm = 1.0 / tm1K + (4.29 * gcFraction - 3.95) * 1e-5 * logNa + 9.40e-6 * logNa * logNa
         return (1.0 / invTm - 273.15).coerceIn(0.0, 120.0)
     }
 

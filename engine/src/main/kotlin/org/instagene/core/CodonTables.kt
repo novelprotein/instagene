@@ -28,7 +28,7 @@ class CodonTable(
         // NCBI table 2: Mold, Protozoan, Coelenterate, and Mycoplasma/Spiroplasma
         // Differences from standard: TGA = Trp, AGR = Ser
         private const val AA_MOLD =
-            "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+            "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSSSVVVVAAAADDEEGGGG"
         // NCBI table 3: Yeast (Saccharomyces cerevisiae)
         // Differences from standard: CTN = Thr (not Leu), TGA = Trp
         private const val AA_YEAST =
@@ -38,12 +38,14 @@ class CodonTable(
         private const val AA_INVERTEBRATE =
             "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSSSVVVVAAAADDEEGGGG"
         // NCBI table 9: Euplotid Nuclear (ciliated protozoa)
+        // Differences from standard: TGA = Cys
         private const val AA_EUPLOTID =
-            "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+            "FFLLSSSSYY**CCCWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
         // NCBI table 10: bacterial/plasmid (same as 11 but only ATG start)
         // NCBI table 12: Spiroplasma and Entomoplasma
+        // Differences from standard: TGA = Trp
         private const val AA_SPIROPLASMA =
-            "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+            "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
 
         private fun codonOrder(): List<String> {
             val bases = "TCAG"

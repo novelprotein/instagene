@@ -76,7 +76,6 @@ class InstaGeneWindow(
                 }
                 e.acceptDrop(DnDConstants.ACTION_COPY)
                 val transferable = e.transferable
-                @Suppress("UNCHECKED_CAST")
                 val files = transferable.getTransferData(flavor) as? List<File> ?: emptyList()
                 files.forEach { content.openFileInTab(it) }
                 e.dropComplete(true)

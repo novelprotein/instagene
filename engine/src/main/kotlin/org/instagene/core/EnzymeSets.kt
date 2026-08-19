@@ -10,7 +10,7 @@ data class EnzymeSetDefinition(
 object EnzymeSetCatalog {
     val COMMON_CLONING = EnzymeSetDefinition(
         "Common cloning",
-        listOf("BamHI", "BglII", "EcoRI", "EcoRV", "HinDIII", "KpnI", "NcoI", "NdeI", "NheI", "NotI", "PstI", "SalI", "SmaI", "SpeI", "XbaI", "XhoI"),
+        listOf("BamHI", "BglII", "EcoRI", "EcoRV", "HindIII", "KpnI", "NcoI", "NdeI", "NheI", "NotI", "PstI", "SalI", "SmaI", "SpeI", "XbaI", "XhoI"),
         "Frequently used enzymes for routine plasmid construction.",
     )
     val RARE_CUTTERS = EnzymeSetDefinition(

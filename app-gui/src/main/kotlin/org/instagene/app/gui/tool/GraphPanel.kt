@@ -162,7 +162,9 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
                     cachedStats = get()
                     infoArea.text = buildStatsText()
                     buildSelectedTab()
-                } catch (_: Exception) { }
+                } catch (ex: Exception) {
+                    System.err.println("instagene: graph stats computation failed: ${ex.message}")
+                }
             }
         }.also { it.execute() }
     }
@@ -187,7 +189,9 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
                 try {
                     chartTabs.setComponentAt(idx, get())
                     builtTabs += idx
-                } catch (_: Exception) { }
+                } catch (ex: Exception) {
+                    System.err.println("instagene: chart build failed: ${ex.message}")
+                }
             }
         }
         tabWorkers[idx] = worker
