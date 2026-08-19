@@ -42,7 +42,7 @@ jobs:
 
       - name: Upload installer
         if: ${{ matrix.pkg != 'APP_IMAGE' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: linux-${{ matrix.pkg }}
           path: app-gui/build/jpackage/dist/*
@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload app-image zip
         if: ${{ matrix.pkg == 'APP_IMAGE' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: linux-app-image-zip
           path: app-gui/build/jpackage/instagene-app-image.zip
@@ -92,7 +92,7 @@ jobs:
           grep -F "No display available" <<< "$output"
 
       - name: Upload runnable GUI JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: instagene-gui-jar
           path: app-gui/build/distributions/instagene-gui.jar
@@ -118,7 +118,7 @@ jobs:
         run: ./gradlew :app-cli:distZip --console=plain
 
       - name: Upload CLI distribution
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: cli-dist
           path: app-cli/build/distributions/instagene-cli.zip
@@ -146,7 +146,7 @@ jobs:
         run: ./gradlew :app-gui:jpackage "-PjpackageType=MSI" --console=plain
 
       - name: Upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: windows-MSI
           path: app-gui/build/jpackage/dist/*
@@ -174,7 +174,7 @@ jobs:
         run: ./gradlew :engine:sourcesJar --console=plain
 
       - name: Upload sources jar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: engine-sources
           path: engine/build/libs/engine-*-sources.jar
@@ -186,7 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true

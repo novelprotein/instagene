@@ -108,8 +108,19 @@ class ThemeManagerTest {
         }
     }
 
-    private fun onEdt(block: () -> Unit) {
+    private fun <T> onEdt(block: () -> T): T {
         if (SwingUtilities.isEventDispatchThread()) return block()
-        SwingUtilities.invokeAndWait(block)
+        var result: T? = null
+        var error: Throwable? = null
+        SwingUtilities.invokeAndWait {
+            try {
+                result = block()
+            } catch (t: Throwable) {
+                error = t
+            }
+        }
+        error?.let { throw it }
+        @Suppress("UNCHECKED_CAST")
+        return result as T
     }
 }

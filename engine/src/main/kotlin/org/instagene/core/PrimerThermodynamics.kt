@@ -39,6 +39,9 @@ object PrimerThermodynamics {
     )
 
     private const val R_CAL = 1.987
+    private const val HIGH_RISK_DG = -6.0
+    private const val MEDIUM_RISK_DG = -3.0
+    private const val LOW_RISK_DG = -1.0
 
     private fun nnParams(seq: String): Pair<Double, Double> {
         val upper = seq.uppercase().replace('U', 'T')
@@ -219,25 +222,22 @@ object PrimerThermodynamics {
                 }
             }
         }
-        val assessment = when {
-            bestStemDg < -6.0 -> StructureAssessment.HIGH_RISK
-            bestStemDg < -3.0 -> StructureAssessment.MEDIUM_RISK
-            bestStemDg < -1.0 -> StructureAssessment.LOW_RISK
-            else -> StructureAssessment.NO_RISK
-        }
+        val assessment = assessDgRisk(bestStemDg)
         return StructureReport(assessment, "Hairpin stem ${bestStemLen}bp dG=${"%.2f".format(bestStemDg)} kcal/mol")
     }
 
     fun assessSelfDimer(seq: String): StructureReport {
         val result = selfDimer(seq)
-        val assessment = when {
-            result.deltaG < -6.0 -> StructureAssessment.HIGH_RISK
-            result.deltaG < -3.0 -> StructureAssessment.MEDIUM_RISK
-            result.deltaG < -1.0 -> StructureAssessment.LOW_RISK
-            else -> StructureAssessment.NO_RISK
-        }
+        val assessment = assessDgRisk(result.deltaG)
         return StructureReport(assessment, "Self-dimer dG=${"%.2f".format(result.deltaG)} kcal/mol")
     }
 
     fun fullScreen(seq: String): List<StructureReport> = listOf(assessHairpin(seq), assessSelfDimer(seq))
+
+    private fun assessDgRisk(dg: Double) = when {
+        dg < HIGH_RISK_DG -> StructureAssessment.HIGH_RISK
+        dg < MEDIUM_RISK_DG -> StructureAssessment.MEDIUM_RISK
+        dg < LOW_RISK_DG -> StructureAssessment.LOW_RISK
+        else -> StructureAssessment.NO_RISK
+    }
 }

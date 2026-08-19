@@ -26,7 +26,7 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
     private val editListeners = ArrayList<Doc.EditListener>()
     private val undoStack = ArrayDeque<Pair<String, String>>()
     private val redoStack = ArrayDeque<Pair<String, String>>()
-    private val historyLimit = 100
+    private val historyLimit = Doc.HISTORY_LIMIT
 
     override fun addDocListener(listener: Doc.Listener) {
         listeners += listener

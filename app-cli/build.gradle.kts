@@ -1,5 +1,4 @@
 plugins {
-    kotlin("jvm")
     id("buildsrc.convention.kotlin-jvm")
     // The application plugin adds installDist/distZip, so the CLI ships as a
     // plain zip (`instagene-cli.zip`: bin script + jars) on any OS.

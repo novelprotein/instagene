@@ -23,7 +23,6 @@ val instagenePerf = providers.systemProperty("instagene.perf").isPresent || proj
 tasks.test {
 
     maxHeapSize = instageneHeap
-    useJUnitPlatform()
     // Swing smoke tests construct components without a display.
     systemProperty("java.awt.headless", "true")
     // Forward the opt-in performance benchmark flag to the test JVM.

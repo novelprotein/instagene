@@ -115,7 +115,7 @@ class GuiSmokeTest {
 
             val status = view.statusText()
             assertTrue(status.contains("8"))
-            assertTrue(status.contains("dna", ignoreCase = true) || status.contains("DNA") || status.contains("bp") || status.isNotBlank())
+            assertTrue(status.contains("dna", ignoreCase = true) || status.contains("DNA") || status.contains("bp"))
 
             paintComponent(view, 900, 400)
         }

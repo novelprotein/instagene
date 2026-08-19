@@ -177,7 +177,7 @@ class GenBankTest {
         assertEquals("Homo sapiens", parsed.metadata["ORGANISM"])
     }
 
-@Test
+    @Test
     fun featuresBeyondLengthAreClipped() {
         val gb = """
             LOCUS       short                     6 bp    DNA     linear

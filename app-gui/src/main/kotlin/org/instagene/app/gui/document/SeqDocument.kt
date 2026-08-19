@@ -77,7 +77,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
     private val editListeners = ArrayList<Doc.EditListener>()
     private val undoStack = ArrayDeque<Pair<String, Seq>>()
     private val redoStack = ArrayDeque<Pair<String, Seq>>()
-    private val historyLimit = 100
+    private val historyLimit = Doc.HISTORY_LIMIT
     private var notificationsEnabled = true
 
     /** Registers [listener] to be notified of every document change. */

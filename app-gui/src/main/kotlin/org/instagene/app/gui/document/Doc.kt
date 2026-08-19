@@ -11,6 +11,11 @@ import java.io.File
  */
 interface Doc {
 
+    companion object {
+        /** Maximum number of undo/redo entries kept per document. */
+        const val HISTORY_LIMIT = 100
+    }
+
     /** The file this document is saved under, or null when it is not yet on disk. */
     var file: File?
 

@@ -5,7 +5,6 @@ import org.panteleyev.jpackage.JPackageTask
 import java.util.jar.JarFile
 
 plugins {
-    kotlin("jvm")
     id("buildsrc.convention.kotlin-jvm")
     alias(libs.plugins.kotlinPluginSerialization)
     alias(libs.plugins.jpackagePlugin)

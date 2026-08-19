@@ -6,7 +6,6 @@ import java.awt.event.MouseEvent
 import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FeaturesPanelDragTest {
@@ -54,7 +53,7 @@ class FeaturesPanelDragTest {
             content.featuresPanel.addFeature("rep", "regulatory")
             assertEquals("rep", content.doc.seq.features.single().name)
             content.doc.undo()
-            assertFalse(content.doc.seq.features.isNotEmpty())
+            assertTrue(content.doc.seq.features.isEmpty())
         }
     }
 }

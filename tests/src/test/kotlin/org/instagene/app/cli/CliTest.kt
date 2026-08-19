@@ -60,7 +60,7 @@ class CliTest {
             fa.writeText(">s\nGAATTCATGGCCTAAGCTT\n")
             val (infoCode, infoOut) = capture { Cli.run(listOf("info", fa.absolutePath)) }
             assertEquals(0, infoCode)
-            assertTrue(infoOut.contains("19") || infoOut.lowercase().contains("bp") || infoOut.isNotBlank())
+            assertTrue(infoOut.contains("19") || infoOut.lowercase().contains("bp"))
 
             val (rcCode, rcOut) = capture { Cli.run(listOf("revcomp", fa.absolutePath)) }
             assertEquals(0, rcCode)
