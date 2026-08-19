@@ -376,6 +376,7 @@ class InstaGeneContent(
         trackedTreeDivider?.removeMouseListener(treeDividerMouseListener)
         trackedTreeDivider = null
         digestPanel.dispose()
+        analysisPanel.detachedWindows.toList().forEach { it.dispose() }
     }
 
     private fun showProjectSearch(promptIfBlank: Boolean = false) {

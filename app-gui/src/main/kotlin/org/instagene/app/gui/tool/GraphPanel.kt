@@ -1,6 +1,7 @@
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.ContextMenus
+import org.instagene.app.gui.analysis.BoundAnalysisPanel
 import org.instagene.core.*
 import org.jfree.chart.ChartFactory
 import org.jfree.chart.ChartPanel

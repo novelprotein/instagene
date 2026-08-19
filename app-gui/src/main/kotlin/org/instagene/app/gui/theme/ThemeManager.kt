@@ -1,37 +1,19 @@
 package org.instagene.app.gui.theme
 
-import com.formdev.flatlaf.FlatDarculaLaf
-import com.formdev.flatlaf.FlatDarkLaf
-import com.formdev.flatlaf.FlatIntelliJLaf
 import com.formdev.flatlaf.FlatLaf
-import com.formdev.flatlaf.FlatLightLaf
-import com.formdev.flatlaf.intellijthemes.FlatArcIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatCyanLightIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatDraculaIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatGruvboxDarkHardIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatMonokaiProIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatNordIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatOneDarkIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatSolarizedDarkIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatSolarizedLightIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatSpacegrayIJTheme
-import com.formdev.flatlaf.intellijthemes.FlatXcodeDarkIJTheme
-import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatAtomOneDarkIJTheme
-import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatAtomOneLightIJTheme
-import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatGitHubDarkIJTheme
-import com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatGitHubIJTheme
-import com.formdev.flatlaf.themes.FlatMacDarkLaf
-import com.formdev.flatlaf.themes.FlatMacLightLaf
+import com.formdev.flatlaf.intellijthemes.FlatAllIJThemes
+import java.io.File
+import java.net.URLDecoder
+import java.util.jar.JarFile
 import javax.swing.LookAndFeel
 import javax.swing.UIManager
 
 /**
  * Registry of selectable FlatLaf themes and the runtime switching logic.
  *
- * A theme is identified by a stable id (defaulting to the LAF class simple
- * name), which is what gets persisted in prefs. Switching calls
- * `UIManager.setLookAndFeel` followed by `FlatLaf.updateUI()` so every open
- * window updates in place.
+ * All themes are discovered at startup from the classpath: core FlatLaf
+ * themes are found by scanning for [FlatLaf] subclasses, and IntelliJ
+ * community themes from [FlatAllIJThemes.INFOS].
  */
 object ThemeManager {
 
@@ -47,29 +29,114 @@ object ThemeManager {
     )
 
     /** All selectable themes, in menu order. */
-    val themes: List<Theme> = listOf(
-        Theme("FlatLightLaf", "Light (FlatLaf)", dark = false, create = ::FlatLightLaf),
-        Theme("FlatIntelliJLaf", "IntelliJ Light", dark = false, create = ::FlatIntelliJLaf),
-        Theme("FlatMacLightLaf", "macOS Light", dark = false, create = ::FlatMacLightLaf),
-        Theme("FlatArcIJTheme", "Arc", dark = false, create = ::FlatArcIJTheme),
-        Theme("FlatCyanLightIJTheme", "Cyan Light", dark = false, create = ::FlatCyanLightIJTheme),
-        Theme("FlatGitHubIJTheme", "GitHub", dark = false, create = ::FlatGitHubIJTheme),
-        Theme("FlatAtomOneLightIJTheme", "Atom One Light", dark = false, create = ::FlatAtomOneLightIJTheme),
-        Theme("FlatSolarizedLightIJTheme", "Solarized Light", dark = false, create = ::FlatSolarizedLightIJTheme),
-        Theme("FlatDarculaLaf", "Darcula", dark = true, create = ::FlatDarculaLaf),
-        Theme("FlatDarkLaf", "Dark (FlatLaf)", dark = true, create = ::FlatDarkLaf),
-        Theme("FlatMacDarkLaf", "macOS Dark", dark = true, create = ::FlatMacDarkLaf),
-        Theme("FlatDraculaIJTheme", "Dracula", dark = true, create = ::FlatDraculaIJTheme),
-        Theme("FlatOneDarkIJTheme", "One Dark", dark = true, create = ::FlatOneDarkIJTheme),
-        Theme("FlatNordIJTheme", "Nord", dark = true, create = ::FlatNordIJTheme),
-        Theme("FlatMonokaiProIJTheme", "Monokai Pro", dark = true, create = ::FlatMonokaiProIJTheme),
-        Theme("FlatGruvboxDarkHardIJTheme", "Gruvbox Dark", dark = true, create = ::FlatGruvboxDarkHardIJTheme),
-        Theme("FlatSolarizedDarkIJTheme", "Solarized Dark", dark = true, create = ::FlatSolarizedDarkIJTheme),
-        Theme("FlatGitHubDarkIJTheme", "GitHub Dark", dark = true, create = ::FlatGitHubDarkIJTheme),
-        Theme("FlatSpacegrayIJTheme", "Space Gray", dark = true, create = ::FlatSpacegrayIJTheme),
-        Theme("FlatXcodeDarkIJTheme", "Xcode Dark", dark = true, create = ::FlatXcodeDarkIJTheme),
-        Theme("FlatAtomOneDarkIJTheme", "Atom One Dark", dark = true, create = ::FlatAtomOneDarkIJTheme),
-    )
+    val themes: List<Theme> = buildThemes()
+
+    private fun buildThemes(): List<Theme> {
+        val seen = mutableSetOf<String>()
+        val core = discoverCoreThemes(seen)
+        val ij = discoverIJThemes(seen)
+        return core + ij
+    }
+
+    private fun discoverCoreThemes(seen: MutableSet<String>): List<Theme> {
+        val packages = listOf("com.formdev.flatlaf", "com.formdev.flatlaf.themes")
+        val classNames = packages.flatMap { pkg ->
+            classpathSubclasses(pkg, FlatLaf::class.java)
+        }
+        return classNames.mapNotNull { name ->
+            runCatching {
+                val cls = Class.forName(name)
+                if (!FlatLaf::class.java.isAssignableFrom(cls)) return@runCatching null
+                if (java.lang.reflect.Modifier.isAbstract(cls.modifiers)) return@runCatching null
+                if (cls.getPackage()?.name?.startsWith("com.formdev.flatlaf.intellijthemes") == true) return@runCatching null
+                val laf = cls.getConstructor().newInstance() as? FlatLaf ?: return@runCatching null
+                val id = cls.simpleName
+                if (!seen.add(id)) return@runCatching null
+                val orig = UIManager.getLookAndFeel()
+                UIManager.setLookAndFeel(laf)
+                val dark = FlatLaf.isLafDark()
+                UIManager.setLookAndFeel(orig)
+                Theme(
+                    id = id,
+                    displayName = laf.name ?: id,
+                    dark = dark,
+                    create = { cls.getConstructor().newInstance() as LookAndFeel },
+                )
+            }.getOrNull()
+        }.sortedWith(compareBy<Theme> { it.dark }.thenBy { it.displayName })
+    }
+
+    private fun discoverIJThemes(seen: MutableSet<String>): List<Theme> {
+        val ijThemes = FlatAllIJThemes.INFOS.mapNotNull { info ->
+            runCatching {
+                val cls = Class.forName(info.className)
+                val laf = cls.getConstructor().newInstance() as? LookAndFeel ?: return@runCatching null
+                val simpleName = cls.simpleName
+                val id = if (seen.add(simpleName)) simpleName
+                else {
+                    val pkg = cls.`package`?.name.orEmpty()
+                    val suffix = pkg.substringAfterLast('.').ifEmpty { "extra" }
+                    val disambiguated = "$simpleName ($suffix)"
+                    seen.add(disambiguated)
+                    disambiguated
+                }
+                Theme(
+                    id = id,
+                    displayName = info.name,
+                    dark = info.isDark,
+                    create = { laf },
+                )
+            }.getOrNull()
+        }
+        val light = ijThemes.filter { !it.dark }.sortedBy { it.displayName }
+        val dark = ijThemes.filter { it.dark }.sortedBy { it.displayName }
+        return light + dark
+    }
+
+    /** Scans the classpath for direct subclasses of [base] under [pkg]. */
+    private fun <T : Any> classpathSubclasses(pkg: String, base: Class<T>): List<String> {
+        val path = pkg.replace('.', '/')
+        val result = mutableListOf<String>()
+        val resources = Thread.currentThread().contextClassLoader.getResources(path)
+        while (resources.hasMoreElements()) {
+            val url = resources.nextElement()
+            when (url.protocol) {
+                "file" -> scanDir(File(URLDecoder.decode(url.path, "UTF-8")), path, base, result)
+                "jar" -> scanJar(url, path, base, result)
+            }
+        }
+        return result
+    }
+
+    private fun <T : Any> scanDir(dir: File, pkgPath: String, base: Class<T>, out: MutableList<String>) {
+        val files = dir.listFiles() ?: return
+        for (f in files) {
+            if (f.isDirectory) {
+                scanDir(f, "$pkgPath/${f.name}", base, out)
+            } else if (f.name.endsWith(".class")) {
+                val name = "$pkgPath/${f.name.removeSuffix(".class")}"
+                    .replace('/', '.')
+                runCatching { Class.forName(name) }
+                    .getOrNull()?.let { if (base.isAssignableFrom(it)) out += name }
+            }
+        }
+    }
+
+    private fun <T : Any> scanJar(url: java.net.URL, pkgPath: String, base: Class<T>, out: MutableList<String>) {
+        val jarPath = URLDecoder.decode(url.path.substringAfter("file:"), "UTF-8")
+            .substringBeforeLast("!")
+        val jar = runCatching { JarFile(File(jarPath)) }.getOrNull() ?: return
+        jar.use { j ->
+            j.entries().asIterator().forEach { entry ->
+                val name = entry.name
+                if (name.startsWith("$pkgPath/") && name.endsWith(".class")) {
+                    val fqName = name.removeSuffix(".class").replace('/', '.')
+                    runCatching { Class.forName(fqName) }
+                        .getOrNull()?.let { if (base.isAssignableFrom(it)) out += fqName }
+                }
+            }
+        }
+    }
 
     private var applied: String? = null
 

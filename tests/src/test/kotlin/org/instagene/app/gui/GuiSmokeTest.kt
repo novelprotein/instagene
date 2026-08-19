@@ -765,10 +765,9 @@ class GuiSmokeTest {
                 try {
                     content.toolTabs.selectedIndex = content.toolTabs.indexOfTab("Analysis")
                     content.analysisPanel.selectTool("Assembly")
-                    val analysisTabs = descendants(content.analysisPanel, javax.swing.JTabbedPane::class.java).single {
-                        (0 until it.tabCount).map(it::getTitleAt).contains("Assembly")
-                    }
-                    val assembly = analysisTabs.selectedComponent
+                    val partsField = descendants(content.analysisPanel, javax.swing.JTextField::class.java)
+                        .single { it.columns == 36 }
+                    val assembly = partsField.getParent().getParent() as javax.swing.JPanel
 
                     descendants(assembly, javax.swing.JTextField::class.java).single { it.columns == 36 }.text =
                         "${partA.absolutePath},${partB.absolutePath}"
