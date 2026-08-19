@@ -1,7 +1,6 @@
 package org.instagene.core.project
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.instagene.core.FeatureDefinition
 import org.instagene.core.FeatureLibrary

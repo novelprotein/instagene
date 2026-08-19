@@ -582,9 +582,6 @@ class DigestPanel(
     /** Exposed for tests: the cut counts for the current sequence, or null while stale/unknown. */
     fun computedCutCounts(): Map<Enzyme, Int>? = if (countsStale) null else countsCache
 
-    /** Exposed for tests: observed sequence-specific overhangs, or null while stale/unknown. */
-    fun computedOverhangs(): Map<Enzyme, List<String>>? = if (countsStale) null else overhangCache
-
     /** Exposed for tests: the enzymes currently ticked in the table, in order. */
     fun selectedEnzymes(): List<Enzyme> = checked.toList()
 

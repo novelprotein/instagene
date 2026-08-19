@@ -2,6 +2,19 @@ package org.instagene.core
 
 data class MethylationProfile(val dam: Boolean = false, val dcm: Boolean = false)
 data class RestrictionReport(val enzyme: Enzyme, val count: Int, val positions: List<Int>)
+
+enum class CpGContext { ISLAND, SHORE, OPEN_SEA }
+
+data class CpGCatalogEntry(val position: Int, val context: CpGContext)
+
+data class CpGComparisonReport(
+    val pairLabel: String,
+    val enzyme1: String,
+    val enzyme2: String,
+    val totalSites: Int,
+    val methylBlockedSites: Int,
+)
+
 data class MutationCandidate(
     val enzyme: Enzyme,
     val position: Int,
@@ -79,5 +92,112 @@ object EnzymeAnalysis {
         }
         return candidates.distinctBy { Triple(it.enzyme.name, it.position, it.strand) }
             .sortedWith(compareBy({ it.position }, { it.enzyme.name }))
+    }
+
+    // --------------------------------------------------------- CpG methylation
+
+    private val METHYL_SENSITIVE_PAIRS = listOf(
+        Triple("HpaII/MspI", "HpaII", "MspI"),
+        Triple("SmaI/XmaI", "SmaI", "XmaI"),
+        Triple("AccII/BstUI", "AccII", "BstUI"),
+    )
+
+    private val ISOSCHIZOMER_SITES = mapOf(
+        "HpaII" to "CCGG", "MspI" to "CCGG",
+        "SmaI" to "CCCGGG", "XmaI" to "CCCGGG",
+        "AccII" to "CGCG", "BstUI" to "CGCG",
+    )
+
+    private val CpG_PATTERN = Regex("CG")
+
+    /**
+     * Classifies a CpG dinucleotide position by its local sequence context.
+     * Uses a 500bp window centered on the CpG to compute GC% and OE ratio,
+     * then classifies into ISLAND (GC≥50%, OE≥0.6), SHORE (within 2kb of
+     * an island), or OPEN_SEA.
+     */
+    fun cpgCatalog(seq: Seq): List<CpGCatalogEntry> {
+        val bases = seq.bases.uppercase()
+        val len = bases.length
+        val cpgPositions = ArrayList<Int>()
+        var i = 0
+        while (i < len - 1) {
+            if (bases[i] == 'C' && bases[i + 1] == 'G') {
+                cpgPositions.add(i)
+                i += 2
+            } else {
+                i++
+            }
+        }
+        if (cpgPositions.isEmpty()) return emptyList()
+
+        val islandWindows = BooleanArray(len / 20 + 1)
+        val windowSize = 100
+        val step = 20
+        var pos = 0
+        while (pos + windowSize <= len) {
+            var gc = 0; var cg = 0; var cCount = 0; var gCount = 0
+            for (j in pos until pos + windowSize) {
+                when (bases[j]) {
+                    'G' -> { gCount++; gc++ }
+                    'C' -> { cCount++; gc++ }
+                }
+            }
+            for (j in pos until pos + windowSize - 1) {
+                if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
+            }
+            val gcPct = gc * 100.0 / windowSize
+            val expected = cCount.toDouble() * gCount / windowSize
+            val oe = if (expected > 0) cg / expected else 0.0
+            if (gcPct >= 50.0 && oe >= 0.6) {
+                islandWindows[pos / step] = true
+            }
+            pos += step
+        }
+
+        return cpgPositions.map { pos ->
+            val context = when {
+                pos / step in islandWindows.indices && islandWindows[pos / step] -> CpGContext.ISLAND
+                isNearIsland(pos, islandWindows) -> CpGContext.SHORE
+                else -> CpGContext.OPEN_SEA
+            }
+            CpGCatalogEntry(pos + 1, context)
+        }
+    }
+
+    private fun isNearIsland(pos: Int, islandWindows: BooleanArray): Boolean {
+        val shoreRange = 2000 / 20
+        val center = pos / 20
+        for (d in -shoreRange..shoreRange) {
+            val idx = center + d
+            if (idx in islandWindows.indices && islandWindows[idx]) return true
+        }
+        return false
+    }
+
+    /**
+     * Compares cutting behavior of methylation-sensitive isoschizomer pairs.
+     * For each pair, counts how many recognition sites overlap a CpG dinucleotide
+     * and would therefore be blocked by CpG methylation.
+     */
+    fun methylationSensitiveComparison(seq: Seq): List<CpGComparisonReport> {
+        val bases = seq.bases.uppercase()
+        val results = ArrayList<CpGComparisonReport>()
+        for ((label, e1Name, e2Name) in METHYL_SENSITIVE_PAIRS) {
+            val siteSeq = ISOSCHIZOMER_SITES[e1Name] ?: continue
+            val e1 = Enzymes.find(e1Name) ?: continue
+            val sites = Digest.cutSites(seq, listOf(e1))
+            var blocked = 0
+            for ((_, start) in sites) {
+                if (start + siteSeq.length <= bases.length) {
+                    val region = bases.substring(start, start + siteSeq.length)
+                    if (CpG_PATTERN.containsMatchIn(region)) {
+                        blocked++
+                    }
+                }
+            }
+            results += CpGComparisonReport(label, e1Name, e2Name, sites.size, blocked)
+        }
+        return results
     }
 }

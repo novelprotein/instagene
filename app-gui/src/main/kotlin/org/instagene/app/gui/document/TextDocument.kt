@@ -71,6 +71,7 @@ class TextDocument(initial: String = "", override var file: File? = null) : Doc 
     }
 
     /** Replaces the buffer outright (file load) and clears history. */
+    @Suppress("unused")
     fun reset(next: String, newFile: File? = file, dirty: Boolean = false) {
         undoStack.clear()
         redoStack.clear()

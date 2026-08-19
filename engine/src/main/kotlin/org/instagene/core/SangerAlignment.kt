@@ -28,7 +28,6 @@ object SangerAlignment {
         var bestRefStart = 0
         var bestReadStart = 0
         var bestLen = 0
-        val window = ref.length + seq.length
         for (rs in 0..ref.length) {
             for (ss in 0..seq.length) {
                 var score = 0

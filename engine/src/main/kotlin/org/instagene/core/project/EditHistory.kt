@@ -51,10 +51,7 @@ data class EditEntry(
     val snapshotSeq: Seq? = null,
     /** The text right after this edit, when it was small enough to keep; null otherwise. */
     val snapshotText: String? = null,
-) {
-    /** True when [snapshotSeq] or [snapshotText] captures a state a document can be reverted to. */
-    val hasSnapshot: Boolean get() = snapshotSeq != null || snapshotText != null
-}
+)
 
 /**
  * An edit history, stored as JSON either at `<project>/.instagene/history.json`

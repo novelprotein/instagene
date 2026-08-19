@@ -6,9 +6,7 @@ data class RecombinationCandidate(
     val targetRight: Int,
     val armLength: Int,
     val score: Int,
-) {
-    val replacedLength: Int get() = targetRight + armLength - targetLeft
-}
+)
 
 data class RecombinationResult(val product: Seq, val candidate: RecombinationCandidate)
 

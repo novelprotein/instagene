@@ -229,8 +229,7 @@ object FeatureLibrary {
         return buildString {
             var i = 0
             while (i < clean.length) {
-                val c = clean[i]
-                when (c) {
+                when (val c = clean[i]) {
                     '#', '+' -> append("[ACGT]*")
                     '{' -> {
                         val close = clean.indexOf('}', i)

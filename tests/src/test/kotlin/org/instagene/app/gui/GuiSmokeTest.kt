@@ -127,7 +127,7 @@ class GuiSmokeTest {
             val doc = SeqDocument(SeqIO.Samples.PUC19_MCS)
             val digest = DigestPanel(doc, onExtractFragment = {}, onReveal = { _, _ -> })
             val map = PlasmidMapPanel(doc)
-            doc.setMappedEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
+            doc.setMappedEnzymes(listOf(Enzymes.require("EcoRI")))
 
             paintComponent(digest, 700, 400)
             paintComponent(map, 500, 500)
@@ -343,7 +343,7 @@ class GuiSmokeTest {
             val doc = SeqDocument(seq)
             var revealed: Pair<Int, Int>? = null
             val digest = DigestPanel(doc, {}, { s, e -> revealed = s to e })
-            digest.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
+            digest.selectEnzymes(listOf(Enzymes.require("EcoRI")))
             digest.revealFragment(0)
             assertNotNull(revealed)
             assertEquals(0, revealed.first)
@@ -365,12 +365,12 @@ class GuiSmokeTest {
             // EcoRI cuts twice, BamHI once, NotI never; with cuttersOnly off the
             // whole catalog is shown but the cutters must come first.
             val counts = panel.computedCutCounts()
-            assertEquals(2, counts!![org.instagene.core.Enzymes.require("EcoRI")])
-            assertEquals(1, counts[org.instagene.core.Enzymes.require("BamHI")])
-            assertEquals(0, counts[org.instagene.core.Enzymes.require("NotI")])
+            assertEquals(2, counts!![Enzymes.require("EcoRI")])
+            assertEquals(1, counts[Enzymes.require("BamHI")])
+            assertEquals(0, counts[Enzymes.require("NotI")])
 
             val shown = panel.displayedEnzymes()
-            assertTrue(shown.contains(org.instagene.core.Enzymes.require("NotI")))
+            assertTrue(shown.contains(Enzymes.require("NotI")))
             assertEquals("EcoRI", shown[0].name)
             assertEquals("BamHI", shown[1].name)
             val ordered = shown.map { counts[it] ?: 0 }
@@ -433,14 +433,14 @@ class GuiSmokeTest {
         }
         awaitDigestCounts(panel)
         onEdt {
-            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("EcoRI"))
+            panel.selectEnzymeInTable(Enzymes.require("EcoRI"))
             val eco = panel.displayedMatches()
             assertEquals(2, eco.size)
             assertEquals(2, eco[0].recognitionStart)
             assertEquals(14, eco[1].recognitionStart)
             assertEquals(org.instagene.core.Strand.FORWARD, eco[0].strand)
 
-            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("BamHI"))
+            panel.selectEnzymeInTable(Enzymes.require("BamHI"))
             val bam = panel.displayedMatches()
             assertEquals(1, bam.size)
             assertEquals(8, bam[0].recognitionStart)
@@ -457,7 +457,7 @@ class GuiSmokeTest {
                 { _, _ -> },
                 prefs,
             )
-            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("EcoRI"))
+            panel.selectEnzymeInTable(Enzymes.require("EcoRI"))
             val table = descendants(panel, javax.swing.JTable::class.java).single {
                 it.columnCount == 7 && it.getColumnName(0) == "Length"
             }
@@ -488,7 +488,7 @@ class GuiSmokeTest {
             var revealed: Pair<Int, Int>? = null
             val panel = DigestPanel(doc, {}, { s, e -> revealed = s to e }, prefs)
 
-            panel.selectEnzymeInTable(org.instagene.core.Enzymes.require("EcoRI"))
+            panel.selectEnzymeInTable(Enzymes.require("EcoRI"))
             assertEquals(1, panel.displayedMatches().size)
             assertEquals(3, panel.displayedMatches()[0].recognitionStart)
             panel.revealMatch(0)
@@ -644,7 +644,7 @@ class GuiSmokeTest {
             assertNull(digest.selectedFragmentInTable())
             assertFalse(digest.areFragmentActionsEnabled())
 
-            digest.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
+            digest.selectEnzymes(listOf(Enzymes.require("EcoRI")))
 
             val fragments = digest.displayedFragments()
             assertTrue(fragments.size >= 2)
@@ -670,7 +670,7 @@ class GuiSmokeTest {
             assertTrue(digest.summaryText().contains("Library"))
 
             // Recomputing the same digest must retain the user's chosen row.
-            digest.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
+            digest.selectEnzymes(listOf(Enzymes.require("EcoRI")))
             assertEquals(chosen, digest.selectedFragmentInTable())
 
             digest.selectEnzymes(emptyList())
@@ -737,7 +737,7 @@ class GuiSmokeTest {
             try {
                 content.openSequence(Seq(name = "digest", bases = "AAAGAATTCCCGAATTCTTT"))
                 content.toolTabs.selectedIndex = content.toolTabs.indexOfTab("Enzyme")
-                content.digestPanel.selectEnzymes(listOf(org.instagene.core.Enzymes.require("EcoRI")))
+                content.digestPanel.selectEnzymes(listOf(Enzymes.require("EcoRI")))
                 val fragment = content.digestPanel.selectedFragmentInTable() ?: fail("Expected a selected fragment")
 
                 content.digestPanel.openSelectedFragment()
@@ -1170,7 +1170,7 @@ class GuiSmokeTest {
             val view = SequenceView(doc)
             val panel = LibraryPanel(prefs, doc, view) { _ -> }
             panel.addItem(
-                org.instagene.app.gui.prefs.SavedItem(
+                SavedItem(
                     kind = SavedKind.FRAGMENT,
                     name = "frag",
                     bases = "TTTT",
@@ -1197,7 +1197,7 @@ class GuiSmokeTest {
             val doc = SeqDocument(Seq(bases = "ACGTACGT", name = "src"))
             val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
             panel.addItem(
-                org.instagene.app.gui.prefs.SavedItem(
+                SavedItem(
                     kind = SavedKind.PRIMER,
                     name = "screening_primer",
                     bases = "ACGT",
@@ -1229,7 +1229,7 @@ class GuiSmokeTest {
             val doc = SeqDocument(Seq(bases = "ACGT"))
             val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
             panel.addItem(
-                org.instagene.app.gui.prefs.SavedItem(
+                SavedItem(
                     kind = SavedKind.FRAGMENT,
                     name = "frag",
                     bases = "AAAA",
@@ -1248,7 +1248,7 @@ class GuiSmokeTest {
             val prefs = Prefs()
             val doc = SeqDocument(Seq(bases = "ACGT"))
             val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
-            val duplicate = org.instagene.app.gui.prefs.SavedItem(SavedKind.FRAGMENT, "frag", "AAAA")
+            val duplicate = SavedItem(SavedKind.FRAGMENT, "frag", "AAAA")
             panel.addItem(duplicate)
             panel.addItem(duplicate)
             panel.deleteSelected(0)

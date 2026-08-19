@@ -66,12 +66,12 @@ class CodonTableTest {
 
     @Test
     fun byIdFindsAllBundledTables() {
-        assertEquals(CodonTable.STANDARD, CodonTable.byId(1))
-        assertEquals(CodonTable.MOLD, CodonTable.byId(2))
-        assertEquals(CodonTable.YEAST, CodonTable.byId(3))
-        assertEquals(CodonTable.INVERTEBRATE, CodonTable.byId(5))
-        assertEquals(CodonTable.BACTERIAL, CodonTable.byId(11))
-        assertEquals(CodonTable.SPIROPLASMA, CodonTable.byId(12))
+        assertEquals(CodonTable.byId(1), CodonTable.STANDARD)
+        assertEquals(CodonTable.byId(2), CodonTable.MOLD)
+        assertEquals(CodonTable.byId(3), CodonTable.YEAST)
+        assertEquals(CodonTable.byId(5), CodonTable.INVERTEBRATE)
+        assertEquals(CodonTable.byId(11), CodonTable.BACTERIAL)
+        assertEquals(CodonTable.byId(12), CodonTable.SPIROPLASMA)
     }
 
     @Test

@@ -203,6 +203,10 @@ class ToolsMenu(
             toolTipText = "Design SpCas9 guide RNAs with PAM scanning and off-target scoring."
             addActionListener { onAnalysis("CRISPR / gRNA") }
         })
+        add(JMenuItem("CpG Methylation Analysis").apply {
+            toolTipText = "CpG dinucleotide catalog, methylation-sensitive isoschizomer comparison, and CpG island detection."
+            addActionListener { onAnalysis("CpG Methylation") }
+        })
         add(JMenuItem("Primer Thermodynamic Analysis").apply {
             toolTipText = "Analyze primer Tm, ΔG, self-dimers, and hairpin potential."
             addActionListener { onAnalysis("Primer Thermo") }
@@ -300,7 +304,7 @@ class ToolsMenu(
     }
 
     private fun createAnalysisMenu(): JMenu = JMenu("Analysis Workspace").apply {
-        listOf("Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication", "Statistics / Graphs").forEach { name ->
+        listOf("Search", "Alignment", "Enzymes", "CpG Methylation", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication", "Statistics / Graphs").forEach { name ->
             add(JMenuItem(name).apply { addActionListener { onAnalysis(name) } })
         }
     }

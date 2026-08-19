@@ -59,12 +59,6 @@ object ExternalSequenceFormats {
         commands[formatId.lowercase()] = command.toList()
     }
 
-    fun unregister(formatId: String) {
-        commands.remove(formatId.lowercase())
-    }
-
-    fun configured(formatId: String): Boolean = commandFor(formatId) != null
-
     fun read(file: File, descriptor: SequenceFormatDescriptor): Seq {
         val template = commandFor(descriptor.id) ?: throw SeqIOException(
             "${descriptor.displayName} requires a converter. Configure ${environmentKey(descriptor.id)} " +

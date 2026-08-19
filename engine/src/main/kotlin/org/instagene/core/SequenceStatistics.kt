@@ -15,6 +15,17 @@ data class CodonUsageEntry(val codon: String, val count: Int, val frequency: Dou
 /** Repeat match with position and length. */
 data class RepeatMatch(val start: Int, val length: Int, val unit: String)
 
+/** A detected CpG island with statistics. */
+data class CpGIsland(
+    val start: Int,
+    val end: Int,
+    val length: Int,
+    val gcContent: Double,
+    val observedCpG: Int,
+    val expectedCpG: Double,
+    val oeRatio: Double,
+)
+
 /** Comprehensive statistics for a single sequence. */
 data class SequenceStats(
     val length: Int,
@@ -421,5 +432,123 @@ object SequenceStatistics {
             }
         }
         return result.sortedBy { it.start }
+    }
+
+    // ---------------------------------------------------------------- CpG islands
+
+    /**
+     * Detects CpG islands using Gardiner-Garden & Frommer (1987) criteria:
+     * - Window GC content ≥ [minGc]%
+     * - Observed/Expected CpG ratio ≥ [minOeRatio]
+     * - Merged island length ≥ [minLength] bp
+     */
+    fun cpgIslands(
+        seq: Seq,
+        windowSize: Int = 100,
+        step: Int = 20,
+        minLength: Int = 200,
+        minGc: Double = 50.0,
+        minOeRatio: Double = 0.6,
+    ): List<CpGIsland> {
+        require(seq.kind != SeqKind.PROTEIN) { "CpG island detection requires DNA or RNA" }
+        val bases = seq.bases.uppercase()
+        val len = bases.length
+        if (len < windowSize) return emptyList()
+
+        // Score each window
+        val qualifying = BooleanArray(len / step + 1)
+        var pos = 0
+        var idx = 0
+        while (pos + windowSize <= len) {
+            var gc = 0; var cg = 0; var cCount = 0; var gCount = 0
+            for (j in pos until pos + windowSize) {
+                when (bases[j]) {
+                    'G' -> { gCount++; gc++ }
+                    'C' -> { cCount++; gc++ }
+                }
+            }
+            for (j in pos until pos + windowSize - 1) {
+                if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
+            }
+            val gcPct = gc * 100.0 / windowSize
+            val expected = cCount.toDouble() * gCount / windowSize
+            val oe = if (expected > 0.0) cg / expected else 0.0
+            if (gcPct >= minGc && oe >= minOeRatio) qualifying[idx] = true
+            pos += step
+            idx++
+        }
+
+        // Merge overlapping qualifying windows
+        val islands = ArrayList<CpGIsland>()
+        var mergeStart = -1
+        var mergeEnd = -1
+        for (i in qualifying.indices) {
+            if (qualifying[i]) {
+                val winStart = i * step
+                val winEnd = winStart + windowSize
+                if (mergeStart < 0) {
+                    mergeStart = winStart
+                    mergeEnd = winEnd
+                } else {
+                    mergeEnd = winEnd
+                }
+            } else if (mergeStart >= 0) {
+                addIslandIfLargeEnough(bases, mergeStart, mergeEnd, minLength, islands)
+                mergeStart = -1
+                mergeEnd = -1
+            }
+        }
+        if (mergeStart >= 0) {
+            addIslandIfLargeEnough(bases, mergeStart, mergeEnd, minLength, islands)
+        }
+        return islands
+    }
+
+    private fun addIslandIfLargeEnough(
+        bases: String, start: Int, end: Int, minLength: Int, out: MutableList<CpGIsland>,
+    ) {
+        val length = end - start
+        if (length < minLength) return
+        var gc = 0; var cg = 0; var cCount = 0; var gCount = 0
+        for (j in start until end) {
+            when (bases[j]) {
+                'G' -> { gCount++; gc++ }
+                'C' -> { cCount++; gc++ }
+            }
+        }
+        for (j in start until end - 1) {
+            if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
+        }
+        val gcPct = gc * 100.0 / length
+        val expected = cCount.toDouble() * gCount / length
+        val oe = if (expected > 0.0) cg / expected else 0.0
+        out += CpGIsland(start + 1, end, length, gcPct, cg, expected, oe)
+    }
+
+    /** Per-window observed/expected CpG ratio as an XY series for charting. */
+    fun cpgDensityProfile(seq: Seq, windowSize: Int = 100, step: Int = 20): List<XY> {
+        require(seq.kind != SeqKind.PROTEIN) { "CpG density requires DNA or RNA" }
+        val bases = seq.bases.uppercase()
+        val len = bases.length
+        if (len < windowSize) return emptyList()
+        val result = ArrayList<XY>()
+        var pos = 0
+        while (pos + windowSize <= len) {
+            var cg = 0; var cCount = 0; var gCount = 0
+            for (j in pos until pos + windowSize) {
+                when (bases[j]) {
+                    'G' -> gCount++
+                    'C' -> cCount++
+                }
+            }
+            for (j in pos until pos + windowSize - 1) {
+                if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
+            }
+            val expected = cCount.toDouble() * gCount / windowSize
+            val oe = if (expected > 0.0) cg / expected else 0.0
+            result += XY(pos + windowSize / 2.0, oe)
+            pos += step
+        }
+        return result
     }
 }

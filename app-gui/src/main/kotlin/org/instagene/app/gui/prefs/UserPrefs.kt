@@ -2,7 +2,6 @@ package org.instagene.app.gui.prefs
 
 import kotlinx.serialization.Serializable
 import org.instagene.core.Enzyme
-import org.instagene.core.FeatureDefinition
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 
@@ -38,9 +37,7 @@ data class SavedFeatureDefinition(
     val strand: Strand = Strand.FORWARD,
     val color: String? = null,
     val uppercaseOnly: Boolean = false,
-) {
-    fun toDefinition(): FeatureDefinition = FeatureDefinition(name, pattern, type, strand, color, uppercaseOnly)
-}
+)
 
 /**
  * Where a saved library item came from, so it can be restored via a

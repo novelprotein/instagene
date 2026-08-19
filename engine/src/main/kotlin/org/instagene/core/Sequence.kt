@@ -89,13 +89,6 @@ data class Feature(
     val locationSegments: List<FeatureSegment>
         get() = segments.ifEmpty { listOf(FeatureSegment(start, end)) }
 
-    /** Returns this feature with a discontinuous location. */
-    fun withSegments(value: List<FeatureSegment>): Feature = copy(
-        start = value.minOfOrNull { it.start } ?: start,
-        end = value.maxOfOrNull { it.end } ?: end,
-        segments = value,
-    )
-
     init {
         require(start >= 0) { "Feature '$name' starts before position 0" }
         require(end >= start) { "Feature '$name' ends before it starts" }
@@ -168,13 +161,8 @@ data class Seq(
 
     val isCircular: Boolean get() = topology == Topology.CIRCULAR
 
-    /** GenBank COMMENT text, exposed without requiring callers to know metadata keys. */
-    val comment: String get() = metadata["COMMENT"].orEmpty()
-
     /** A persisted sequence identity, when one has been applied. */
     val uniqueIdentifier: String? get() = metadata["CDSEGUID"]?.takeIf { it.isNotBlank() }
-
-    fun withComment(value: String): Seq = copy(metadata = metadata + ("COMMENT" to value))
 
     fun withUniqueIdentifier(value: String?): Seq = copy(
         metadata = if (value.isNullOrBlank()) metadata - "CDSEGUID" else metadata + ("CDSEGUID" to value)
@@ -215,9 +203,6 @@ data class Seq(
 
     /** A copy with [feature] removed from the feature table (by structural equality). */
     fun withoutFeature(feature: Feature): Seq = copy(features = features - feature)
-
-    /** A copy with [primer] removed by structural equality. */
-    fun withoutPrimer(primer: PrimerAnnotation): Seq = copy(primers = primers - primer)
 
     /** Appends a reconstructable operation to this sequence's embedded provenance. */
     fun withProcedure(record: ProcedureRecord): Seq = copy(provenance = provenance + record)

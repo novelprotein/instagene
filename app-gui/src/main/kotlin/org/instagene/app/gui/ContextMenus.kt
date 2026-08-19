@@ -10,8 +10,6 @@ import javax.swing.JPopupMenu
 import javax.swing.JTable
 import javax.swing.JPanel
 import javax.swing.JTextArea
-import javax.swing.JTree
-import javax.swing.tree.TreePath
 
 /** Shared helpers for row-aware Swing context menus. */
 internal object ContextMenus {
@@ -52,21 +50,6 @@ internal fun JTable.installRowContextMenu(popupForRow: (modelRow: Int?) -> JPopu
             null
         }
         val popup = popupForRow(modelRow) ?: return
-        componentPopupMenu = popup
-        if (isShowing && popup.componentCount > 0) popup.show(this, e.x, e.y)
-    }
-    addMouseListener(object : MouseAdapter() {
-        override fun mousePressed(e: MouseEvent) = maybeShow(e)
-        override fun mouseReleased(e: MouseEvent) = maybeShow(e)
-    })
-}
-
-internal fun JTree.installPathContextMenu(popupForPath: (path: TreePath?) -> JPopupMenu?) {
-    fun maybeShow(e: MouseEvent) {
-        if (!e.isPopupTrigger) return
-        val path = getClosestPathForLocation(e.x, e.y)
-        if (path != null) selectionPath = path else clearSelection()
-        val popup = popupForPath(path) ?: return
         componentPopupMenu = popup
         if (isShowing && popup.componentCount > 0) popup.show(this, e.x, e.y)
     }

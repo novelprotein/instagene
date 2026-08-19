@@ -84,12 +84,6 @@ object Assembly {
         return Seq(name, f.bases, SeqKind.DNA, Topology.CIRCULAR, f.features.sortedBy { it.start })
     }
 
-    /**
-     * Ligates fragments in order and closes the resulting molecule into a plasmid.
-     */
-    fun ligateCircular(fragments: List<Fragment>, name: String): Seq =
-        circularize(ligate(fragments), name)
-
     // ------------------------------------------------------------ plasmid builder
 
     /** The completed [plasmid], its vector and insert fragments, and the progress log. */

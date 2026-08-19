@@ -49,8 +49,4 @@ object MultipleAlignment {
         require(parsed.size == sequences.size) { "${tool.displayName} returned ${parsed.size} aligned sequence(s); expected ${sequences.size}" }
         return MultipleAlignmentResult(algorithm, parsed, result.command)
     }
-
-    fun availableAlgorithms(): List<MultipleAlignmentAlgorithm> = MultipleAlignmentAlgorithm.entries.filter {
-        it.toolId == null || ExternalTools.CATALOG.firstOrNull { tool -> tool.id == it.toolId }?.let(ExternalTools::isAvailable) == true
-    }
 }

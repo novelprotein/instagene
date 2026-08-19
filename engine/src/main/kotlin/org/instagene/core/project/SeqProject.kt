@@ -92,9 +92,6 @@ class SeqProject private constructor(
 
     // ---------------------------------------------------------------- paths
 
-    /** The manifest file for [root], whether or not it exists yet. */
-    fun manifestFile(): File = manifestFile(root)
-
     /**
      * Resolves [rel] against [root]. Returns null when [rel] escapes the
      * project (absolute or containing `..`), preventing a hostile manifest from

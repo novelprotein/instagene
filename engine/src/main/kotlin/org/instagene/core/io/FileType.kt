@@ -60,17 +60,17 @@ object FileSniffer {
     private fun isImageMagic(b: ByteArray): Boolean =
         isPng(b) || isJpeg(b) || isGif(b) || isTiff(b) || isBmp(b)
 
-    /** The broad type of [file], from its content (and name) rather than its parser. */
+    /** The broad type of [file], from its content rather than its parser. */
     fun typeOf(file: File): FileType {
         if (!file.isFile || file.length() == 0L) return FileType.TEXT
         return file.inputStream().use { input ->
             val bytes = input.readNBytes(PEEK_BYTES)
-            typeOf(bytes, file.name)
+            typeOf(bytes)
         }
     }
 
-    /** The broad type of the first [bytes] of a file named [fileName] (may be null). */
-    fun typeOf(bytes: ByteArray, fileName: String? = null): FileType = when {
+    /** The broad type of the first [bytes]. */
+    fun typeOf(bytes: ByteArray): FileType = when {
         ChromatogramReader.looksLikeAbi(bytes) || ChromatogramReader.looksLikeScf(bytes) -> FileType.CHROMATOGRAM
         isImageMagic(bytes) -> FileType.IMAGE
         isPdf(bytes) -> FileType.PDF
@@ -89,13 +89,6 @@ object FileSniffer {
         if (cleaned.isNotEmpty() && cleaned.none { !it.isLetter() }) return FileType.SEQUENCE
         return if (head.none { it.isISOControl() && it != '\n' && it != '\t' }) FileType.TEXT else FileType.OTHER
     }
-
-    /** True when the bytes look like a sequence the parsers can read. */
-    fun isSequence(bytes: ByteArray, fileName: String? = null): Boolean =
-        typeOf(bytes, fileName) == FileType.SEQUENCE
-
-    /** True when the file looks like a sequence the parsers can read. */
-    fun isSequence(file: File): Boolean = typeOf(file) == FileType.SEQUENCE
 
     /** NUL bytes or heavy control characters mark a file as binary rather than text. */
     private fun isBinary(bytes: ByteArray): Boolean {

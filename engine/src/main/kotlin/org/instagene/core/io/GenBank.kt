@@ -137,7 +137,6 @@ object GenBank {
                     keywordLine.startsWith("//") -> {
                         flushFeature()
                         sawTerminator = true
-                        section = ""
                         return@useLines
                     }
 
@@ -315,7 +314,7 @@ object GenBank {
             val joined = if (f.locationSegments.size > 1) "join($range)" else range
             val location = if (f.strand == Strand.REVERSE) "complement($joined)" else joined
             append("     %-16s%s\n".format(f.type.take(15), location))
-            val defaults = buildMap<String, List<String>> {
+            val defaults = buildMap {
                 put("label", listOf(f.name))
                 if (f.notes.isNotBlank()) put("note", listOf(f.notes))
                 if (f.geneticCodeId != 1) put("transl_table", listOf(f.geneticCodeId.toString()))

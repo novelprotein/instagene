@@ -4,12 +4,7 @@ data class EnzymeSetDefinition(
     val name: String,
     val enzymeNames: List<String>,
     val description: String = "",
-) {
-    fun resolve(pool: List<Enzyme> = Enzymes.ALL): List<Enzyme> {
-        val names = enzymeNames.map(String::lowercase).toSet()
-        return pool.filter { it.name.lowercase() in names }
-    }
-}
+)
 
 /** Built-in and generated restriction-enzyme sets, including supplier and cutter groupings. */
 object EnzymeSetCatalog {
@@ -34,15 +29,4 @@ object EnzymeSetCatalog {
         "Enzymes that leave 5' cohesive ends.",
     )
     val PREDEFINED = listOf(COMMON_CLONING, RARE_CUTTERS, BLUNT_CUTTERS, FIVE_PRIME_CUTTERS)
-
-    fun bySupplier(pool: List<Enzyme>, supplier: String): EnzymeSetDefinition {
-        val found = pool.filter { it.supplier.equals(supplier, true) }
-        return EnzymeSetDefinition(supplier, found.map { it.name }, "Enzymes supplied by $supplier.")
-    }
-
-    fun byCutCount(seq: Seq, count: Int, pool: List<Enzyme> = Enzymes.ALL): EnzymeSetDefinition {
-        require(count >= 0) { "Cut count cannot be negative" }
-        val matches = pool.filter { Digest.countSites(seq, it) == count }
-        return EnzymeSetDefinition("$count-cutter${if (count == 1) "" else "s"}", matches.map { it.name }, "Enzymes cutting ${seq.name} exactly $count time(s).")
-    }
 }

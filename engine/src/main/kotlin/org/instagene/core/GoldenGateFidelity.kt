@@ -8,7 +8,7 @@ package org.instagene.core
  * Fidelity by High-Throughput Sequencing." ACS Synth Biol.
  * doi:10.1021/acssynbio.8b00333
  *
- * Each entry matrix[A][B] gives the log10(count) of overhang A ligating to
+     * Each entry {@code matrix[left][right]} gives the log10 count of overhang A ligating to
  * the Watson-Crick complement of overhang B. Normalized counts are used for
  * fidelity scoring.
  */
@@ -21,12 +21,6 @@ data class FidelityScore(
 )
 
 object GoldenGateFidelity {
-
-    // Ligation count matrix (normalized frequencies) for 4-base overhangs.
-    // Rows = left overhang, Cols = right overhang (complement pair).
-    // Entry = fraction of correct ligation for this pair relative to all ligation events.
-    // Derived from Potapov et al. (2018) Table S1, simplified to top overhangs.
-    private val OVERHANGS = listOf("AATG", "GCTT", "CGCT", "GGAG", "TGAC", "CCAT", "TCCC", "TACT", "AGCC", "GGTA")
 
     // Ligation fidelity matrix: matrix[leftOH][rightOH] = probability of correct ligation
     // Simplified from the published 256x256 matrix using the key fidelity values.
@@ -60,7 +54,6 @@ object GoldenGateFidelity {
      * Scores a Golden Gate assembly overhang set for ligation fidelity.
      *
      * @param overhangs the set of 4-base overhangs used in the assembly
-     * @param fragmentCount number of fragments (overhangs.size - 1 for circular, overhangs.size for linear)
      * @return fidelity score with per-overhang breakdown and warnings
      */
     fun score(overhangs: List<String>): FidelityScore {

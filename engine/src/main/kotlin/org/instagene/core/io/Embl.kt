@@ -34,7 +34,7 @@ object Embl {
                 ?: Regex("(\\d+)").find(currentLocation)
             if (positions != null) {
                 val start = positions.groupValues[1].toInt() - 1
-                val end = positions.groupValues.getOrNull(2)?.takeIf(String::isNotEmpty)?.toInt() ?: start + 1
+                val end = (positions.groupValues.getOrNull(2)?.takeIf(String::isNotEmpty)?.toInt()) ?: (start + 1)
                 val label = qualifiers["label"]?.firstOrNull()
                     ?: qualifiers["gene"]?.firstOrNull()
                     ?: qualifiers["product"]?.firstOrNull()

@@ -417,11 +417,10 @@ class FeaturesPanel(
             add(notesField)
         }
         val start = capturedStart + 1
-        val end = capturedEnd
         val ok = JOptionPane.showConfirmDialog(
             null,
             JPanel(BorderLayout(0, 6)).apply {
-                add(JLabel("Feature on ${doc.seq.name}: $start..$end"), BorderLayout.NORTH)
+                add(JLabel("Feature on ${doc.seq.name}: $start..$capturedEnd"), BorderLayout.NORTH)
                 add(form, BorderLayout.CENTER)
             },
             "Add Feature",
@@ -609,11 +608,11 @@ class FeaturesPanel(
         .filter { it.isNotEmpty() && !it.startsWith("#") }
         .mapNotNull { line ->
             val fields = line.split('|', limit = 3).map(String::trim)
-            when {
-                fields.size == 3 && fields[0].isNotEmpty() && fields[2].isNotEmpty() ->
-                    FeatureDefinition(fields[0], fields[2], fields[1].ifBlank { "misc_feature" })
-                fields.size == 2 && fields[0].isNotEmpty() && fields[1].isNotEmpty() ->
-                    FeatureDefinition(fields[0], fields[1])
+            when (fields.size) {
+                3 -> if (fields[0].isNotEmpty() && fields[2].isNotEmpty())
+                    FeatureDefinition(fields[0], fields[2], fields[1].ifBlank { "misc_feature" }) else null
+                2 -> if (fields[0].isNotEmpty() && fields[1].isNotEmpty())
+                    FeatureDefinition(fields[0], fields[1]) else null
                 else -> null
             }
         }

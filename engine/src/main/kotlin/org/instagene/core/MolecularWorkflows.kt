@@ -1,7 +1,5 @@
 package org.instagene.core
 
-import kotlin.math.roundToInt
-
 /** Stable identifiers for cloning procedures exposed by the engine and desktop UI. */
 enum class CloningMethod {
     RESTRICTION,
@@ -34,9 +32,7 @@ data class MolecularWorkflowResult(
     val steps: List<ProtocolStep>,
     val diagnostics: List<WorkflowDiagnostic> = emptyList(),
     val primers: List<PrimerAnnotation> = emptyList(),
-) {
-    val valid: Boolean get() = diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
-}
+)
 
 /** Cloning workflows built on the shared assembly primitives. */
 object CloningWorkflows {
@@ -227,9 +223,7 @@ data class PcrPrimer(
     val name: String,
     val hybridizingSequence: String,
     val extension: String = "",
-) {
-    val fullSequence: String get() = extension + hybridizingSequence
-}
+)
 
 enum class PcrMode { STANDARD, INVERSE, OVERLAP_EXTENSION, MUTAGENESIS }
 
@@ -371,44 +365,6 @@ object PcrWorkflows {
         return cleaned
     }
 
-}
-
-data class PrimerStructureResult(
-    val longestComplementaryRun: Int,
-    val estimatedDeltaG: Double,
-    val structure: String,
-)
-
-/** Deterministic primer hairpin/homodimer screening for interactive design feedback. */
-object PrimerStructure {
-    fun homodimer(bases: String): PrimerStructureResult = compare(clean(bases), Alphabet.reverseComplement(clean(bases)), minimumLoop = 0)
-
-    fun hairpin(bases: String, minimumLoop: Int = 3): PrimerStructureResult {
-        require(minimumLoop >= 0) { "Minimum loop cannot be negative" }
-        val clean = clean(bases)
-        return compare(clean, Alphabet.reverseComplement(clean), minimumLoop)
-    }
-
-    private fun compare(a: String, b: String, minimumLoop: Int): PrimerStructureResult {
-        var bestRun = 0
-        var bestOffset = 0
-        for (offset in -b.length..a.length) {
-            var run = 0
-            for (i in a.indices) {
-                val j = i + offset
-                val separated = minimumLoop == 0 || kotlin.math.abs(i - (a.length - 1 - j)) > minimumLoop
-                if (j in b.indices && separated && a[i] == b[j]) {
-                    run++
-                    if (run > bestRun) { bestRun = run; bestOffset = offset }
-                } else run = 0
-            }
-        }
-        val deltaG = -(bestRun * 1.7 * 10.0).roundToInt() / 10.0
-        val structure = "offset=$bestOffset; paired=$bestRun"
-        return PrimerStructureResult(bestRun, deltaG, structure)
-    }
-
-    private fun clean(value: String): String = Alphabet.normalizeDna(value)
 }
 
 data class CodonUsageProfile(val name: String, val preferredCodons: Map<Char, String>)

@@ -31,9 +31,6 @@ data class AlignmentResult(
             reference.sequence[i] != query.sequence[i] || reference.sequence[i] == '-' || query.sequence[i] == '-'
         }
     }
-
-    fun nextDiscrepancy(after: Int = -1, queryIndex: Int = 0): Int? =
-        discrepancyPositions(queryIndex).firstOrNull { it > after }
 }
 
 /** Deterministic Needleman-Wunsch alignment with affine gap penalties. */

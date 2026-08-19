@@ -32,7 +32,7 @@ class AnalysisPanelTest {
         val panel = AnalysisPanel(SeqDocument(Seq("sample", "GAATTCATGGCCTAAGCTT")), {}, { _, _ -> })
         assertEquals(
             listOf(
-                "Search", "Alignment", "Enzymes", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
+                "Search", "Alignment", "Enzymes", "CpG Methylation", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
                 "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram",
                 "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication",
                 "Statistics / Graphs",
@@ -50,7 +50,7 @@ class AnalysisPanelTest {
         val second = SeqDocument(Seq("second", "TGCA"))
         panel.bindDocument(second)
         panel.selectTool("Search")
-        assertTrue(panel.selectedTool() == "Search")
+        assertEquals("Search", panel.selectedTool())
     }
 
     @Test
@@ -403,7 +403,7 @@ class AnalysisPanelTest {
                 ).also { it.selectTool("NCBI / BLAST") }
             }
             val blastButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
-            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+
 
             onEdt {
                 assertTrue(blastButton.isEnabled)

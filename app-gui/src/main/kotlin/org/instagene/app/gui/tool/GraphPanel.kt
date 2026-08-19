@@ -33,6 +33,7 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
     private var cachedCodons: List<CodonUsageEntry>? = null
     private var cachedDinuc: List<Bar>? = null
     private var cachedRepeats: List<RepeatMatch>? = null
+    private var cachedCpGIslands: List<CpGIsland>? = null
 
     private var statsWorker: SwingWorker<SequenceStats, Nothing>? = null
     private val tabWorkers = mutableMapOf<Int, SwingWorker<JComponent, Nothing>>()
@@ -46,6 +47,8 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
         "Melting Temp" to { buildMeltingTempChart() },
         "Codon Usage" to { buildCodonUsageChart() },
         "Dinucleotides" to { buildDinucleotideChart() },
+        "CpG Density" to { buildCpgDensityChart() },
+        "CpG Islands" to { buildCpgIslandsChart() },
         "ORF Density" to { buildOrfDensityChart() },
         "Repeats" to { buildRepeatsChart() },
         "Summary" to { buildSummaryPanel() },
@@ -108,6 +111,7 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
         cachedCodons = null
         cachedDinuc = null
         cachedRepeats = null
+        cachedCpGIslands = null
         builtTabs.clear()
         chartTabs.removeAll()
     }
@@ -128,6 +132,10 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
             "Cumul. GC Skew", "Melting Temp")
         if (seq.kind == SeqKind.DNA) tabNames += "Codon Usage"
         tabNames += "Dinucleotides"
+        if (seq.kind == SeqKind.DNA) {
+            tabNames += "CpG Density"
+            tabNames += "CpG Islands"
+        }
         if (seq.kind == SeqKind.DNA) tabNames += "ORF Density"
         tabNames += "Repeats"
         tabNames += "Summary"
@@ -298,6 +306,51 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
         val dataset = DefaultCategoryDataset()
         for ((start, length, unit) in repeats.take(40)) dataset.addValue(length.toDouble(), "Length", "$unit @ $start")
         return buildBarChart("Tandem Repeats (${repeats.size} found)", "Repeat", "Length (bp)", dataset, Color(0xBF360C))
+    }
+
+    private fun buildCpgDensityChart(): ChartPanel {
+        val ws = (windowSize.value as Number).toInt()
+        val st = (stepSize.value as Number).toInt()
+        val data = SequenceStatistics.cpgDensityProfile(doc.seq, ws, st)
+        if (data.isEmpty()) return emptyChart("CpG Density \u2014 no data (sequence too short)")
+        return buildXYChart("CpG Observed/Expected Ratio (window=$ws, step=$st)", "Position", "O/E Ratio", data, Color(0x006064)) { plot ->
+            (plot.rangeAxis as NumberAxis).setRange(0.0, 2.5)
+        }
+    }
+
+    private fun buildCpgIslandsChart(): ChartPanel {
+        val ws = (windowSize.value as Number).toInt()
+        val st = (stepSize.value as Number).toInt()
+        val densityData = SequenceStatistics.cpgDensityProfile(doc.seq, ws, st)
+        if (densityData.isEmpty()) return emptyChart("CpG Islands \u2014 no data (sequence too short)")
+        val islands = cachedCpGIslands ?: SequenceStatistics.cpgIslands(doc.seq, ws, st).also { cachedCpGIslands = it }
+
+        val series = XYSeries("O/E Ratio")
+        for ((x, y) in densityData) series.add(x, y)
+        val ds = XYSeriesCollection(series)
+        val chart = ChartFactory.createXYLineChart(
+            "CpG Islands (${islands.size} found)", "Position", "O/E Ratio",
+            ds, PlotOrientation.VERTICAL, false, false, false
+        )
+        chart.backgroundPaint = Color.WHITE
+        val plot = chart.plot as XYPlot
+        plot.backgroundPaint = Color.WHITE
+        plot.domainGridlinePaint = Color(0xE0E0E0)
+        plot.rangeGridlinePaint = Color(0xE0E0E0)
+        val renderer = XYLineAndShapeRenderer(true, false)
+        renderer.setSeriesPaint(0, Color(0x006064))
+        renderer.setSeriesStroke(0, BasicStroke(1.5f))
+        plot.renderer = renderer
+        (plot.rangeAxis as NumberAxis).setRange(0.0, 2.5)
+
+        for (island in islands) {
+            val islandAnnotation = org.jfree.chart.annotations.XYBoxAnnotation(
+                island.start.toDouble(), 0.6, island.end.toDouble(), 2.5,
+                BasicStroke(1.0f), Color(0, 105, 92), Color(0, 105, 92, 40)
+            )
+            plot.addAnnotation(islandAnnotation)
+        }
+        return ChartPanel(chart)
     }
 
     private fun buildSummaryPanel(): ChartPanel {

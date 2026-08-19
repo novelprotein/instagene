@@ -87,9 +87,7 @@ object Fasta {
                         if (c.isWhitespace() || c.isDigit()) continue
                         val upper = c.uppercaseChar()
                         if (validateAlphabet && upper !in ANY_ALPHABET) {
-                            if (invalidLines.putIfAbsent(upper, lineNumber) == null) {
-                                // First sighting: remember the line for the error message.
-                            }
+                            invalidLines.putIfAbsent(upper, lineNumber)
                         }
                         bases.append(upper)
                     }

@@ -758,8 +758,8 @@ object Cli {
 
     fun usage(colors: Boolean = false): String {
         val heading = Colors.bold("InstaGene ${Version.VERSION} - DNA/RNA editing and plasmid construction.", colors)
-        return """
-        $heading
+        return $$"""
+        $$heading
 
         Usage: instagene <command> [options] [file]
 
@@ -817,7 +817,7 @@ object Cli {
         Desktop
           gui [FILE ...]                  launch the desktop GUI (opens FILE if given)
           gui --launcher PATH             run a specific GUI launcher instead of auto-detecting
-          ${'$'}{INSTAGENE_GUI}           environment variable pointing at the GUI launcher
+          ${INSTAGENE_GUI}           environment variable pointing at the GUI launcher
 
         Other
           sample [pUC19_MCS|GFP_CDS]      write a bundled example sequence

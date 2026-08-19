@@ -161,7 +161,7 @@ class CliTest {
         try {
             val argsFile = File(dir, "args.txt")
             val fakeGui = File(dir, "fake-gui.sh")
-            fakeGui.writeText("#!/bin/sh\necho \"\$@\" > \"$argsFile\"\nexit 42\n")
+            fakeGui.writeText($$"#!/bin/sh\necho \"$@\" > \"$$argsFile\"\nexit 42\n")
             fakeGui.setExecutable(true)
             val (code, _) = capture { Cli.run(listOf("gui", "--launcher", fakeGui.absolutePath, "plasmid.gb", "gfp.fa")) }
             assertEquals(42, code)
