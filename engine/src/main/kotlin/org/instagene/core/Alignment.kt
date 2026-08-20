@@ -37,7 +37,11 @@ data class AlignmentResult(
 object Alignment {
     fun align(reference: Seq, queries: List<Seq>, parameters: AlignmentParameters = AlignmentParameters()): AlignmentResult {
         require(queries.isNotEmpty()) { "At least one query sequence is required" }
-        val aligned = queries.map { alignPair(reference, it, parameters) }
+        val aligned = if (queries.size <= 2) {
+            queries.map { alignPair(reference, it, parameters) }
+        } else {
+            Parallel.map(queries) { alignPair(reference, it, parameters) }
+        }
         val refLength = aligned.maxOf { it.reference.length }
         val ref = aligned.firstOrNull()?.let { pair ->
             AlignedSequence(reference.name, pair.reference, Strand.FORWARD, pair.score, pair.matches, pair.mismatches, pair.gaps)

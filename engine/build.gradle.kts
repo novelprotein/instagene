@@ -9,9 +9,9 @@ plugins {
 }
 
 dependencies {
-    // The engine's only runtime dependency is kotlinx-serialization; datetime
-    // and coroutines were removed to keep the consumer footprint small.
+    // kotlinx-serialization for project persistence, coroutines for parallel engine computation.
     implementation(libs.kotlinxSerialization)
+    api(libs.kotlinxCoroutines)
     testImplementation(kotlin("test"))
 }
 

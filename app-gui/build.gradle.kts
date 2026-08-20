@@ -8,6 +8,7 @@ plugins {
     id("buildsrc.convention.kotlin-jvm")
     alias(libs.plugins.kotlinPluginSerialization)
     alias(libs.plugins.jpackagePlugin)
+    alias(libs.plugins.graalvmNative)
 }
 
 dependencies {
@@ -17,6 +18,38 @@ dependencies {
     implementation(libs.flatlafIntelliJ)
     implementation(libs.jfreechart)
 }
+
+// GraalVM native image configuration for the GUI.
+// The GUI uses Swing/FlatLaf/JFreeChart which require reflection, JNI, and
+// resource configs. See src/main/resources/META-INF/native-image/ for the
+// generated configs. Use `./gradlew :app-gui:nativeRunAgent` to re-generate
+// configs by tracing a representative GUI session.
+graalvmNative {
+    binaries {
+        named("main") {
+            mainClass.set("org.instagene.app.gui.GuiMainKt")
+            imageName.set("instagene")
+            buildArgs.addAll(
+                "-H:+ReportExceptionStackTraces",
+                "--no-fallback",
+                "-march=compatibility",
+                "-H:+JNI",
+                "-H:+AWT",
+                "-H:+UnlockExperimentalVMOptions",
+                "-H:+AddAllCharsets",
+            )
+            javaLauncher.set(javaToolchains.launcherFor {
+                languageVersion.set(JavaLanguageVersion.of(21))
+                vendor.set(JvmVendorSpec.GRAAL_VM)
+            })
+        }
+    }
+}
+
+// To re-generate native-image configs, run the tracing agent manually:
+//   java -agentlib:native-image-agent=config-output-dir=app-gui/src/main/resources/META-INF/native-image/org.instagene/app-gui \
+//     -cp app-gui/build/classes/java/main:... org.instagene.app.gui.GuiMainKt
+// Then review and merge the generated configs into the existing files above.
 
 tasks.register<JavaExec>("runGui") {
     group = "application"

@@ -124,6 +124,35 @@ jobs:
           path: app-cli/build/distributions/instagene-cli.zip
           if-no-files-found: error
 
+  native-cli:
+    name: Native CLI image (GraalVM)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up GraalVM 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: graalvm
+          java-version: '21'
+
+      - name: Install native-image
+        run: gu install native-image
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build native CLI image
+        run: ./gradlew :app-cli:nativeCompile --console=plain
+
+      - name: Upload native CLI image
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-cli-linux
+          path: app-cli/build/native/nativeCompile/instagene
+          if-no-files-found: error
+
   windows:
     name: Windows (.msi via WiX)
     runs-on: windows-latest
@@ -182,7 +211,7 @@ jobs:
 
   publish:
     name: Create GitHub Release
-    needs: [linux, linux-cli, windows, gui-jar, engine-sources]
+    needs: [linux, linux-cli, native-cli, windows, gui-jar, engine-sources]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

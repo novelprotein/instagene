@@ -31,9 +31,21 @@ tasks.register("run") {
 
 val appModules = setOf(":app-cli", ":app-gui", ":app-web")
 
+// Only inspect the standard user-facing configurations. Plugins like graalvmNative
+// create internal configurations with self-dependencies that are not real violations.
+private val userFacingConfigNames = setOf(
+    "implementation", "api", "compileOnly", "compileOnlyApi",
+    "runtimeOnly", "runtimeClasspath", "compileClasspath",
+    // Test variants
+    "testImplementation", "testCompileOnly", "testRuntimeOnly",
+    "testRuntimeClasspath", "testCompileClasspath",
+)
+
 gradle.projectsEvaluated {
     appModules.forEach { app ->
-        val badDeps = project(app).configurations.flatMap { it.dependencies }
+        val badDeps = project(app).configurations
+            .filter { it.name in userFacingConfigNames }
+            .flatMap { it.dependencies }
             .filterIsInstance<ProjectDependency>()
             .map { it.path }
             .filter { it != ":engine" }
@@ -42,7 +54,9 @@ gradle.projectsEvaluated {
         }
     }
 
-    val testsProjectDeps = project(":tests").configurations.flatMap { it.dependencies }
+    val testsProjectDeps = project(":tests").configurations
+        .filter { it.name in userFacingConfigNames }
+        .flatMap { it.dependencies }
         .filterIsInstance<ProjectDependency>()
         .map { it.path }
         .toSet()

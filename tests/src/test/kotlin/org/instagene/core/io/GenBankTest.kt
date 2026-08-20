@@ -60,7 +60,7 @@ class GenBankTest {
 
     @Test
     fun parseAcceptsBomAndLeadingWhitespaceBeforeLocus() {
-        val gb = "\uFEFF  " + minimalGb
+        val gb = "\uFEFF  $minimalGb"
 
         val seq = GenBank.parse(gb)
 

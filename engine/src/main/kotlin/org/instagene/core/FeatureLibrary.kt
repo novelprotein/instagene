@@ -197,11 +197,23 @@ object FeatureLibrary {
         seq: Seq,
         definitions: Collection<FeatureDefinition>,
         searchBothStrands: Boolean = false,
-    ): List<MatchInfo> = definitions.flatMap { definition ->
-        if (searchBothStrands) {
-            findOnStrand(seq, definition, Strand.FORWARD) + findOnStrand(seq, definition, Strand.REVERSE)
-        } else {
-            findOnStrand(seq, definition, definition.strand)
+    ): List<MatchInfo> {
+        val defs = definitions.toList()
+        if (defs.size <= 8) {
+            return defs.flatMap { definition ->
+                if (searchBothStrands) {
+                    findOnStrand(seq, definition, Strand.FORWARD) + findOnStrand(seq, definition, Strand.REVERSE)
+                } else {
+                    findOnStrand(seq, definition, definition.strand)
+                }
+            }
+        }
+        return Parallel.flatMap(defs) { definition ->
+            if (searchBothStrands) {
+                findOnStrand(seq, definition, Strand.FORWARD) + findOnStrand(seq, definition, Strand.REVERSE)
+            } else {
+                findOnStrand(seq, definition, definition.strand)
+            }
         }
     }
 

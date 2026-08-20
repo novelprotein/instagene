@@ -48,3 +48,6 @@ bin/
 bench-results.txt
 bench-results.json
 baseline.json
+
+### MkDocs ###
+site/

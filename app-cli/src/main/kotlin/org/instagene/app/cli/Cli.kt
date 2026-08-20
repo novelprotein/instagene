@@ -19,6 +19,7 @@ import org.instagene.core.MolecularCalculators
 import org.instagene.core.NcbiClient
 import org.instagene.core.PrimerThermodynamics
 import org.instagene.core.Recombination
+import org.instagene.core.Reports
 import org.instagene.core.SearchMode
 import org.instagene.core.SearchRequest
 import org.instagene.core.Seq
@@ -33,7 +34,6 @@ import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
 import java.io.File
 import java.io.IOException
-import kotlin.math.roundToInt
 import kotlin.system.measureNanoTime
 
 /**
@@ -203,26 +203,7 @@ object Cli {
     // ---------------------------------------------------------------- commands
 
     private fun info(seq: Seq) {
-        val counts = SeqOps.baseCounts(seq.bases)
-        println("Name        ${seq.name}")
-        if (seq.description.isNotBlank()) println("Description ${seq.description}")
-        println("Type        ${seq.kind.name.lowercase()}")
-        println("Topology    ${seq.topology.name.lowercase()}")
-        println("Length      ${seq.length} ${if (seq.kind.name == "PROTEIN") "aa" else "bp"}")
-        println("GC content  ${round(SeqOps.gcContent(seq))} %")
-        println("Tm          ${round(SeqOps.meltingTemp(seq.bases))} C")
-        println("MW          ${round(SeqOps.molecularWeightDaltons(seq) / 1000.0)} kDa")
-        println("Composition ${counts.entries.joinToString(", ") { "${it.key}=${it.value}" }}")
-        if (seq.features.isNotEmpty()) {
-            println("Features")
-            seq.features.forEach {
-                println("  %-20s %-14s %s %s".format(it.name.take(20), it.type, it.displayRange(), it.strand.symbol))
-            }
-        }
-        val cutters = Digest.enzymesCutting(seq, 1)
-        if (cutters.isNotEmpty()) {
-            println("Unique cutters (${cutters.size}): ${cutters.joinToString(", ") { it.name }}")
-        }
+        print(Reports.seqSummary(seq))
     }
 
     private fun benchmark(args: Args) {
@@ -754,7 +735,7 @@ object Cli {
             if (candidate.canExecute()) candidate.absolutePath else null
         }
 
-    private fun round(v: Double): Double = (v * 10).roundToInt() / 10.0
+    private fun round(v: Double): Double = Reports.round1(v)
 
     fun usage(colors: Boolean = false): String {
         val heading = Colors.bold("InstaGene ${Version.VERSION} - DNA/RNA editing and plasmid construction.", colors)

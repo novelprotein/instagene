@@ -17,7 +17,11 @@ object SangerAlignment {
 
     fun align(reference: Seq, reads: List<Seq>): SangerAlignmentResult {
         val ref = reference.bases.uppercase()
-        val aligned = reads.map { read -> alignOne(ref, read) }
+        val aligned = if (reads.size <= 4) {
+            reads.map { read -> alignOne(ref, read) }
+        } else {
+            Parallel.map(reads) { read -> alignOne(ref, read) }
+        }
         val avgIdentity = if (aligned.isNotEmpty()) aligned.map { it.identity }.average() else 0.0
         return SangerAlignmentResult(aligned, AlignmentSummary(aligned.size, avgIdentity))
     }

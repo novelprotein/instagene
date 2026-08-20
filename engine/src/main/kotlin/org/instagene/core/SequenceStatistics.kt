@@ -455,28 +455,22 @@ object SequenceStatistics {
         val len = bases.length
         if (len < windowSize) return emptyList()
 
-        // Score each window
-        val qualifying = BooleanArray(len / step + 1)
-        var pos = 0
-        var idx = 0
-        while (pos + windowSize <= len) {
-            var gc = 0; var cg = 0; var cCount = 0; var gCount = 0
-            for (j in pos until pos + windowSize) {
-                when (bases[j]) {
-                    'G' -> { gCount++; gc++ }
-                    'C' -> { cCount++; gc++ }
-                }
+        // Score each window — windows are independent so we parallelize the scoring.
+        val windowCount = (len - windowSize) / step + 1
+        data class WindowScore(val idx: Int, val qualifying: Boolean)
+        val scores = if (windowCount > 200) {
+            Parallel.map((0 until windowCount).toList()) { idx ->
+                val pos = idx * step
+                WindowScore(idx, scoreCpgWindow(bases, pos, windowSize, minGc, minOeRatio))
             }
-            for (j in pos until pos + windowSize - 1) {
-                if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
+        } else {
+            (0 until windowCount).map { idx ->
+                val pos = idx * step
+                WindowScore(idx, scoreCpgWindow(bases, pos, windowSize, minGc, minOeRatio))
             }
-            val gcPct = gc * 100.0 / windowSize
-            val expected = cCount.toDouble() * gCount / windowSize
-            val oe = if (expected > 0.0) cg / expected else 0.0
-            if (gcPct >= minGc && oe >= minOeRatio) qualifying[idx] = true
-            pos += step
-            idx++
         }
+        val qualifying = BooleanArray(windowCount)
+        scores.forEach { if (it.qualifying) qualifying[it.idx] = true }
 
         // Merge overlapping qualifying windows
         val islands = ArrayList<CpGIsland>()
@@ -525,30 +519,56 @@ object SequenceStatistics {
         out += CpGIsland(start + 1, end, length, gcPct, cg, expected, oe)
     }
 
+    /** Scores a single CpG window — used by [cpgIslands] and [cpgDensityProfile]. */
+    private fun scoreCpgWindow(bases: String, pos: Int, windowSize: Int, minGc: Double, minOeRatio: Double): Boolean {
+        var gc = 0; var cg = 0; var cCount = 0; var gCount = 0
+        for (j in pos until pos + windowSize) {
+            when (bases[j]) {
+                'G' -> { gCount++; gc++ }
+                'C' -> { cCount++; gc++ }
+            }
+        }
+        for (j in pos until pos + windowSize - 1) {
+            if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
+        }
+        val gcPct = gc * 100.0 / windowSize
+        val expected = cCount.toDouble() * gCount / windowSize
+        val oe = if (expected > 0.0) cg / expected else 0.0
+        return gcPct >= minGc && oe >= minOeRatio
+    }
+
+    private fun scoreCpgDensity(bases: String, pos: Int, windowSize: Int): XY {
+        var cg = 0; var cCount = 0; var gCount = 0
+        for (j in pos until pos + windowSize) {
+            when (bases[j]) {
+                'G' -> gCount++
+                'C' -> cCount++
+            }
+        }
+        for (j in pos until pos + windowSize - 1) {
+            if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
+        }
+        val expected = cCount.toDouble() * gCount / windowSize
+        val oe = if (expected > 0.0) cg / expected else 0.0
+        return XY(pos + windowSize / 2.0, oe)
+    }
+
     /** Per-window observed/expected CpG ratio as an XY series for charting. */
     fun cpgDensityProfile(seq: Seq, windowSize: Int = 100, step: Int = 20): List<XY> {
         require(seq.kind != SeqKind.PROTEIN) { "CpG density requires DNA or RNA" }
         val bases = seq.bases.uppercase()
         val len = bases.length
         if (len < windowSize) return emptyList()
-        val result = ArrayList<XY>()
+        val positions = ArrayList<Int>()
         var pos = 0
         while (pos + windowSize <= len) {
-            var cg = 0; var cCount = 0; var gCount = 0
-            for (j in pos until pos + windowSize) {
-                when (bases[j]) {
-                    'G' -> gCount++
-                    'C' -> cCount++
-                }
-            }
-            for (j in pos until pos + windowSize - 1) {
-                if (bases[j] == 'C' && bases[j + 1] == 'G') cg++
-            }
-            val expected = cCount.toDouble() * gCount / windowSize
-            val oe = if (expected > 0.0) cg / expected else 0.0
-            result += XY(pos + windowSize / 2.0, oe)
+            positions += pos
             pos += step
         }
-        return result
+        return if (positions.size > 200) {
+            Parallel.map(positions) { scoreCpgDensity(bases, it, windowSize) }
+        } else {
+            positions.map { scoreCpgDensity(bases, it, windowSize) }
+        }
     }
 }

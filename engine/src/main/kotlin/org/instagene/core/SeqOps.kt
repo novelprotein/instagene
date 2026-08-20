@@ -208,9 +208,12 @@ object SeqOps {
         bothStrands: Boolean = true,
     ): List<Orf> {
         val dna = backTranscribe(seq)
-        val out = ArrayList<Orf>()
-        out += scanStrand(dna, Strand.FORWARD, minAminoAcids, table)
-        if (bothStrands) out += scanStrand(dna, Strand.REVERSE, minAminoAcids, table)
+        val out = if (bothStrands) {
+            val strands = listOf(Strand.FORWARD, Strand.REVERSE)
+            Parallel.map(strands) { scanStrand(dna, it, minAminoAcids, table) }.flatten()
+        } else {
+            scanStrand(dna, Strand.FORWARD, minAminoAcids, table)
+        }
         return out.sortedWith(compareByDescending<Orf> { it.lengthNt }.thenBy { it.start })
     }
 

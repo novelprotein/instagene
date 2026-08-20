@@ -27,13 +27,31 @@ data class MutationCandidate(
 
 /** Higher-level restriction analysis described by ApE's enzyme workflows. */
 object EnzymeAnalysis {
-    fun reports(seq: Seq, enzymes: Collection<Enzyme>, selection: IntRange? = null): List<RestrictionReport> = enzymes.map { enzyme ->
-        val sites = Digest.cutSites(seq, enzyme).filter { site -> selection == null || site.recognitionStart in selection }
-        RestrictionReport(enzyme, sites.size, sites.map { it.recognitionStart + 1 })
-    }.sortedBy { it.enzyme.name.lowercase() }
+    fun reports(seq: Seq, enzymes: Collection<Enzyme>, selection: IntRange? = null): List<RestrictionReport> {
+        val enzymeList = enzymes.toList()
+        val results = if (enzymeList.size <= 4) {
+            enzymeList.map { enzyme ->
+                val sites = Digest.cutSites(seq, enzyme).filter { site -> selection == null || site.recognitionStart in selection }
+                RestrictionReport(enzyme, sites.size, sites.map { it.recognitionStart + 1 })
+            }
+        } else {
+            Parallel.map(enzymeList) { enzyme ->
+                val sites = Digest.cutSites(seq, enzyme).filter { site -> selection == null || site.recognitionStart in selection }
+                RestrictionReport(enzyme, sites.size, sites.map { it.recognitionStart + 1 })
+            }
+        }
+        return results.sortedBy { it.enzyme.name.lowercase() }
+    }
 
-    fun unique(seq: Seq, enzymes: Collection<Enzyme> = Enzymes.ALL): List<Enzyme> = enzymes.filter { Digest.countSites(seq, it) == 1 }
-    fun absent(seq: Seq, enzymes: Collection<Enzyme> = Enzymes.ALL): List<Enzyme> = enzymes.filter { Digest.countSites(seq, it) == 0 }
+    fun unique(seq: Seq, enzymes: Collection<Enzyme> = Enzymes.ALL): List<Enzyme> {
+        if (enzymes is List && enzymes.size <= 4) return enzymes.filter { Digest.countSites(seq, it) == 1 }
+        return Parallel.filter(enzymes.toList()) { Digest.countSites(seq, it) == 1 }
+    }
+
+    fun absent(seq: Seq, enzymes: Collection<Enzyme> = Enzymes.ALL): List<Enzyme> {
+        if (enzymes is List && enzymes.size <= 4) return enzymes.filter { Digest.countSites(seq, it) == 0 }
+        return Parallel.filter(enzymes.toList()) { Digest.countSites(seq, it) == 0 }
+    }
 
     /** Filters sites blocked by common Dam/Dcm methylation motifs. */
     fun cutSites(seq: Seq, enzymes: Collection<Enzyme>, profile: MethylationProfile): List<CutSite> =

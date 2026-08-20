@@ -68,8 +68,13 @@ object Digest {
 
     /** All cut sites of [enzymes] in [seq], sorted by top-strand cut position. */
     fun cutSites(seq: Seq, enzymes: Collection<Enzyme>): List<CutSite> {
-        val sites = ArrayList<CutSite>()
-        for (enzyme in enzymes) sites += cutSites(seq, enzyme)
+        if (enzymes.size <= 4) {
+            // Small pools: sequential is faster than coroutine dispatch overhead.
+            val sites = ArrayList<CutSite>()
+            for (enzyme in enzymes) sites += cutSites(seq, enzyme)
+            return sites.sortedWith(compareBy({ it.topCut }, { it.enzyme.name }))
+        }
+        val sites = Parallel.map(enzymes.toList()) { cutSites(seq, it) }.flatten()
         return sites.sortedWith(compareBy({ it.topCut }, { it.enzyme.name }))
     }
 
@@ -294,10 +299,15 @@ object Digest {
         }
 
     /** Enzymes that cut [seq] exactly [times] — the usual way to find a unique site. */
-    fun enzymesCutting(seq: Seq, times: Int = 1, pool: List<Enzyme> = Enzymes.ALL): List<Enzyme> =
-        pool.filter { countSites(seq, it) == times }
+    fun enzymesCutting(seq: Seq, times: Int = 1, pool: List<Enzyme> = Enzymes.ALL): List<Enzyme> {
+        if (pool.size <= 4) return pool.filter { countSites(seq, it) == times }
+        return Parallel.filter(pool) { countSites(seq, it) == times }
+    }
 
     /** Per-enzyme cut counts over [pool], for the digest summary column. */
-    fun cutCounts(seq: Seq, pool: List<Enzyme> = Enzymes.ALL): Map<Enzyme, Int> =
-        pool.associateWith { countSites(seq, it) }
+    fun cutCounts(seq: Seq, pool: List<Enzyme> = Enzymes.ALL): Map<Enzyme, Int> {
+        if (pool.size <= 4) return pool.associateWith { countSites(seq, it) }
+        val counts = Parallel.map(pool) { it to countSites(seq, it) }
+        return counts.toMap()
+    }
 }

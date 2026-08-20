@@ -40,12 +40,12 @@ object AdvancedSearch {
         val strands = if (request.bothStrands && seq.kind != SeqKind.PROTEIN) {
             listOf(Strand.FORWARD, Strand.REVERSE)
         } else listOf(Strand.FORWARD)
-        val out = ArrayList<SequenceMatch>()
-        for (strand in strands) {
+        fun searchStrand(strand: Strand): List<SequenceMatch> {
             val oriented = if (strand == Strand.FORWARD) pattern else
                 Alphabet.reverseComplement(pattern, seq.kind)
             val maxStart = if (seq.isCircular) seq.length - 1 else seq.length - oriented.length
-            if (maxStart < 0) continue
+            if (maxStart < 0) return emptyList()
+            val out = ArrayList<SequenceMatch>()
             for (start in 0..maxStart) {
                 val target = seq.sub(start, start + oriented.length)
                 if (target.length != oriented.length) continue
@@ -54,33 +54,44 @@ object AdvancedSearch {
                     out += SequenceMatch(start, start + oriented.length, strand, mismatch, target)
                 }
             }
+            return out
         }
-        return out.distinctBy { Triple(it.start, it.end, it.strand) }
+        val results = if (strands.size > 1) {
+            Parallel.map(strands) { searchStrand(it) }.flatten()
+        } else {
+            searchStrand(strands.first())
+        }
+        return results.distinctBy { Triple(it.start, it.end, it.strand) }
             .sortedWith(compareBy({ it.start }, { it.strand.sign }))
     }
 
     private fun findAminoAcids(seq: Seq, request: SearchRequest): List<SequenceMatch> {
         val peptide = request.pattern.uppercase()
-        val out = ArrayList<SequenceMatch>()
         val strands = if (request.bothStrands) listOf(Strand.FORWARD, Strand.REVERSE) else listOf(Strand.FORWARD)
-        for (strand in strands) {
+        fun searchFrame(strand: Strand, frame: Int): List<SequenceMatch> {
             val oriented = if (strand == Strand.FORWARD) seq else seq.reverseComplement()
-            for (frame in 0..2) {
-                val protein = SeqOps.translateBases(oriented.bases, frame)
-                var from = 0
-                while (true) {
-                    val hit = protein.indexOf(peptide, from)
-                    if (hit < 0) break
-                    val ntStart = frame + hit * 3
-                    val ntEnd = ntStart + peptide.length * 3
-                    val forwardStart = if (strand == Strand.FORWARD) ntStart else seq.length - ntEnd
-                    val forwardEnd = if (strand == Strand.FORWARD) ntEnd else seq.length - ntStart
-                    out += SequenceMatch(forwardStart, forwardEnd, strand, 0, peptide, frame)
-                    from = hit + 1
-                }
+            val protein = SeqOps.translateBases(oriented.bases, frame)
+            val out = ArrayList<SequenceMatch>()
+            var from = 0
+            while (true) {
+                val hit = protein.indexOf(peptide, from)
+                if (hit < 0) break
+                val ntStart = frame + hit * 3
+                val ntEnd = ntStart + peptide.length * 3
+                val forwardStart = if (strand == Strand.FORWARD) ntStart else seq.length - ntEnd
+                val forwardEnd = if (strand == Strand.FORWARD) ntEnd else seq.length - ntStart
+                out += SequenceMatch(forwardStart, forwardEnd, strand, 0, peptide, frame)
+                from = hit + 1
             }
+            return out
         }
-        return out.sortedWith(compareBy({ it.start }, { it.strand.sign }, { it.frame ?: 0 }))
+        val tasks = strands.flatMap { strand -> (0..2).map { frame -> strand to frame } }
+        val results = if (tasks.size > 2) {
+            Parallel.map(tasks) { (strand, frame) -> searchFrame(strand, frame) }.flatten()
+        } else {
+            tasks.flatMap { (strand, frame) -> searchFrame(strand, frame) }
+        }
+        return results.sortedWith(compareBy({ it.start }, { it.strand.sign }, { it.frame ?: 0 }))
     }
 
     private fun mismatchCount(target: String, pattern: String, request: SearchRequest): Int =

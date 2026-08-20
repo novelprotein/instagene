@@ -9,6 +9,7 @@ import org.instagene.core.Digest
 import org.instagene.core.Enzymes
 import org.instagene.core.AdvancedSearch
 import org.instagene.core.GelLane
+import org.instagene.core.Reports
 import org.instagene.core.SearchMode
 import org.instagene.core.SearchRequest
 import org.instagene.core.Seq
@@ -21,7 +22,6 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlin.math.roundToInt
 
 /**
  * The HTML5 front-end: a small HTTP server (JDK `HttpServer`, no extra
@@ -196,8 +196,8 @@ object WebServer {
             }
 
             "info" -> textResult("info", infoText(seq))
-            "gc" -> textResult("gc", "${round1(SeqOps.gcContent(seq))} %")
-            "tm" -> textResult("tm", "${round1(SeqOps.meltingTemp(seq.bases))} C")
+            "gc" -> textResult("gc", "${Reports.round1(SeqOps.gcContent(seq))} %")
+            "tm" -> textResult("tm", "${Reports.round1(SeqOps.meltingTemp(seq.bases))} C")
             "orf" -> textResult("orf", orfText(seq, a))
             "find" -> textResult("find", findText(seq, a))
             "digest" -> textResult("digest", digestText(seq, a))
@@ -217,8 +217,8 @@ object WebServer {
         append("Type        ").append(seq.kind.name.lowercase()).append('\n')
         append("Topology    ").append(seq.topology.name.lowercase()).append('\n')
         append("Length      ").append(seq.length).append(if (seq.kind == SeqKind.PROTEIN) " aa" else " bp").append('\n')
-        append("GC content  ").append(round1(SeqOps.gcContent(seq))).append(" %").append('\n')
-        append("Tm          ").append(round1(SeqOps.meltingTemp(seq.bases))).append(" C").append('\n')
+        append("GC content  ").append(Reports.round1(SeqOps.gcContent(seq))).append(" %").append('\n')
+        append("Tm          ").append(Reports.round1(SeqOps.meltingTemp(seq.bases))).append(" C").append('\n')
         val counts = SeqOps.baseCounts(seq.bases)
         append("Composition ").append(counts.entries.joinToString(", ") { "${it.key}=${it.value}" }).append('\n')
         if (seq.features.isNotEmpty()) {
@@ -305,7 +305,7 @@ object WebServer {
         }
     }
 
-    private fun round1(v: Double): Double = (v * 10).roundToInt() / 10.0
+    private fun round1(v: Double): Double = Reports.round1(v)
 
     // --------------------------------------------------------------- HTTP plumbing
 

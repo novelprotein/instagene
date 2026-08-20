@@ -1,0 +1,13 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": ".*\\.properties$"},
+      {"pattern": ".*\\.css$"},
+      {"pattern": ".*FlatLaf.*"},
+      {"pattern": ".*flatlaf.*"},
+      {"pattern": "META-INF/services/.*"},
+      {"pattern": "web/.*"},
+      {"pattern": ".*themes/.*"}
+    ]
+  }
+}

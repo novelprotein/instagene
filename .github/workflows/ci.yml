@@ -120,11 +120,13 @@ jobs:
         id: baseline
         continue-on-error: true
         run: |
-          gh api "repos/${{ github.repository }}/contents/benchmarks/latest.json" \
-            --jq '.content' > /tmp/b64.txt 2>/dev/null || true
-          if [ -s /tmp/b64.txt ]; then
-            base64 -d /tmp/b64.txt > baseline.json
-            echo "found=true" >> "$GITHUB_OUTPUT"
+          content=$(gh api "repos/${{ github.repository }}/contents/benchmarks/latest.json" \
+            --jq '.content' 2>/dev/null || true)
+          if [ -n "$content" ]; then
+            echo "$content" | tr -d '\n' | base64 -d > baseline.json 2>/dev/null
+            if [ -s baseline.json ]; then
+              echo "found=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
         env:
           GH_TOKEN: ${{ github.token }}
@@ -285,6 +287,45 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  native-cli:
+    name: Native CLI image (GraalVM)
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up GraalVM 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: graalvm
+          java-version: '21'
+
+      - name: Install native-image
+        run: gu install native-image
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build native CLI image
+        run: ./gradlew :app-cli:nativeCompile --console=plain
+
+      - name: Smoke-test native CLI
+        run: |
+          ./app-cli/build/native/nativeCompile/instagene --help || true
+          file ./app-cli/build/native/nativeCompile/instagene
+
+      - name: Upload native CLI image
+        uses: actions/upload-artifact@v5
+        with:
+          name: instagene-native-cli-linux
+          path: app-cli/build/native/nativeCompile/instagene
+          if-no-files-found: error
+          retention-days: 14
+
   native-packages:
     name: ${{ matrix.label }}
     if: ${{ github.event_name != 'pull_request' }}
@@ -331,3 +372,29 @@ jobs:
           path: ${{ matrix.artifact_path }}
           if-no-files-found: error
           retention-days: 14
+
+  docs:
+    name: Deploy MkDocs site
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install MkDocs and dependencies
+        run: pip install mkdocs-material
+
+      - name: Deploy to GitHub Pages
+        run: mkdocs gh-deploy --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
