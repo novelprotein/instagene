@@ -365,15 +365,7 @@ object Cli {
             println("No ORFs of at least $minAa aa found.")
             return
         }
-        println("%-10s %-10s %-7s %-6s %s".format("start", "end", "strand", "aa", "protein"))
-        orfs.forEach {
-            println(
-                "%-10d %-10d %-7s %-6d %s".format(
-                    it.start + 1, it.end, it.strand.symbol, it.lengthAa, it.protein.take(60)
-                )
-            )
-        }
-        println("${orfs.size} ORF(s).")
+        println(Reports.orfReport(seq, table, minAa, !args.flag("forward-only")))
     }
 
     private fun find(seq: Seq, args: Args) {
@@ -384,16 +376,7 @@ object Cli {
             "aa", "amino", "protein" -> SearchMode.AMINO_ACID
             else -> throw CliException("--mode expects dna, literal, or amino")
         }
-        val hits = AdvancedSearch.find(seq, SearchRequest(
-            pattern = pattern,
-            mode = mode,
-            bothStrands = !args.flag("forward-only"),
-            caseSensitive = args.flag("case-sensitive"),
-            maxMismatches = args.int("mismatches", 0),
-            threePrimeExact = args.int("three-prime", 0),
-        ))
-        hits.forEach { println("${it.start + 1}\t${it.end}\t${it.strand.symbol}\t${it.mismatches}\t${it.matched}") }
-        println("${hits.size} hit(s) for $pattern in ${seq.name}")
+        println(Reports.searchReport(seq, pattern, mode, !args.flag("forward-only"), args.int("mismatches", 0)))
     }
 
     private fun align(reference: Seq, args: Args) {
@@ -460,28 +443,10 @@ object Cli {
             args.flag("all") -> Enzymes.ALL
             else -> throw CliException("Specify --enzymes EcoRI,BamHI (or --all)")
         }
-        val sites = Digest.cutSites(seq, enzymes)
-        println("Cut sites in ${seq.name} (${seq.length} bp, ${seq.topology.name.lowercase()}):")
-        if (sites.isEmpty()) {
-            println("  none")
-        } else {
-            sites.forEach {
-                println(
-                    "  %-10s at %-8d site %-10s %s".format(
-                        it.enzyme.name, it.topCut + 1, it.enzyme.notation(), it.enzyme.endType.label
-                    )
-                )
-            }
-        }
-        val fragments = Digest.digest(seq, enzymes)
-        println()
-        println("Fragments (${fragments.size}):")
-        println("  %-6s %-10s %-10s %-22s %s".format("#", "length", "start", "left end", "right end"))
-        fragments.forEachIndexed { i, f ->
-            println("  %-6d %-10d %-10d %-22s %s".format(i + 1, f.length, f.start + 1, f.leftEnd, f.rightEnd))
-        }
+        println(Reports.digestReport(seq, enzymes))
         if (args.flag("fasta")) {
             println()
+            val fragments = Digest.digest(seq, enzymes)
             fragments.forEachIndexed { i, f -> print(SeqIO.write(f.toSeq("${seq.name}_frag${i + 1}"), SeqFormat.FASTA)) }
         }
     }

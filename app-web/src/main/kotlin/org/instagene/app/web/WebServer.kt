@@ -4,19 +4,7 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import org.instagene.core.CodonTable
-import org.instagene.core.Digest
-import org.instagene.core.Enzymes
-import org.instagene.core.AdvancedSearch
-import org.instagene.core.GelLane
-import org.instagene.core.Reports
-import org.instagene.core.SearchMode
-import org.instagene.core.SearchRequest
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.SeqOps
-import org.instagene.core.SequenceIdentity
-import org.instagene.core.VirtualGel
+import org.instagene.core.*
 import org.instagene.core.io.SeqIO
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -240,14 +228,7 @@ object WebServer {
         val minAa = a["min-aa"]?.toIntOrNull() ?: 30
         val orfs = SeqOps.findOrfs(seq, minAa, table, a["forward-only"] != "true")
         if (orfs.isEmpty()) return "No ORFs of at least $minAa aa found."
-        return buildString {
-            append("%-10s %-10s %-7s %-6s %s".format("start", "end", "strand", "aa", "protein")).append('\n')
-            orfs.forEach {
-                append("%-10d %-10d %-7s %-6d %s".format(it.start + 1, it.end, it.strand.symbol, it.lengthAa, it.protein.take(60)))
-                    .append('\n')
-            }
-            append("${orfs.size} ORF(s).")
-        }
+        return Reports.orfReport(seq, table, minAa, a["forward-only"] != "true")
     }
 
     private fun findText(seq: Seq, a: Map<String, String>): String {
@@ -258,18 +239,7 @@ object WebServer {
             "amino", "aa", "protein" -> SearchMode.AMINO_ACID
             else -> SearchMode.DNA_DEGENERATE
         }
-        val hits = AdvancedSearch.find(seq, SearchRequest(
-            pattern = pattern,
-            mode = mode,
-            bothStrands = a["forward-only"] != "true",
-            maxMismatches = a["mismatches"]?.toIntOrNull() ?: 0,
-            threePrimeExact = a["three-prime"]?.toIntOrNull() ?: 0,
-        ))
-        if (hits.isEmpty()) return "No hits for $pattern in ${seq.name}."
-        return buildString {
-            hits.forEach { hit -> append(hit.start + 1).append('\t').append(hit.end).append('\t').append(hit.strand.symbol).append('\t').append(hit.mismatches).append('\t').append(hit.matched).append('\n') }
-            append("${hits.size} hit(s) for $pattern in ${seq.name}")
-        }
+        return Reports.searchReport(seq, pattern, mode, a["forward-only"] != "true", a["mismatches"]?.toIntOrNull() ?: 0)
     }
 
     private fun gelText(seq: Seq, a: Map<String, String>): String {
@@ -284,25 +254,7 @@ object WebServer {
 
     private fun digestText(seq: Seq, a: Map<String, String>): String {
         val enzymes = a["enzymes"]?.takeIf { it.isNotBlank() }?.let { Enzymes.parseList(it) } ?: Enzymes.ALL
-        val sites = Digest.cutSites(seq, enzymes)
-        val fragments = Digest.digest(seq, enzymes)
-        return buildString {
-            append("Cut sites in ${seq.name} (${seq.length} bp, ${seq.topology.name.lowercase()}):").append('\n')
-            if (sites.isEmpty()) {
-                append("  none").append('\n')
-            } else {
-                sites.forEach {
-                    append("  %-10s at %-8d site %-10s %s".format(it.enzyme.name, it.topCut + 1, it.enzyme.notation(), it.enzyme.endType.label))
-                        .append('\n')
-                }
-            }
-            append('\n')
-            append("Fragments (${fragments.size}):").append('\n')
-            append("  %-6s %-10s %-10s %-22s %s".format("#", "length", "start", "left end", "right end")).append('\n')
-            fragments.forEachIndexed { i, f ->
-                append("  %-6d %-10d %-10d %-22s %s".format(i + 1, f.length, f.start + 1, f.leftEnd, f.rightEnd)).append('\n')
-            }
-        }
+        return Reports.digestReport(seq, enzymes)
     }
 
     private fun round1(v: Double): Double = Reports.round1(v)

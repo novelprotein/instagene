@@ -270,7 +270,7 @@ class DocumentTabsTest {
             // The empty-state menu bar still shows the full set of top-level
             // options; the sequence-only ones are merely disabled.
             val menus = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text }
-            assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools"), menus, "all top-level menus must be present")
+            assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools", "Preferences", "Help"), menus, "all top-level menus must be present")
             val edit = content.menuBar.getMenu(1)!!
             val view = content.menuBar.getMenu(2)!!
             val project = content.menuBar.getMenu(3)!!
@@ -278,7 +278,7 @@ class DocumentTabsTest {
             val tools = content.menuBar.getMenu(5)!!
             assertFalse(edit.isEnabled, "Edit must be disabled with no document open")
             assertTrue(view.isEnabled, "View must stay enabled so themes and the file browser can be changed")
-            assertFalse(project.isEnabled, "Project must be disabled with no project open")
+            assertTrue(project.isEnabled, "Project menu stays enabled so new projects can be opened")
             assertFalse(actions.isEnabled, "Actions must be disabled with no document open")
             assertFalse(tools.isEnabled, "Tools must be disabled with no document open")
             assertEquals(

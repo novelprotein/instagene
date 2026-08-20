@@ -11,9 +11,12 @@ import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.core.SeqKind
 import java.awt.event.KeyEvent
 import javax.swing.JFrame
+import javax.swing.JCheckBox
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JOptionPane
+import javax.swing.JPanel
+import javax.swing.JTextField
 import javax.swing.KeyStroke
 
 class EditMenu(
@@ -22,6 +25,7 @@ class EditMenu(
     private val editor: EditActions,
     private val prefs: Prefs = Prefs(),
     private val featuresPanel: FeaturesPanel? = null,
+    private val sequenceView: org.instagene.app.gui.tool.SequenceView? = null,
     private val onEditProperties: (() -> Unit)? = null,
 ) {
 
@@ -46,6 +50,7 @@ class EditMenu(
     }
 
     private var lastPattern: String? = null
+    private var lastUseRegex = false
 
     init {
         doc.addDocListener {
@@ -87,6 +92,7 @@ class EditMenu(
             addSeparator()
             add(createFindItem())
             add(createFindNextItem())
+            add(createGoToItem())
             addSeparator()
             if (doc is SeqDocument) {
                 add(createSaveSelectionItem())
@@ -135,10 +141,21 @@ class EditMenu(
         return JMenuItem("Find...", KeyEvent.VK_F).apply {
             accelerator = menuShortcut(KeyEvent.VK_F)
             addActionListener {
-                val pattern = JOptionPane.showInputDialog(frame, "Find:", lastPattern)
-                if (pattern != null && pattern.isNotEmpty()) {
-                    lastPattern = pattern
-                    findNext()
+                val panel = JPanel(java.awt.BorderLayout(4, 4))
+                val inputField = JTextField(lastPattern ?: "", 30)
+                val regexCheckBox = JCheckBox("Regex", lastUseRegex)
+                panel.add(inputField, java.awt.BorderLayout.CENTER)
+                panel.add(regexCheckBox, java.awt.BorderLayout.EAST)
+                val result = JOptionPane.showConfirmDialog(
+                    frame, panel, "Find", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE,
+                )
+                if (result == JOptionPane.OK_OPTION) {
+                    val pattern = inputField.text
+                    if (pattern.isNotEmpty()) {
+                        lastPattern = pattern
+                        lastUseRegex = regexCheckBox.isSelected
+                        findNext()
+                    }
                 }
             }
         }
@@ -149,6 +166,36 @@ class EditMenu(
             accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0)
             addActionListener { findNext() }
         }
+    }
+
+    private fun createGoToItem(): JMenuItem {
+        return JMenuItem("Go to Position...", KeyEvent.VK_G).apply {
+            accelerator = menuShortcut(KeyEvent.VK_G)
+            addActionListener { goToPosition() }
+        }
+    }
+
+    private fun goToPosition() {
+        val seqDoc = doc as? SeqDocument ?: return
+        val input = JOptionPane.showInputDialog(
+            frame,
+            "Go to base position (1-based):",
+            "Go to Position",
+            JOptionPane.QUESTION_MESSAGE,
+        )
+        if (input.isNullOrBlank()) return
+        val pos = input.toIntOrNull()
+        if (pos == null || pos < 1 || pos > seqDoc.seq.length) {
+            JOptionPane.showMessageDialog(
+                frame,
+                "Position must be between 1 and ${seqDoc.seq.length}.",
+                "Invalid Position",
+                JOptionPane.WARNING_MESSAGE,
+            )
+            return
+        }
+        // Find the SequenceView through the editor
+        sequenceView?.revealRange(pos - 1, pos)
     }
 
     /** Stores the current selection in the library, tagged with its source range. */
@@ -186,7 +233,7 @@ class EditMenu(
     /** Runs the editor's find; shows a dialog when nothing matches. */
     private fun findNext() {
         val pattern = lastPattern ?: return
-        if (!editor.findNext(pattern)) {
+        if (!editor.findNext(pattern, lastUseRegex)) {
             JOptionPane.showMessageDialog(frame, "Pattern not found.", "Find", JOptionPane.INFORMATION_MESSAGE)
         }
     }

@@ -204,7 +204,7 @@ class ProjectTreeTest {
             val renderer = panel.tree.cellRenderer as DefaultTreeCellRenderer
             val node = panel.nodeFor(b)!!
             val cell = renderer.getTreeCellRendererComponent(panel.tree, node, false, false, false, 0, false)
-            assertEquals("sub/b.gb", (cell as javax.swing.JLabel).text)
+            assertEquals("◇ sub/b.gb", (cell as javax.swing.JLabel).text)
         }
     }
 }

@@ -14,6 +14,8 @@ import org.instagene.app.gui.edit.TextEditActions
 import org.instagene.app.gui.file.FileType
 import org.instagene.app.gui.file.FileTypes
 import org.instagene.app.gui.menu.FileMenu
+import org.instagene.app.gui.menu.HelpMenu
+import org.instagene.app.gui.menu.PreferencesMenu
 import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
 import org.instagene.app.gui.menu.confirmDiscardChanges
@@ -96,7 +98,7 @@ class InstaGeneContent(
     openPath: String? = null,
     private val owner: JFrame? = null,
     private val prefs: Prefs = Prefs(),
-    ncbiClient: NcbiClient = NcbiClient(),
+    private val ncbiClient: NcbiClient = NcbiClient(),
 ) : JPanel(BorderLayout()) {
 
     /** The parent window, used for dialogs and the system-app opener; null in headless contexts. */
@@ -270,6 +272,21 @@ class InstaGeneContent(
 
     /** A menu set bound to a throwaway empty sequence document, used only while nothing is open. */
     private val emptyStateMenuSet by lazy { menuSetFor(placeholderSeq) }
+
+    /** The "Open Recent" submenu for the empty-state File menu. */
+    private val emptyRecentMenu = JMenu("Open Recent").apply {
+        val paths = prefs.value.recentFiles.filter { File(it).exists() }
+        if (paths.isEmpty()) {
+            add(JMenuItem("(none)").apply { isEnabled = false })
+        } else {
+            for (path in paths) {
+                add(JMenuItem(File(path).name).apply {
+                    toolTipText = path
+                    addActionListener { openFileInTab(File(path)) }
+                })
+            }
+        }
+    }
 
     init {
         val initialFile = if (openPath != null && File(openPath).exists()) File(openPath) else null
@@ -451,6 +468,30 @@ class InstaGeneContent(
         val doc = SeqDocument(seq, file)
         addDocument(doc)
         return doc
+    }
+
+    /** Fetches an NCBI accession in the background and opens it as a new tab. */
+    private fun fetchNcbiAccession(input: String) {
+        statusBar.setMessage("Fetching NCBI record: $input...")
+        Thread {
+            try {
+                val seq = ncbiClient.fetchGenBank(input.trim())
+                SwingUtilities.invokeLater {
+                    openSequence(seq)
+                    statusBar.setMessage("Opened $input")
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    JOptionPane.showMessageDialog(
+                        owner,
+                        "Error fetching from NCBI:\n${e.message ?: "Unknown error"}",
+                        "NCBI Fetch Error",
+                        JOptionPane.ERROR_MESSAGE,
+                    )
+                    statusBar.setMessage("Ready")
+                }
+            }
+        }.apply { isDaemon = true; name = "NCBIFetch-$input" }.start()
     }
 
     /** Opens [text] in a new text-editor tab and activates it. */
@@ -783,6 +824,7 @@ class InstaGeneContent(
                 onOpenRecent = { openFileInTab(it) },
                 onNewProject = { newProject() },
                 onOpenProject = { openProject() },
+                onFetchNcbi = { input -> fetchNcbiAccession(input) },
                 onCloseTab = { closeTab(activeDoc ?: newDocument()) },
                 onExit = {
                     if (confirmCloseAll(owner)) {
@@ -797,6 +839,7 @@ class InstaGeneContent(
                 if (doc is SeqDocument) SequenceEditActions(sequenceView, doc) else TextEditActions(textEditorView),
                 prefs,
                 featuresPanel = featuresPanel,
+                sequenceView = sequenceView,
                 onEditProperties = {
                     toolTabs.selectedIndex = toolTabs.indexOfTab("Info")
                     infoPanel.nameField.requestFocusInWindow()
@@ -835,6 +878,8 @@ class InstaGeneContent(
             menuBar.add(createProjectMenu())
             menuBar.add(set.tools.createActions().apply { isEnabled = sequence })
             menuBar.add(set.tools.create().apply { isEnabled = sequence })
+            menuBar.add(PreferencesMenu(prefs).create())
+            menuBar.add(HelpMenu().create())
         }
         menuBar.revalidate()
         menuBar.repaint()
@@ -850,9 +895,12 @@ class InstaGeneContent(
             add(menuItem("New", KeyEvent.VK_N, menuShortcut(KeyEvent.VK_N)) { newDocument() })
             add(menuItem("New Text File", KeyEvent.VK_T, shiftShortcut(KeyEvent.VK_T)) { openText() })
             add(menuItem("Open...", KeyEvent.VK_O, menuShortcut(KeyEvent.VK_O)) { openFile() })
+            add(emptyRecentMenu)
             addSeparator()
-            add(menuItem("New Project...") { newProject() })
-            add(menuItem("Open Project...", KeyEvent.VK_P, shiftShortcut(KeyEvent.VK_P)) { openProject() })
+            add(menuItem("Close Tab", KeyEvent.VK_W, menuShortcut(KeyEvent.VK_W)) { closeTab(activeDoc ?: newDocument()) })
+            addSeparator()
+            add(menuItem("Save", KeyEvent.VK_S, menuShortcut(KeyEvent.VK_S)) { activeFileMenu().saveFile() })
+            add(menuItem("Save As...", KeyEvent.VK_A, KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK)) { activeFileMenu().saveFileAs() })
             addSeparator()
             add(menuItem("Exit") { if (confirmCloseAll(owner)) { persistProject(); owner?.dispose() } })
         })
@@ -867,17 +915,36 @@ class InstaGeneContent(
         menuBar.add(createProjectMenu())
         menuBar.add(JMenu("Actions").apply { isEnabled = false })
         menuBar.add(emptyStateMenuSet.tools.create().apply { isEnabled = false })
+        menuBar.add(PreferencesMenu(prefs).create())
+        menuBar.add(HelpMenu().create())
     }
 
     private fun createProjectMenu(): JMenu = JMenu("Project").apply {
         mnemonic = KeyEvent.VK_P
-        isEnabled = project != null
-        add(menuItem("Search Project...") { showProjectSearch(promptIfBlank = true) })
-        add(menuItem("Collections...") { showProjectCollections() })
+        val hasProject = project != null
+        add(menuItem("New Project...") { newProject() })
+        add(menuItem("Open Project...", KeyEvent.VK_P, shiftShortcut(KeyEvent.VK_P)) { openProject() })
         addSeparator()
-        add(menuItem("Batch Convert...") { showBatchOperation(BatchOperation.CONVERT) })
-        add(menuItem("Batch Annotate...") { showBatchOperation(BatchOperation.ANNOTATE) })
-        add(menuItem("Batch Update Properties...") { showBatchOperation(BatchOperation.PROPERTIES) })
+        add(menuItem("Search Project...") { showProjectSearch(promptIfBlank = true) }.apply { isEnabled = hasProject })
+        add(menuItem("Collections...") { showProjectCollections() }.apply { isEnabled = hasProject })
+        addSeparator()
+        add(menuItem("Batch Convert...") { showBatchOperation(BatchOperation.CONVERT) }.apply { isEnabled = hasProject })
+        add(menuItem("Batch Annotate...") { showBatchOperation(BatchOperation.ANNOTATE) }.apply { isEnabled = hasProject })
+        add(menuItem("Batch Update Properties...") { showBatchOperation(BatchOperation.PROPERTIES) }.apply { isEnabled = hasProject })
+        addSeparator()
+        add(JMenu("Recent Projects").apply {
+            val paths = prefs.value.recentProjects.filter { File(it).exists() }
+            if (paths.isEmpty()) {
+                add(JMenuItem("(none)").apply { isEnabled = false })
+            } else {
+                for (path in paths) {
+                    add(JMenuItem(File(path).name).apply {
+                        toolTipText = path
+                        addActionListener { openProjectAt(File(path)) }
+                    })
+                }
+            }
+        })
     }
 
     private fun menuItem(label: String, mnemonic: Int? = null, accelerator: KeyStroke? = null, action: () -> Unit): JMenuItem =

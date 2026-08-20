@@ -120,13 +120,17 @@ jobs:
         id: baseline
         continue-on-error: true
         run: |
-          content=$(gh api "repos/${{ github.repository }}/contents/benchmarks/latest.json" \
-            --jq '.content' 2>/dev/null || true)
-          if [ -n "$content" ]; then
-            echo "$content" | tr -d '\n' | base64 -d > baseline.json 2>/dev/null
-            if [ -s baseline.json ]; then
+          if gh api "repos/${{ github.repository }}/contents/benchmarks/latest.json" \
+            --jq '.content' 2>/dev/null | tr -d '\n' | base64 --decode > baseline.json 2>/dev/null; then
+            if [ -s baseline.json ] && python3 -c "import json; json.load(open('baseline.json'))" 2>/dev/null; then
               echo "found=true" >> "$GITHUB_OUTPUT"
+              echo "Previous baseline found."
+            else
+              rm -f baseline.json
+              echo "Baseline file invalid or empty."
             fi
+          else
+            echo "No previous baseline (first run or file not found)."
           fi
         env:
           GH_TOKEN: ${{ github.token }}

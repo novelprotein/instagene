@@ -1,7 +1,6 @@
 package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.tool.GraphAnalysisPanel
 import org.instagene.core.NcbiClient
 import org.instagene.core.Seq
 import java.awt.BorderLayout

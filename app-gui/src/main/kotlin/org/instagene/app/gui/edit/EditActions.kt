@@ -24,7 +24,7 @@ interface EditActions {
     fun paste()
     fun deleteSelection()
     fun hasSelection(): Boolean
-    fun findNext(pattern: String): Boolean
+    fun findNext(pattern: String, useRegex: Boolean = false): Boolean
 }
 
 /** [EditActions] for the sequence editor, bound to the document it was built for. */
@@ -76,27 +76,45 @@ class SequenceEditActions(
      * Finds the next occurrence at or after the caret, wrapping at the end.
      * Nucleotide documents also search the reverse complement.
      */
-    override fun findNext(pattern: String): Boolean {
+    override fun findNext(pattern: String, useRegex: Boolean): Boolean {
         val bases = doc.seq.bases
         if (bases.isEmpty()) return false
 
-        val needle = pattern.uppercase()
-        val from = doc.caret.coerceIn(0, bases.length)
-        val forward = wrapFind(bases, needle, from)
-        if (forward != null) {
-            view.revealRange(forward, forward + needle.length)
-            return true
-        }
-        if (doc.seq.kind != SeqKind.PROTEIN) {
-            val rc = buildString(needle.length) {
-                for (i in needle.indices.reversed()) {
-                    append(Alphabet.complement(needle[i], doc.seq.kind))
+        val needle = if (useRegex) {
+            try {
+                val regex = Regex(pattern, RegexOption.IGNORE_CASE)
+                val match = regex.find(bases, doc.caret.coerceIn(0, bases.length))
+                    ?: regex.find(bases, 0)
+                if (match != null) {
+                    view.revealRange(match.range.first, match.range.last + 1)
+                    return true
                 }
+                return false
+            } catch (e: Exception) {
+                return false
             }
-            val reverse = wrapFind(bases, rc, from)
-            if (reverse != null) {
-                view.revealRange(reverse, reverse + rc.length)
+        } else {
+            pattern.uppercase()
+        }
+
+        if (!useRegex) {
+            val from = doc.caret.coerceIn(0, bases.length)
+            val forward = wrapFind(bases, needle, from)
+            if (forward != null) {
+                view.revealRange(forward, forward + needle.length)
                 return true
+            }
+            if (doc.seq.kind != SeqKind.PROTEIN) {
+                val rc = buildString(needle.length) {
+                    for (i in needle.indices.reversed()) {
+                        append(Alphabet.complement(needle[i], doc.seq.kind))
+                    }
+                }
+                val reverse = wrapFind(bases, rc, from)
+                if (reverse != null) {
+                    view.revealRange(reverse, reverse + rc.length)
+                    return true
+                }
             }
         }
         return false
@@ -152,10 +170,25 @@ class TextEditActions(private val view: TextEditorView) : EditActions {
     override fun hasSelection(): Boolean = view.area.selectionStart != view.area.selectionEnd
 
     /** Selects the next case-insensitive occurrence at or after the caret, wrapping around. */
-    override fun findNext(pattern: String): Boolean {
+    override fun findNext(pattern: String, useRegex: Boolean): Boolean {
         val text = view.area.text
         if (text.isEmpty()) return false
         val from = view.area.selectionEnd.coerceIn(0, text.length)
+
+        if (useRegex) {
+            try {
+                val regex = Regex(pattern, RegexOption.IGNORE_CASE)
+                val match = regex.find(text, from) ?: regex.find(text, 0)
+                if (match != null) {
+                    view.area.select(match.range.first, match.range.last + 1)
+                    return true
+                }
+                return false
+            } catch (e: Exception) {
+                return false
+            }
+        }
+
         val first = text.indexOf(pattern, from, ignoreCase = true)
         if (first >= 0) {
             view.area.select(first, first + pattern.length)

@@ -34,6 +34,7 @@ class FileMenu(
     private val onOpenRecent: (File) -> Unit = {},
     private val onNewProject: () -> Unit = {},
     private val onOpenProject: () -> Unit = {},
+    private val onFetchNcbi: (String) -> Unit = {},
     private val onCloseTab: () -> Unit = {},
     private val onExit: () -> Unit = {},
     private val onTitleChanged: () -> Unit = {},
@@ -57,6 +58,8 @@ class FileMenu(
             addSeparator()
             add(createNewProjectItem())
             add(createOpenProjectItem())
+            addSeparator()
+            add(createFetchNcbiItem())
             addSeparator()
             add(createCloseTabItem())
             addSeparator()
@@ -104,6 +107,24 @@ class FileMenu(
                 InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK,
             )
             addActionListener { onOpenProject() }
+        }
+    }
+
+    private fun createFetchNcbiItem(): JMenuItem {
+        return JMenuItem("Fetch from NCBI...", KeyEvent.VK_G).apply {
+            accelerator = KeyStroke.getKeyStroke(
+                KeyEvent.VK_G,
+                InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK,
+            )
+            addActionListener {
+                val accession = JOptionPane.showInputDialog(
+                    frame,
+                    "Enter an NCBI accession or search term:",
+                    "Fetch from NCBI",
+                    JOptionPane.QUESTION_MESSAGE,
+                )
+                if (!accession.isNullOrBlank()) onFetchNcbi(accession)
+            }
         }
     }
 

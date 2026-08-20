@@ -48,6 +48,11 @@ class StatusBar(initial: SeqDocument, private val sequenceView: SequenceView) : 
         statusLabel.text = sequenceView.statusText()
     }
 
+    /** Sets a temporary message that will be overwritten on the next document change. */
+    fun setMessage(text: String) {
+        statusLabel.text = text
+    }
+
     /** Refreshes the background after a look-and-feel change. */
     override fun updateUI() {
         super.updateUI()

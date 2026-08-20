@@ -4,7 +4,6 @@ import org.instagene.app.gui.enzyme.EnzymeManagerDialog
 import org.instagene.app.gui.enzyme.enzymePool
 import org.instagene.app.gui.enzyme.findEnzyme
 import org.instagene.app.gui.dialog.AnalysisDialogs
-import org.instagene.app.gui.dialog.SettingsDialog
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.tool.DigestPanel
@@ -14,7 +13,6 @@ import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.core.Enzyme
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
-import org.instagene.core.Version
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
@@ -30,8 +28,7 @@ class ToolsMenu(
     private val onAnalysis: (String) -> Unit = {},
 ) {
 
-    private val makeCircularItem = JMenuItem("Make Circular")
-    private val makeLinearItem = JMenuItem("Make Linear")
+    private val topologyItem = JMenuItem("Make Circular")
     private val addEnzymeItem = JMenuItem("Add Enzyme...")
     private val clearEnzymesItem = JMenuItem("Clear All Enzymes")
     private val manageEnzymesItem = JMenuItem("Manage Enzymes...")
@@ -39,7 +36,6 @@ class ToolsMenu(
     private val gelItem = JMenuItem("Virtual Gel...")
     private val identityItem = JMenuItem("Sequence Identity...")
     private val calculatorItem = JMenuItem("Molecular Calculator...")
-    private val settingsItem = JMenuItem("Settings...")
     private val diagnosticItem = JMenuItem("Diagnostic Sites...")
 
     private val addFeatureFromSelectionItem = JMenuItem("Add Feature from Selection...")
@@ -64,7 +60,6 @@ class ToolsMenu(
     private val editLibraryItem = JMenuItem("Edit Element...")
     private val deleteLibraryItem = JMenuItem("Delete")
 
-    private val analysisMenu = createAnalysisMenu()
     private val commonEnzymesMenu = createCommonEnzymesMenu()
     private val featuresMenu = createFeaturesMenu()
     private val primersMenu = createPrimersMenu()
@@ -90,8 +85,8 @@ class ToolsMenu(
         manageEnzymesItem.isEnabled = dna
         commonEnzymesMenu.isEnabled = dna
         gelItem.isEnabled = dna
-        makeCircularItem.isEnabled = nucleotide && !seq.isCircular
-        makeLinearItem.isEnabled = nucleotide && seq.isCircular
+        topologyItem.isEnabled = nucleotide
+        topologyItem.text = if (seq.isCircular) "Make Linear" else "Make Circular"
         diagnosticItem.isEnabled = digestPanel.selectedEnzymes().isNotEmpty()
 
         val fp = featuresPanel
@@ -124,14 +119,11 @@ class ToolsMenu(
         return JMenu("Tools").apply {
             mnemonic = KeyEvent.VK_T
 
-            add(makeCircularItem.apply {
+            add(topologyItem.apply {
                 addActionListener {
-                    doc.mutate("make circular") { it.withTopology(Topology.CIRCULAR) }
-                }
-            })
-            add(makeLinearItem.apply {
-                addActionListener {
-                    doc.mutate("make linear") { it.withTopology(Topology.LINEAR) }
+                    val target = if (doc.seq.isCircular) Topology.LINEAR else Topology.CIRCULAR
+                    val label = if (doc.seq.isCircular) "make linear" else "make circular"
+                    doc.mutate(label) { it.withTopology(target) }
                 }
             })
             addSeparator()
@@ -158,10 +150,6 @@ class ToolsMenu(
             add(gelItem.apply { addActionListener { AnalysisDialogs.showGel(null, doc) } })
             add(identityItem.apply { addActionListener { AnalysisDialogs.showIdentity(null, doc) } })
             add(calculatorItem.apply { addActionListener { AnalysisDialogs.showMolecularCalculator(null) } })
-            add(analysisMenu)
-            add(settingsItem.apply { addActionListener { SettingsDialog.show(null, prefs) } })
-            addSeparator()
-            add(createAboutItem())
         }
     }
 
@@ -302,12 +290,6 @@ class ToolsMenu(
         })
     }
 
-    private fun createAnalysisMenu(): JMenu = JMenu("Analysis Workspace").apply {
-        listOf("Search", "Alignment", "Enzymes", "CpG Methylation", "Assembly", "PCR / Mutagenesis", "Translation / Structure", "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram", "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication", "Statistics / Graphs").forEach { name ->
-            add(JMenuItem(name).apply { addActionListener { onAnalysis(name) } })
-        }
-    }
-
     /** Resolves a name against the whole catalog; unknown names offer to be defined as novel enzymes. */
     private fun addEnzymeByDialog() {
         val enzymeName = JOptionPane.showInputDialog(null, "Enzyme name:", "BamHI")
@@ -361,18 +343,5 @@ class ToolsMenu(
 
     private fun add(enzyme: Enzyme) {
         digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + enzyme)
-    }
-
-    private fun createAboutItem(): JMenuItem {
-        return JMenuItem("About InstaGene").apply {
-            addActionListener {
-                JOptionPane.showMessageDialog(
-                    null,
-                    "InstaGene ${Version.VERSION}\n\nA gene editing tool.\n\nBuilt with Kotlin and Swing.",
-                    "About InstaGene",
-                    JOptionPane.INFORMATION_MESSAGE
-                )
-            }
-        }
     }
 }

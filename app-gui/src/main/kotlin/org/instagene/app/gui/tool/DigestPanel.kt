@@ -73,6 +73,7 @@ class DigestPanel(
     private val summary = JLabel(" ")
     private val extractButton = JButton("Open fragment as new sequence")
     private val saveFragmentButton = JButton("Save fragment to library")
+    private val exportCsvButton = JButton("Export CSV")
 
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
@@ -307,6 +308,9 @@ class DigestPanel(
         })
         add(saveFragmentButton.apply {
             addActionListener { saveSelectedFragment() }
+        })
+        add(exportCsvButton.apply {
+            addActionListener { exportDigestCsv() }
         })
         add(Box.createHorizontalStrut(4))
     }
@@ -705,6 +709,34 @@ class DigestPanel(
     fun saveSelectedFragment() {
         val row = digestTable.selectedRow
         if (row >= 0) saveFragment(mergedRows.getOrNull(row)?.fragment?.let { fragments.indexOf(it) } ?: -1)
+    }
+
+    /** Exports the current digest results as a CSV file. */
+    private fun exportDigestCsv() {
+        if (mergedRows.isEmpty()) {
+            javax.swing.JOptionPane.showMessageDialog(this, "No digest results to export.", "Export CSV", javax.swing.JOptionPane.INFORMATION_MESSAGE)
+            return
+        }
+        val chooser = javax.swing.JFileChooser().apply { dialogTitle = "Export Digest as CSV" }
+        if (chooser.showSaveDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) return
+        var file = chooser.selectedFile
+        if (!file.name.endsWith(".csv")) file = java.io.File(file.parentFile, file.name + ".csv")
+        val csv = buildString {
+            appendLine("Fragment #,Length,Start,End,Enzyme,Recognition Site,Strand,Cut Type,Overhang")
+            for ((i, row) in mergedRows.withIndex()) {
+                val f = row.fragment
+                val site = row.site
+                val fragNum = i + 1
+                val enzyme = site?.enzyme?.name ?: ""
+                val recogSite = site?.let { doc.seq.sub(it.recognitionStart, it.recognitionStart + it.enzyme.siteLength) } ?: ""
+                val strand = site?.strand?.symbol ?: ""
+                val cutType = site?.enzyme?.endType?.label ?: ""
+                val overhang = site?.let { overhangLabel(it.enzyme, listOf(Digest.stickyEnd(doc.seq, it).overhang)) } ?: ""
+                appendLine("$fragNum,${f.length},${f.start + 1},${f.end},$enzyme,$recogSite,$strand,$cutType,$overhang")
+            }
+        }
+        file.writeText(csv)
+        summary.text = "Exported ${mergedRows.size} rows to ${file.name}"
     }
 
     private fun applySelection() {

@@ -29,6 +29,7 @@ import javax.swing.JComponent
 import javax.swing.Scrollable
 import javax.swing.SwingUtilities
 import javax.swing.ToolTipManager
+import javax.swing.Timer as SwingTimer
 import kotlin.math.abs
 
 /**
@@ -73,6 +74,8 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
 
     private var baseFont = Font(Font.MONOSPACED, Font.PLAIN, 14)
     private val labelFont = Font(Font.SANS_SERIF, Font.PLAIN, 10)
+    private var caretVisible = true
+    private val caretBlinkTimer = SwingTimer(530) { caretVisible = !caretVisible; repaint() }
 
     private var charWidth = 9
     private var lineHeight = 17
@@ -98,6 +101,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         isFocusable = true
         cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
         ToolTipManager.sharedInstance().registerComponent(this)
+        caretBlinkTimer.start()
         installMouseHandlers()
         installKeyHandlers()
         bindDocument(doc)
@@ -284,15 +288,21 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
     private fun paintTranslation(g2: Graphics2D, from: Int, to: Int, y: Int) {
         val seq = doc.seq
         g2.color = Palette.TEXT
-        // Amino acids are centred on the middle base of each codon.
         var codonStart = translationFrame + ((from - translationFrame) / 3) * 3
         if (codonStart < translationFrame) codonStart = translationFrame
         while (codonStart + 3 <= seq.length) {
             if (codonStart >= to) break
-            val aa = codonTable.translate(seq.bases.substring(codonStart, codonStart + 3))
+            val codon = seq.bases.substring(codonStart, codonStart + 3).uppercase()
+            val aa = codonTable.translate(codon)
             val middle = codonStart + 1
             if (middle in from until to) {
-                g2.color = if (aa == '*') Palette.CUT_MARK else Palette.TEXT
+                val isStart = codon == "ATG"
+                val isStop = aa == '*'
+                if (isStart || isStop) {
+                    g2.color = if (isStart) Palette.START_CODON else Palette.STOP_CODON
+                    g2.fillRect(xOf(middle - from) - 2, y - 11, charWidth * 3 + 4, lineHeight)
+                }
+                g2.color = if (isStop) Palette.CUT_MARK else if (isStart) Palette.START_CODON else Palette.TEXT
                 g2.drawString(aa.toString(), xOf(middle - from), y)
             }
             codonStart += 3
@@ -400,7 +410,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
     }
 
     private fun paintCaret(g2: Graphics2D) {
-        if (doc.hasSelection) return
+        if (doc.hasSelection || !caretVisible || !isFocusOwner) return
         val row = doc.caret / basesPerLine
         val col = doc.caret % basesPerLine
         val top = yOfRow(row) + markHeight

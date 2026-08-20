@@ -8,6 +8,8 @@ import java.awt.event.KeyEvent
 import javax.swing.JCheckBoxMenuItem
 import javax.swing.JMenu
 import javax.swing.JMenuItem
+import javax.swing.JOptionPane
+import javax.swing.KeyStroke
 
 class ViewMenu(
     private val doc: SeqDocument,
@@ -65,6 +67,8 @@ class ViewMenu(
             addSeparator()
             syncFileBrowser()
             add(fileBrowserItem)
+            addSeparator()
+            add(createFullScreenItem())
         }
     }
 
@@ -120,6 +124,20 @@ class ViewMenu(
             accelerator = menuShortcut(KeyEvent.VK_0)
             addActionListener {
                 sequenceView.setFontSize(14)
+            }
+        }
+    }
+
+    private fun createFullScreenItem(): JMenuItem {
+        return JMenuItem("Full Screen", KeyEvent.VK_F11).apply {
+            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0)
+            addActionListener {
+                JOptionPane.showMessageDialog(
+                    null,
+                    "Full screen mode is not yet implemented.",
+                    "Full Screen",
+                    JOptionPane.INFORMATION_MESSAGE,
+                )
             }
         }
     }

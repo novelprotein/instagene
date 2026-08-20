@@ -442,6 +442,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
             // Draw labels last so restriction marks and the backbone cannot obscure them.
             if (showFeatureLabels.isSelected) drawCircularFeatureLabels(g2, labels, fm)
+
+            paintFeatureLegend(g2, seq)
         }
 
         /**
@@ -615,9 +617,30 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             g2.font = subtitleFont
             g2.color = Palette.MUTED
             drawStringCentered(g2, "${seq.length} bp ${seq.kind.name.lowercase()} linear", width / 2, 44)
+
+            paintFeatureLegend(g2, seq)
         }
 
         // ---------------------------------------------------------------- helpers
+
+        private fun paintFeatureLegend(g2: Graphics2D, seq: org.instagene.core.Seq) {
+            val features = seq.features.filter { it.visible }
+            if (features.isEmpty()) return
+            g2.font = labelFont
+            val fm = g2.fontMetrics
+            val legendX = 8
+            var legendY = height - 8
+            for (f in features.reversed()) {
+                val color = featureColor(f, seq.features.indexOf(f))
+                val label = featureLabel(f)
+                val boxSize = 8
+                legendY -= fm.height + 2
+                g2.color = color
+                g2.fillRect(legendX, legendY - boxSize + 2, boxSize, boxSize)
+                g2.color = Palette.TEXT
+                g2.drawString(label, legendX + boxSize + 4, legendY)
+            }
+        }
 
         private fun featureLabel(feature: Feature): String =
             feature.name.trim().ifEmpty { feature.type.trim().ifEmpty { "feature" } }

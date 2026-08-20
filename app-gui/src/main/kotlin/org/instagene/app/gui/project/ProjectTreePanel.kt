@@ -8,7 +8,9 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
-import org.instagene.app.gui.ContextMenus
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
 import javax.swing.JTree
@@ -18,6 +20,8 @@ import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
 import javax.swing.tree.TreeSelectionModel
+
+import org.instagene.app.gui.ContextMenus
 
 /**
  * The left-hand file tree of a project: every file under the project root
@@ -219,6 +223,9 @@ class ProjectTreePanel(
 
     /** Relative labels for project files; bold type for files already open in a tab. */
     private inner class OpenFileRenderer : DefaultTreeCellRenderer() {
+
+        private val timeFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
         override fun getTreeCellRendererComponent(
             tree: JTree,
             value: Any?,
@@ -232,9 +239,29 @@ class ProjectTreePanel(
             val node = value as? DefaultMutableTreeNode
             val file = node?.userObject as? File
             if (file != null) {
-                text = labelFor(file)
+                val ext = file.extension.lowercase()
+                val prefix = when {
+                    file.isDirectory -> "▸ "
+                    ext in setOf("fasta", "fa", "fna", "faa", "fsa") -> "◈ "
+                    ext in setOf("gb", "gbk", "genbank") -> "◇ "
+                    ext in setOf("fastq", "fq") -> "◆ "
+                    else -> "  "
+                }
+                text = prefix + labelFor(file)
                 if (openFiles().any { it.canonicalFile == file.canonicalFile }) {
                     c.font = c.font.deriveFont(Font.BOLD)
+                }
+                // Metadata tooltip
+                if (file.isFile) {
+                    val sizeKb = file.length() / 1024.0
+                    val sizeStr = if (sizeKb >= 1024) "%.1f MB".format(sizeKb / 1024) else "%.1f KB".format(sizeKb)
+                    val lastMod = Files.getLastModifiedTime(file.toPath())
+                    val timeStr = runCatching {
+                        timeFmt.format(Instant.ofEpochMilli(lastMod.toMillis()).atZone(ZoneId.systemDefault()))
+                    }.getOrDefault("unknown")
+                    toolTipText = "<html><b>${file.name}</b><br>$sizeStr · Modified $timeStr</html>"
+                } else {
+                    toolTipText = null
                 }
             }
             return c
