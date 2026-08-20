@@ -13,7 +13,7 @@ graalvmNative {
                 "-H:+ReportExceptionStackTraces",
                 "--no-fallback",
                 "-march=compatibility",
-                "--initialize-at-run-time=kotlin",
+                "--initialize-at-build-time",
             )
         }
     }

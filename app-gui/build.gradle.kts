@@ -37,7 +37,10 @@ graalvmNative {
                 "-H:+AWT",
                 "-H:+UnlockExperimentalVMOptions",
                 "-H:+AddAllCharsets",
-                "--initialize-at-run-time=kotlin",
+                "--initialize-at-build-time",
+                "--initialize-at-run-time=java.awt",
+                "--initialize-at-run-time=javax.swing",
+                "--initialize-at-run-time=com.formdev.flatlaf",
             )
         }
     }
