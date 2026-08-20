@@ -1,5 +1,6 @@
 package org.instagene.app.web
 
+import java.net.Socket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -59,12 +60,27 @@ class WebServerTest {
     fun rejectsOversizedRequestBodies() {
         val server = WebServer.start(0)
         try {
-            val base = "http://localhost:${server.address.port}"
-            val request = HttpRequest.newBuilder(URI("$base/api/open"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString("x".repeat(4 * 1024 * 1024 + 1)))
-                .build()
-            assertEquals(413, statusOf(request))
+            val port = server.address.port
+            // Use a raw socket to avoid the race where HttpClient streams the full
+            // body but the server closes the connection after reading the header.
+            // Send Content-Length > MAX but only a tiny body so the server rejects
+            // from the header check alone.
+            Socket("localhost", port).use { sock ->
+                val os = sock.getOutputStream().buffered()
+                val crlf = "\r\n"
+                os.write(
+                    ("POST /api/open HTTP/1.1$crlf" +
+                        "Host: localhost:$port$crlf" +
+                        "Content-Type: application/json$crlf" +
+                        "Content-Length: ${4 * 1024 * 1024 + 1}$crlf" +
+                        "Connection: close$crlf" +
+                        crlf +
+                        "{}").toByteArray()
+                )
+                os.flush()
+                val statusLine = sock.getInputStream().bufferedReader().readLine()
+                assertTrue(statusLine.contains("413"), "Expected 413, got: $statusLine")
+            }
         } finally {
             WebServer.stop()
         }
