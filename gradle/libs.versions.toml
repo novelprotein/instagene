@@ -10,7 +10,7 @@ flatlaf = "3.4.1"
 jfreechart = "1.5.5"
 junitJupiter = "5.12.2"
 jpackage = "2.1.0"
-graalvmNative = "0.10.4"
+graalvmNative = "1.1.9"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
