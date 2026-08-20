@@ -37,11 +37,8 @@ graalvmNative {
                 "-H:+AWT",
                 "-H:+UnlockExperimentalVMOptions",
                 "-H:+AddAllCharsets",
+                "--initialize-at-run-time=kotlin",
             )
-            javaLauncher.set(javaToolchains.launcherFor {
-                languageVersion.set(JavaLanguageVersion.of(21))
-                vendor.set(JvmVendorSpec.GRAAL_VM)
-            })
         }
     }
 }
