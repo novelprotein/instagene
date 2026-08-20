@@ -304,9 +304,6 @@ jobs:
           distribution: graalvm
           java-version: '21'
 
-      - name: Install native-image
-        run: gu install native-image
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
