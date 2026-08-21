@@ -8,7 +8,6 @@ plugins {
     id("buildsrc.convention.kotlin-jvm")
     alias(libs.plugins.kotlinPluginSerialization)
     alias(libs.plugins.jpackagePlugin)
-    alias(libs.plugins.graalvmNative)
 }
 
 dependencies {
@@ -17,51 +16,6 @@ dependencies {
     implementation(libs.flatlaf)
     implementation(libs.flatlafIntelliJ)
     implementation(libs.jfreechart)
-}
-
-// GraalVM native image configuration for the GUI.
-// The GUI uses Swing/FlatLaf/JFreeChart which require reflection, JNI, and
-// resource configs. See src/main/resources/META-INF/native-image/ for the
-// generated configs. Use `./gradlew :app-gui:nativeRunAgent` to re-generate
-// configs by tracing a representative GUI session.
-graalvmNative {
-    binaries {
-        named("main") {
-            mainClass.set("org.instagene.app.gui.GuiMainKt")
-            imageName.set("instagene")
-            buildArgs.addAll(
-                "-H:+ReportExceptionStackTraces",
-                "--no-fallback",
-                "-march=compatibility",
-                "-H:+JNI",
-                "-H:+AWT",
-                "-H:+UnlockExperimentalVMOptions",
-                "-H:+AddAllCharsets",
-                "--initialize-at-build-time",
-                "--initialize-at-run-time=java.awt",
-                "--initialize-at-run-time=javax.swing",
-                "--initialize-at-run-time=com.formdev.flatlaf",
-            )
-        }
-    }
-}
-
-// To re-generate native-image configs, run the tracing agent manually:
-//   java -agentlib:native-image-agent=config-output-dir=app-gui/src/main/resources/META-INF/native-image/org.instagene/app-gui \
-//     -cp app-gui/build/classes/java/main:... org.instagene.app.gui.GuiMainKt
-// Then review and merge the generated configs into the existing files above.
-//
-// Or use the convenience task below:
-tasks.register<JavaExec>("nativeRunAgent") {
-    group = "native-image"
-    description = "Runs the GUI with the native-image tracing agent to regenerate configs."
-    dependsOn(tasks.classes)
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("org.instagene.app.gui.GuiMainKt")
-    jvmArgs(
-        "-agentlib:native-image-agent=config-output-dir=${projectDir}/src/main/resources/META-INF/native-image/org.instagene/app-gui",
-        "-Xmx8g",
-    )
 }
 
 tasks.register<JavaExec>("runGui") {
@@ -186,7 +140,7 @@ val appImageName = "InstaGene"
 
 val packagingJavaLauncher = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
-    vendor.set(JvmVendorSpec.ADOPTIUM)
+    vendor.set(JvmVendorSpec.GRAAL_VM)
 }
 
 fun macCompatibleJpackageVersion(version: String): String {
@@ -249,7 +203,7 @@ tasks.jpackage {
     linuxShortcut = useLinuxCommonOpts
     linuxPackageName = useLinuxCommonOpts.map { if (it) "instagene" else null }
     linuxAppCategory = useLinuxCommonOpts.map { if (it) "Science" else null }
-    linuxDebMaintainer = useDebOpts.map { if (it) "InstaGene <instagene@novelprotein.github.io>" else null }
+    linuxDebMaintainer = useDebOpts.map { if (it) "instagene@novelprotein.github.io" else null }
     linuxRpmLicenseType = useRpmOpts.map { if (it) "MIT" else null }
     winMenu = useWindowsOpts
     winShortcut = useWindowsOpts

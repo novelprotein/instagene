@@ -37,8 +37,10 @@ and analysis tools that should stay responsive on researcher workstations.
 
 ## Packaging Notes
 
-Installed desktop packages use the GraalVM-native GUI executable. The portable
-GUI JAR remains JVM-based for environments that prefer a Java 21+ runtime.
+Installed desktop packages are built with the GraalVM 21 JDK and `jpackage`.
+They bundle a runtime image, so users do not need to install Java separately.
+The portable GUI JAR remains available for environments that prefer to provide
+their own Java 21+ runtime.
 
 - Linux packages install desktop/MIME metadata and a terminal launcher.
 - macOS DMG builds create an `.app` bundle with document type metadata.
@@ -54,12 +56,12 @@ GUI JAR remains JVM-based for environments that prefer a Java 21+ runtime.
 ./gradlew :app-web:runWeb
 ```
 
-Native desktop packages are built per target OS:
+Desktop packages are built per target OS:
 
 ```bash
-./gradlew :app-gui:nativeDeb --no-configuration-cache
-./gradlew :app-gui:nativeRpm --no-configuration-cache
-./gradlew :app-gui:nativeAppImageZip --no-configuration-cache
-./gradlew :app-gui:nativeWindowsMsi --no-configuration-cache
-./gradlew :app-gui:nativeMacDmg --no-configuration-cache
+./gradlew :app-gui:jpackage -PjpackageType=DEB
+./gradlew :app-gui:jpackage -PjpackageType=RPM
+./gradlew :app-gui:jpackageAppImageZip -PjpackageType=APP_IMAGE
+./gradlew :app-gui:jpackage -PjpackageType=MSI
+./gradlew :app-gui:jpackage -PjpackageType=DMG
 ```

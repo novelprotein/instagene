@@ -11,9 +11,10 @@ java -Xmx8g -jar instagene-gui.jar                  # portable JAR
 instagene gui sequence.gb                            # via CLI launcher
 ```
 
-Installed Windows, macOS, and Linux desktop packages use the GraalVM-native GUI
-binary and do not require Java on the researcher's machine. The portable GUI
-JAR remains available for environments where a Java 21+ runtime is preferred.
+Installed Windows, macOS, and Linux desktop packages are built with the
+GraalVM 21 JDK and bundle a Java runtime, so they do not require Java on the
+researcher's machine. The portable GUI JAR remains available for environments
+where a Java 21+ runtime is preferred.
 
 ## Menus
 

@@ -73,11 +73,11 @@ Pre-built installers are available from the
 
 | Platform | Format | Notes |
 |----------|--------|-------|
-| Linux    | `.deb` | GraalVM-native app, Ubuntu/Debian, includes `/usr/bin/instagene` wrapper |
-| Linux    | `.rpm` | GraalVM-native app, Fedora/RHEL |
-| Linux    | Native app-image zip | GraalVM-native app, portable, no install required |
-| Windows  | `.msi` | GraalVM-native app, WiX-based installer with shortcuts |
-| macOS    | `.dmg` | GraalVM-native app bundle with file associations |
+| Linux    | `.deb` | GraalVM-built desktop app, Ubuntu/Debian, includes `/usr/bin/instagene` wrapper |
+| Linux    | `.rpm` | GraalVM-built desktop app, Fedora/RHEL |
+| Linux    | App-image zip | GraalVM-built desktop app, portable, no install required |
+| Windows  | `.msi` | GraalVM-built desktop app, WiX-based installer with shortcuts |
+| macOS    | `.dmg` | GraalVM-built desktop app bundle with file associations |
 | Any      | GUI JAR | `java -Xmx8g -jar instagene-gui.jar` |
 | Linux    | Native CLI | GraalVM-native `instagene` CLI executable |
 

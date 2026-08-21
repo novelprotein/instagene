@@ -17,16 +17,16 @@ This compiles all modules and runs the full test suite.
 
 ## Running
 
-=== "Native desktop installers"
+=== "Desktop installers"
 
     Download the installer for your operating system from the GitHub Actions
     artifacts or tagged GitHub Releases:
 
     | Platform | Artifact | Notes |
     |----------|----------|-------|
-    | Windows  | `.msi` | GraalVM-native app; installs Start Menu and desktop shortcuts |
-    | macOS    | `.dmg` | GraalVM-native app; drag `InstaGene.app` to Applications; registers common sequence/chromatogram file types |
-    | Linux    | `.deb`, `.rpm`, native app-image zip | GraalVM-native app; the `.deb` also installs an `instagene` terminal launcher |
+    | Windows  | `.msi` | GraalVM-built app; installs Start Menu and desktop shortcuts |
+    | macOS    | `.dmg` | GraalVM-built app; drag `InstaGene.app` to Applications; registers common sequence/chromatogram file types |
+    | Linux    | `.deb`, `.rpm`, app-image zip | GraalVM-built app; the `.deb` also installs an `instagene` terminal launcher |
 
     Native installers do not require Java on the researcher's machine. The
     portable GUI JAR is the Java-based fallback and requires Java 21+.
@@ -93,6 +93,6 @@ The desktop window also accepts drag-and-drop files.
 | `./gradlew :app-gui:runGui`   | Run the desktop GUI                  |
 | `./gradlew :app-web:runWeb`   | Run the web server                   |
 | `./gradlew :app-cli:bench`    | Run performance benchmarks           |
-| `./gradlew :app-gui:nativeDeb` | Build the GraalVM-native Linux `.deb` |
-| `./gradlew :app-gui:nativeWindowsMsi` | Build the GraalVM-native Windows `.msi` |
-| `./gradlew :app-gui:nativeMacDmg` | Build the GraalVM-native macOS `.dmg` |
+| `./gradlew :app-gui:jpackage -PjpackageType=DEB` | Build the Linux `.deb` |
+| `./gradlew :app-gui:jpackage -PjpackageType=MSI` | Build the Windows `.msi` |
+| `./gradlew :app-gui:jpackage -PjpackageType=DMG` | Build the macOS `.dmg` |

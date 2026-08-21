@@ -171,26 +171,25 @@ java -Xmx8g -jar app-gui/build/distributions/instagene-gui.jar
 
 This runnable JAR includes the GUI, engine, Kotlin runtime, serialization, and
 FlatLaf dependencies. The separate thin `instagene.jar` remains available for
-developer fallback `jpackage` builds, but official platform installers use the
-GraalVM native executable.
+the `jpackage` installer builds.
 
-### Native installers
+### Desktop installers
 
-Official platform installers are built from the GraalVM native GUI executable,
-so they do not require a user-installed JRE. Native images cannot
-cross-compile, so each installer is built on its own OS:
+Official platform installers are built with the GraalVM 21 JDK and `jpackage`.
+They bundle a Java runtime and do not require a user-installed JRE. `jpackage`
+cannot cross-compile, so each installer is built on its own OS:
 
 ```bash
-./gradlew :app-gui:nativeDeb --no-configuration-cache          # Ubuntu: .deb
-./gradlew :app-gui:nativeRpm --no-configuration-cache          # Fedora: .rpm
-./gradlew :app-gui:nativeAppImageZip --no-configuration-cache  # portable native app-image zip
-./gradlew :app-gui:nativeWindowsMsi --no-configuration-cache   # Windows (WiX): .msi
-./gradlew :app-gui:nativeMacDmg --no-configuration-cache       # macOS: .dmg
+./gradlew :app-gui:jpackage -PjpackageType=DEB                # Ubuntu: .deb
+./gradlew :app-gui:jpackage -PjpackageType=RPM                # Fedora: .rpm
+./gradlew :app-gui:jpackageAppImageZip -PjpackageType=APP_IMAGE # portable app-image zip
+./gradlew :app-gui:jpackage -PjpackageType=MSI                # Windows (WiX): .msi
+./gradlew :app-gui:jpackage -PjpackageType=DMG                # macOS: .dmg
 ```
 
-- GraalVM 21 is required to build native packages. CI uses
-  `graalvm/setup-graalvm` for all native package jobs.
-- Native package outputs are written to `app-gui/build/native-package/dist/`.
+- GraalVM 21 is required for CI and release builds. CI uses
+  `graalvm/setup-graalvm` for tests, packages, and the native CLI.
+- Installer outputs are written to `app-gui/build/jpackage/dist/`.
 - The portable GUI JAR remains JVM-based and is the only app artifact that
   expects Java 21+ on the user's machine.
 - macOS app bundles and Linux desktop packages include metadata for common
@@ -204,17 +203,16 @@ cross-compile, so each installer is built on its own OS:
   can be layered on top when release secrets are available.
 - The Linux `.deb` adds a `/usr/bin/instagene` wrapper and the app image
   contains an `instagene` script, so the desktop app can be launched from a
-  terminal (`instagene <file>`); both exec the GraalVM-native `InstaGene`
-  binary.
+  terminal (`instagene <file>`).
 
 ### CI build artifacts
 
 Successful pushes to `master` and manually dispatched CI runs publish
 short-lived downloadable artifacts for Linux (`.deb`, `.rpm`, and app-image
-zip), Windows (`.msi`), macOS (`.dmg`), and the portable runnable GUI JAR. Pull
-requests run the full test suite without the native packaging jobs. Tagged
-releases publish the same GUI JAR alongside the native installers and release
-checksums.
+zip), Windows (`.msi`), macOS (`.dmg`), the native CLI, and the portable
+runnable GUI JAR. Pull requests run the full test suite without the packaging
+jobs. Tagged releases publish the same GUI JAR alongside the installers and
+release checksums.
 
 To grab the latest builds without building anything yourself, open the
 [Actions tab](https://github.com/novelprotein/instagene/actions), select the
@@ -236,7 +234,8 @@ Every push and pull request to `master` is checked automatically by the GitHub
 Actions workflow in `.github/workflows/ci.yml`: it builds **all** modules
 (`engine`, `app-cli`, `app-gui`, `app-web`, `tests`) and runs the **entire test
 suite** (including the headless Swing smoke tests) with `./gradlew build` on
-JDK 26. Test reports are uploaded as a build artifact whenever a run finishes.
+GraalVM 21. Test reports are uploaded as a build artifact whenever a run
+finishes.
 
 Run the same gate locally at any time:
 
