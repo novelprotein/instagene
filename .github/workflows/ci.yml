@@ -469,6 +469,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          deploy_site="$RUNNER_TEMP/mkdocs-site"
+          rm -rf "$deploy_site"
+          cp -a site "$deploy_site"
           git fetch origin gh-pages:gh-pages 2>/dev/null || true
           if git rev-parse --verify gh-pages >/dev/null 2>&1; then
             git checkout gh-pages
@@ -476,7 +479,8 @@ jobs:
             python3 - <<'PYEOF'
           import json, os, glob, subprocess
 
-          archive_dir = "site/benchmarks/archive"
+          deploy_site = os.environ["RUNNER_TEMP"] + "/mkdocs-site"
+          archive_dir = os.path.join(deploy_site, "benchmarks/archive")
           os.makedirs(archive_dir, exist_ok=True)
 
           # Pull existing archive files from gh-pages
@@ -507,7 +511,7 @@ jobs:
                   manifest.append({"sha": sha, "ts": data.get("timestamp", ""), "seq": data.get("sequence", "")})
                   seen.add(sha)
           manifest.sort(key=lambda e: e["ts"])
-          with open("site/benchmarks/manifest.json", "w") as f:
+          with open(os.path.join(deploy_site, "benchmarks/manifest.json"), "w") as f:
               json.dump(manifest, f, indent=2)
           print(f"Final manifest: {len(manifest)} entries.")
           PYEOF
@@ -517,8 +521,7 @@ jobs:
           fi
           # Remove old files, copy new site, commit and push
           find . -maxdepth 1 ! -name '.' ! -name '.git' -exec rm -rf {} +
-          cp -r site/* .
-          rm -rf site
+          cp -r "$deploy_site"/* .
           git add -A
           git diff --cached --quiet || git commit -m "Deployed $(git rev-parse --short HEAD)"
           git push origin gh-pages --force
