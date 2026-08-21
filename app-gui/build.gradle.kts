@@ -49,6 +49,9 @@ graalvmNative {
                 "--initialize-at-run-time=sun.awt.X11.MotifDnDDragSourceProtocol",
                 "--initialize-at-run-time=sun.awt.X11.XRootWindow",
                 "--initialize-at-run-time=sun.awt.X11.XBaseWindow",
+                "--initialize-at-run-time=sun.font.FontDesignMetrics",
+                "--initialize-at-run-time=sun.font.FontDesignMetrics\$KeyReference",
+                "--initialize-at-run-time=sun.java2d.Disposer",
             )
         }
     }
