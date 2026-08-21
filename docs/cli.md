@@ -205,4 +205,4 @@ instagene bench                    # use built-in test sequence
 instagene bench sequence.gb        # benchmark with your sequence
 ```
 
-See the [Benchmarks](benchmarks/index.md) page for historical performance data.
+See the [Benchmarks](benchmarks/info.md) page for historical performance data.

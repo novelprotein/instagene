@@ -2,6 +2,7 @@ package org.instagene.app.gui
 
 import org.instagene.app.gui.menu.FileMenu
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.core.Enzymes
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.Topology
@@ -35,6 +36,18 @@ class FileMenuTest {
             sb.append(alphabet[Math.floorMod(x, 4)])
         }
         val body = sb.toString().chunked(60).joinToString("\n")
+        val file = Files.createTempFile(name, ".fasta").toFile()
+        file.writeText(">${name}_large\n$body\n")
+        file.deleteOnExit()
+        return file
+    }
+
+    /** Writes a large FASTA with a known dense EcoRI pattern. */
+    private fun crowdedDigestFasta(name: String, bases: Int): File {
+        val motif = "GAATTC"
+        val body = motif.repeat((bases + motif.length - 1) / motif.length).take(bases)
+            .chunked(60)
+            .joinToString("\n")
         val file = Files.createTempFile(name, ".fasta").toFile()
         file.writeText(">${name}_large\n$body\n")
         file.deleteOnExit()
@@ -152,8 +165,9 @@ class FileMenuTest {
     @Test
     @Order(3)
     fun digestCutCountsArriveAsynchronouslyForACrowdedGenome() {
-        val expected = 2_000_000
-        val file = largeFasta("digest", expected)
+        val expected = 1_200_000
+        val file = crowdedDigestFasta("digest", expected)
+        val ecoRi = Enzymes.require("EcoRI")
         val content = onEdt { InstaGeneContent(null) }
 
         try {
@@ -161,8 +175,8 @@ class FileMenuTest {
             assertTrue(awaitEdt { content.doc.seq.length == expected })
 
             assertTrue(
-                awaitEdt(120_000) { content.digestPanel.computedCutCounts()?.values?.any { it > 0 } == true },
-                "Async cut counts never arrived for the 2 Mbp genome",
+                awaitEdt(120_000) { content.digestPanel.computedCutCounts()?.get(ecoRi)?.let { it > 0 } == true },
+                "Async EcoRI cut counts never arrived for the 1.2 Mbp genome",
             )
         } finally {
             onEdt { content.dispose() }
