@@ -5,9 +5,6 @@ plugins {
 }
 
 graalvmNative {
-    // Native release artifacts are built with graalvm/setup-graalvm, which
-    // exposes native-image through GRAALVM_HOME/JAVA_HOME.
-    toolchainDetection = false
     binaries {
         named("main") {
             mainClass.set("org.instagene.app.cli.CliMainKt")

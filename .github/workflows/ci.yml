@@ -313,33 +313,21 @@ jobs:
           - label: Linux DEB
             os: ubuntu-latest
             package_type: DEB
-            gradle_task: :app-gui:nativeDeb
+            gradle_task: :app-gui:jpackage
             artifact_name: instagene-linux-deb
-            artifact_path: app-gui/build/native-package/dist/*.deb
-          - label: Linux RPM
-            os: ubuntu-latest
-            package_type: RPM
-            gradle_task: :app-gui:nativeRpm
-            artifact_name: instagene-linux-rpm
-            artifact_path: app-gui/build/native-package/dist/*.rpm
-          - label: Linux native app image
-            os: ubuntu-latest
-            package_type: APP_IMAGE
-            gradle_task: :app-gui:nativeAppImageZip
-            artifact_name: instagene-linux-app-image
-            artifact_path: app-gui/build/native-package/dist/instagene-native-app-image.zip
+            artifact_path: app-gui/build/jpackage/dist/*.deb
           - label: Windows MSI
             os: windows-latest
             package_type: MSI
-            gradle_task: :app-gui:nativeWindowsMsi
+            gradle_task: :app-gui:jpackage
             artifact_name: instagene-windows-msi
-            artifact_path: app-gui/build/native-package/dist/*.msi
+            artifact_path: app-gui/build/jpackage/dist/*.msi
           - label: macOS DMG
             os: macos-latest
             package_type: DMG
-            gradle_task: :app-gui:nativeMacDmg
+            gradle_task: :app-gui:jpackage
             artifact_name: instagene-macos-dmg
-            artifact_path: app-gui/build/native-package/dist/*.dmg
+            artifact_path: app-gui/build/jpackage/dist/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
@@ -347,28 +335,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up GraalVM 21
-        uses: graalvm/setup-graalvm@v1
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
         with:
+          distribution: temurin
           java-version: '21'
-          cache: gradle
-
-      - name: Install RPM build tools
-        if: ${{ matrix.package_type == 'RPM' }}
-        run: sudo apt-get update && sudo apt-get install -y rpm
-
-      - name: Install WiX
-        if: ${{ matrix.package_type == 'MSI' }}
-        shell: pwsh
-        run: |
-          dotnet tool install --global wix --version 5.0.2
-          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build native package
-        run: ./gradlew ${{ matrix.gradle_task }} --no-configuration-cache --console=plain --info --stacktrace
+        run: ./gradlew ${{ matrix.gradle_task }} "-PjpackageType=${{ matrix.package_type }}" --console=plain --info --stacktrace
 
       - name: Smoke-test installer (headless)
         if: ${{ matrix.package_type == 'DMG' }}
@@ -376,7 +353,7 @@ jobs:
         run: |
           set +e
           # Mount the DMG and verify the .app is present
-          dmg=$(ls app-gui/build/native-package/dist/*.dmg | head -1)
+          dmg=$(ls app-gui/build/jpackage/dist/*.dmg | head -1)
           echo "Found DMG: $dmg"
           hdiutil attach "$dmg" -nobrowse -quiet
           mount_point=$(ls /Volumes/ | grep -i instagene | head -1)
@@ -390,44 +367,19 @@ jobs:
         if: ${{ matrix.package_type == 'DEB' }}
         shell: bash
         run: |
-          deb=$(ls app-gui/build/native-package/dist/*.deb | head -1)
+          deb=$(ls app-gui/build/jpackage/dist/*.deb | head -1)
           echo "Found DEB: $deb"
           dpkg-deb -I "$deb" | grep -qi instagene
           # Verify the /usr/bin wrapper was injected
           dpkg-deb -x "$deb" /tmp/instagene-deb-inspect
           test -f /tmp/instagene-deb-inspect/usr/bin/instagene
-          test -f /tmp/instagene-deb-inspect/opt/instagene/bin/InstaGene
-          test ! -d /tmp/instagene-deb-inspect/opt/instagene/lib/runtime
           echo "DEB smoke test passed"
-
-      - name: Smoke-test installer (RPM)
-        if: ${{ matrix.package_type == 'RPM' }}
-        shell: bash
-        run: |
-          rpm=$(ls app-gui/build/native-package/dist/*.rpm | head -1)
-          echo "Found RPM: $rpm"
-          rpm -qip "$rpm" | grep -qi instagene
-          echo "RPM smoke test passed"
-
-      - name: Smoke-test native app image
-        if: ${{ matrix.package_type == 'APP_IMAGE' }}
-        shell: bash
-        run: |
-          zip=$(ls app-gui/build/native-package/dist/instagene-native-app-image.zip | head -1)
-          echo "Found app image zip: $zip"
-          unzip -l "$zip" | grep -F "InstaGene/bin/InstaGene"
-          unzip -l "$zip" | grep -F "InstaGene/bin/instagene"
-          if unzip -l "$zip" | grep -F "lib/runtime"; then
-            echo "Unexpected bundled JVM runtime in native app image"
-            exit 1
-          fi
-          echo "Native app image smoke test passed"
 
       - name: Smoke-test installer (MSI)
         if: ${{ matrix.package_type == 'MSI' }}
         shell: bash
         run: |
-          msi=$(ls app-gui/build/native-package/dist/*.msi | head -1)
+          msi=$(ls app-gui/build/jpackage/dist/*.msi | head -1)
           echo "Found MSI: $msi"
           # Verify the MSI is a valid PE/COFF file (Windows PE signature)
           file "$msi" | grep -qi "Microsoft" || echo "MSI file type: $(file "$msi")"
