@@ -107,7 +107,7 @@ class NcbiClient(
     }
 
     fun fetchGenBank(accession: String): Seq {
-        require(accession.matches(Regex("[A-Za-z0-9_.-]+"))) { "Invalid NCBI accession" }
+        require(accession.matches(RID_VALIDATE)) { "Invalid NCBI accession" }
         val text = get("$baseUrl/efetch.fcgi?db=nuccore&rettype=gb&retmode=text&id=${encode(accession)}")
         if (!GenBank.looksLikeGenBank(text)) {
             throw SeqIOException("NCBI fetch for $accession did not return GenBank text")
@@ -156,16 +156,16 @@ class NcbiClient(
                 "TOOL" to "InstaGene",
             ),
         )
-        val rid = Regex("(?im)^\\s*RID\\s*=\\s*(\\S+)").find(response)?.groupValues?.get(1)
+        val rid = RID_PATTERN.find(response)?.groupValues?.get(1)
             ?: error("NCBI BLAST response did not contain a request ID")
-        val estimated = Regex("(?im)^\\s*RTOE\\s*=\\s*(\\d+)").find(response)?.groupValues?.get(1)?.toIntOrNull()
+        val estimated = RTOE_PATTERN.find(response)?.groupValues?.get(1)?.toIntOrNull()
         return BlastSubmission(rid, estimated)
     }
 
     fun blastStatus(rid: String): BlastStatusResult {
         validateRid(rid)
         val response = get("$blastBaseUrl?CMD=Get&RID=${encode(rid)}&FORMAT_OBJECT=SearchInfo")
-        val status = Regex("(?im)^\\s*Status\\s*=\\s*(\\S+)").find(response)?.groupValues?.get(1)?.uppercase()
+        val status = STATUS_PATTERN.find(response)?.groupValues?.get(1)?.uppercase()
         return when (status) {
             "WAITING" -> BlastStatusResult(BlastStatus.WAITING, response.trim())
             "READY" -> BlastStatusResult(BlastStatus.READY, response.trim())
@@ -209,7 +209,7 @@ class NcbiClient(
     private fun JsonObject.int(name: String): Int = string(name)?.toIntOrNull() ?: 0
 
     private fun validateRid(rid: String) {
-        require(rid.matches(Regex("[A-Za-z0-9_.-]+"))) { "Invalid BLAST request ID" }
+        require(rid.matches(RID_VALIDATE)) { "Invalid BLAST request ID" }
     }
 
     private fun clipFeatures(features: List<Feature>, length: Int): List<Feature> =
@@ -242,4 +242,11 @@ class NcbiClient(
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
+
+    companion object {
+        private val RID_PATTERN = Regex("(?im)^\\s*RID\\s*=\\s*(\\S+)")
+        private val RTOE_PATTERN = Regex("(?im)^\\s*RTOE\\s*=\\s*(\\d+)")
+        private val STATUS_PATTERN = Regex("(?im)^\\s*Status\\s*=\\s*(\\S+)")
+        private val RID_VALIDATE = Regex("[A-Za-z0-9_.-]+")
+    }
 }

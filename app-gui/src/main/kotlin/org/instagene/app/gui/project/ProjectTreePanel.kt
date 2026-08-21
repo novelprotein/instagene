@@ -40,6 +40,7 @@ class ProjectTreePanel(
     private var project: SeqProject? = null
     private val root = DefaultMutableTreeNode("No project open")
     private val model = DefaultTreeModel(root)
+    private val fileWatcher = ProjectFileWatcher { refresh() }
 
     /** The underlying tree; public so callers (and tests) can inspect selection and the model. */
     val tree = JTree(model)
@@ -64,8 +65,20 @@ class ProjectTreePanel(
 
     /** Attaches the tree to [p] (or detaches it when null) and rebuilds it. */
     fun setProject(p: SeqProject?) {
+        stopWatching()
         project = p
         refresh()
+    }
+
+    /** Starts watching the project root for file-system changes. */
+    fun startWatching() {
+        val rootDir = project?.root ?: return
+        fileWatcher.start(rootDir)
+    }
+
+    /** Stops watching for file-system changes. */
+    fun stopWatching() {
+        fileWatcher.stop()
     }
 
     /**
@@ -239,19 +252,11 @@ class ProjectTreePanel(
             val node = value as? DefaultMutableTreeNode
             val file = node?.userObject as? File
             if (file != null) {
-                val ext = file.extension.lowercase()
-                val prefix = when {
-                    file.isDirectory -> "▸ "
-                    ext in setOf("fasta", "fa", "fna", "faa", "fsa") -> "◈ "
-                    ext in setOf("gb", "gbk", "genbank") -> "◇ "
-                    ext in setOf("fastq", "fq") -> "◆ "
-                    else -> "  "
-                }
-                text = prefix + labelFor(file)
+                text = labelFor(file)
                 if (openFiles().any { it.canonicalFile == file.canonicalFile }) {
                     c.font = c.font.deriveFont(Font.BOLD)
                 }
-                // Metadata tooltip
+                // Tooltip: always present so truncated names are recoverable on hover.
                 if (file.isFile) {
                     val sizeKb = file.length() / 1024.0
                     val sizeStr = if (sizeKb >= 1024) "%.1f MB".format(sizeKb / 1024) else "%.1f KB".format(sizeKb)
@@ -261,7 +266,16 @@ class ProjectTreePanel(
                     }.getOrDefault("unknown")
                     toolTipText = "<html><b>${file.name}</b><br>$sizeStr · Modified $timeStr</html>"
                 } else {
-                    toolTipText = null
+                    toolTipText = "<html><b>${file.name}</b></html>"
+                }
+            } else {
+                // Root node (userObject is the project name string): add tooltip
+                // so the full project name is visible when truncated by a narrow column.
+                val name = node?.userObject as? String
+                if (name != null && name != "No project open") {
+                    val rootDir = project?.root
+                    val path = rootDir?.absolutePath ?: ""
+                    toolTipText = "<html><b>$name</b><br><font size=2>$path</font></html>"
                 }
             }
             return c

@@ -92,6 +92,9 @@ object EnzymeAnalysis {
         val originalProtein = if (requireSilent) SeqOps.translateBases(seq.bases.substring(start, end)) else null
         val candidates = ArrayList<MutationCandidate>()
         for (enzyme in enzymes) {
+            // Pre-compute cut sites once per enzyme instead of rescanning inside
+            // the position loop — turns O(region × seqLength) into O(region + seqLength).
+            val existingSites = Digest.cutSites(seq, listOf(enzyme)).map { it.recognitionStart }.toHashSet()
             for (strand in listOf(Strand.FORWARD, Strand.REVERSE)) {
                 val site = if (strand == Strand.FORWARD) enzyme.site else insertRecognitionSite(enzyme, reverse = true)
                 for (position in start..(end - site.length).coerceAtLeast(start)) {
@@ -101,7 +104,7 @@ object EnzymeAnalysis {
                     val mutated = buildString {
                         current.forEachIndexed { index, base -> append(Alphabet.expansion(site[index])?.firstOrNull() ?: base) }
                     }
-                    if (mutated == current || Digest.cutSites(seq, listOf(enzyme)).any { it.recognitionStart == position }) continue
+                    if (mutated == current || position in existingSites) continue
                     val changed = seq.bases.substring(0, position) + mutated + seq.bases.substring(position + site.length)
                     if (requireSilent && SeqOps.translateBases(changed.substring(start, end)) != originalProtein) continue
                     candidates += MutationCandidate(enzyme, position, strand, current, mutated, mismatch, originalProtein)

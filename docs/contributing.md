@@ -44,8 +44,10 @@ module under `tests/src/test/kotlin/`. Shared test utilities are in
 
 ## Code Style
 
-- Kotlin with no comments unless complex logic requires explanation
-- No wildcard imports
+- be smart, don't make code that is not scalable or hard to maintain in a project like this
+- please be efficient with imports 
+- run code clean up before commiting, this is a must
+- use kotlin features as much as possible, this is not a java project, it can get ugly
 - Functions that do heavy computation should consider the `Parallel` utility
   for parallelization
 
@@ -58,11 +60,10 @@ module under `tests/src/test/kotlin/`. Shared test utilities are in
 
 ## Benchmarks
 
-Performance benchmarks run on every push to `master`. The benchmark suite
-is opt-in via `-Dinstagene.perf=true` and requires a sequence file as input:
+Performance benchmarks run on every push to `master`. Run locally with:
 
 ```bash
-./gradlew :app-cli:bench -Dinstagene.perf=true -Pinput=sequence.fa
+./gradlew :app-cli:bench
 ```
 
-Results are published to the [Benchmarks](benchmarks/index.md) dashboard.
+Results are published to the [Benchmarks](benchmarks/info.md) dashboard.

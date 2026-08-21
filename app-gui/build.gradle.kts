@@ -50,6 +50,19 @@ graalvmNative {
 //   java -agentlib:native-image-agent=config-output-dir=app-gui/src/main/resources/META-INF/native-image/org.instagene/app-gui \
 //     -cp app-gui/build/classes/java/main:... org.instagene.app.gui.GuiMainKt
 // Then review and merge the generated configs into the existing files above.
+//
+// Or use the convenience task below:
+tasks.register<JavaExec>("nativeRunAgent") {
+    group = "native-image"
+    description = "Runs the GUI with the native-image tracing agent to regenerate configs."
+    dependsOn(tasks.classes)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("org.instagene.app.gui.GuiMainKt")
+    jvmArgs(
+        "-agentlib:native-image-agent=config-output-dir=${projectDir}/src/main/resources/META-INF/native-image/org.instagene/app-gui",
+        "-Xmx8g",
+    )
+}
 
 tasks.register<JavaExec>("runGui") {
     group = "application"
@@ -218,6 +231,9 @@ tasks.jpackage {
     }
     val useRpmOpts = jpackageType.map { it == "RPM" }
     val useLinuxCommonOpts = providers.zip(useDebOpts, useRpmOpts) { deb, rpm -> deb || rpm }
+    val useMacOpts = providers.zip(jpackageType, osIs("mac")) { t, isMac ->
+        t in setOf("DMG", "PKG") || (t == "DEFAULT" && isMac)
+    }
     linuxShortcut = useLinuxCommonOpts
     linuxPackageName = useLinuxCommonOpts.map { if (it) "instagene" else null }
     linuxAppCategory = useLinuxCommonOpts.map { if (it) "Science" else null }
@@ -226,6 +242,7 @@ tasks.jpackage {
     winMenu = useWindowsOpts
     winShortcut = useWindowsOpts
     winPerUserInstall = useWindowsOpts
+    macPackageIdentifier = useMacOpts.map { if (it) "io.novelprotein.instagene" else null }
 
     // Add the terminal wrapper after packaging: the 'instagene' script into the
     // app image root (APP_IMAGE), and /usr/bin/instagene into the .deb. The

@@ -117,7 +117,7 @@ class DocumentTabsTest {
     }
 
     @Test
-    fun closingTheLastTabExitsTheProgram() {
+    fun closingTheLastTabShowsTheWelcomeScreen() {
         onEdt {
             val content = InstaGeneContent()
             // The window starts in the welcome state with nothing open; opening
@@ -127,7 +127,7 @@ class DocumentTabsTest {
             assertEquals(1, content.docTabs.tabCount)
             assertTrue(content.closeTab(doc, force = true))
             assertEquals(0, content.docTabs.tabCount, "closing the last tab must not open a fresh document")
-            assertTrue(content.exitPending, "closing the last tab must request the window to close")
+            assertFalse(content.exitPending, "closing the last tab must not exit the program")
         }
     }
 
@@ -207,7 +207,8 @@ class DocumentTabsTest {
 
         val active = content.activeDocument
         assertEquals("b.fasta", active.file?.name)
-        assertEquals(3, content.toolTabs.selectedIndex, "project layout tab was not restored")
+        val tabs = (0 until content.toolTabs.tabCount).map { "${it}:${content.toolTabs.getTitleAt(it)}" }
+        assertTrue(content.toolTabs.selectedIndex == 3, "project layout tab was not restored: selected=${content.toolTabs.selectedIndex}, tabs=$tabs")
         onEdt {
             content.fileBrowserToggle.doClick()
             content.projectSplit.doLayout()

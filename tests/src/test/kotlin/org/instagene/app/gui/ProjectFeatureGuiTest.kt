@@ -64,7 +64,7 @@ class ProjectFeatureGuiTest {
         assertTrue(projectMenu.isEnabled, "Project menu must be enabled for project-only features without document tabs.")
         assertFalse(onEdt { content.menuBar.getMenu(4)!!.isEnabled }, "Sequence Actions stay disabled without a sequence tab.")
         assertEquals(
-            listOf("New Project...", "Open Project...", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
+            listOf("New Project...", "Open Project...", "Close Project", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
             menuItemTexts(projectMenu),
         )
     }

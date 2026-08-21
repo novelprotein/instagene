@@ -47,6 +47,10 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
     private var doc = initial
     private var docListener: SeqDocument.Listener? = null
 
+    /** Cached GC% for the current sequence, avoiding a full scan on every status/caret event. */
+    private var cachedSeqIdentity: Any? = null
+    private var cachedGcPct: Double = Double.NaN
+
     var showComplement: Boolean = true
         set(value) {
             field = value; relayout()
@@ -587,7 +591,10 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         return buildString {
             append("${seq.length} $unit  ${seq.kind.name.lowercase()}  ${seq.topology.name.lowercase()}")
             if (seq.kind != SeqKind.PROTEIN) {
-                append("   GC ${"%.1f".format(SeqOps.gcContent(seq))}%")
+                val gc = if (seq.bases === cachedSeqIdentity) cachedGcPct else {
+                    SeqOps.gcContent(seq).also { cachedGcPct = it; cachedSeqIdentity = seq.bases }
+                }
+                append("   GC ${"%.1f".format(gc)}%")
             }
             if (doc.hasSelection) {
                 val sel = doc.selectedBases

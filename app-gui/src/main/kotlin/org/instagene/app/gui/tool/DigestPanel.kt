@@ -40,6 +40,7 @@ import javax.swing.JTable
 import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.table.AbstractTableModel
@@ -91,6 +92,9 @@ class DigestPanel(
     /** Per-enzyme cut counts for the current sequence; null until the asynchronous scan completes. */
     private var countsCache: Map<Enzyme, Int>? = null
 
+    /** Per-enzyme cut sites for the current sequence, populated during the background scan. */
+    private val cutSitesCache = ConcurrentHashMap<Enzyme, List<CutSite>>()
+
     /** Distinct sequence-specific overhangs observed for each enzyme. */
     private var overhangCache: Map<Enzyme, List<String>> = emptyMap()
 
@@ -115,15 +119,41 @@ class DigestPanel(
         // one use every CPU would exhaust threads on high-core workstations, while
         // four workers are enough to keep the independent enzyme scans responsive.
         private val countThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
+        private const val SEQUENCE_DEBOUNCE_MS = 150
+        private const val FILTER_DEBOUNCE_MS = 100
+    }
+
+    /** Debounces rapid sequence changes to avoid redundant full-catalog scans. */
+    private val sequenceDebounceTimer = Timer(SEQUENCE_DEBOUNCE_MS) { debouncedRefresh() }.apply {
+        isCoalesce = true
+    }
+
+    /** Debounces rapid filter keystrokes to avoid redundant table rebuilds. */
+    private val filterDebounceTimer = Timer(FILTER_DEBOUNCE_MS) { debouncedFilterRefresh() }.apply {
+        isCoalesce = true
     }
 
     /** Releases the background cut-count workers owned by this panel. */
     fun dispose() {
+        sequenceDebounceTimer.stop()
+        filterDebounceTimer.stop()
         countPool.shutdownNow()
     }
 
     /** Exposed for lifecycle tests. */
     fun isDisposed(): Boolean = countPool.isShutdown
+
+    /** Called by the sequence-change debounce timer; runs the full refresh after a quiet period. */
+    private fun debouncedRefresh() {
+        if (countPool.isShutdown) return
+        refresh()
+    }
+
+    /** Called by the filter debounce timer; rebuilds the enzyme table without re-scanning. */
+    private fun debouncedFilterRefresh() {
+        if (countPool.isShutdown) return
+        rebuildEnzymeTable()
+    }
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
@@ -190,17 +220,17 @@ class DigestPanel(
 
         filterField.document.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent) {
-                refresh()
+                filterDebounceTimer.restart()
                 prefs.update { it.copy(digestFilter = filterField.text) }
             }
 
             override fun removeUpdate(e: DocumentEvent) {
-                refresh()
+                filterDebounceTimer.restart()
                 prefs.update { it.copy(digestFilter = filterField.text) }
             }
 
             override fun changedUpdate(e: DocumentEvent) {
-                refresh()
+                filterDebounceTimer.restart()
                 prefs.update { it.copy(digestFilter = filterField.text) }
             }
         })
@@ -218,7 +248,8 @@ class DigestPanel(
         docListener = SeqDocument.Listener { _, reason ->
             if (reason == SeqDocument.Reason.SEQUENCE) {
                 digestVersion++
-                refresh()
+                cutSitesCache.clear()
+                sequenceDebounceTimer.restart()
             }
         }
         doc.addListener(docListener!!)
@@ -241,7 +272,8 @@ class DigestPanel(
             docListener = SeqDocument.Listener { _, reason ->
                 if (reason == SeqDocument.Reason.SEQUENCE) {
                     digestVersion++
-                    refresh()
+                    cutSitesCache.clear()
+                    sequenceDebounceTimer.restart()
                 }
             }
             doc.addListener(docListener!!)
@@ -250,6 +282,7 @@ class DigestPanel(
             countsVersion++ // invalidate any in-flight scan against the old sequence
             digestVersion++
             countsCache = null
+            cutSitesCache.clear()
             countsStale = false
             val mapped = newDoc.mappedEnzymes.mapTo(HashSet()) { it.name.lowercase() }
             checked.clear()
@@ -273,6 +306,7 @@ class DigestPanel(
         checked += enabledPool.filter { it.name.lowercase() in selectedNames }
         countsVersion++ // invalidate any in-flight scan against the old pool
         countsCache = null
+        cutSitesCache.clear()
         countsStale = false
         refresh()
     }
@@ -333,6 +367,7 @@ class DigestPanel(
             }
             countsVersion++ // invalidate any in-flight scan
             countsCache = null
+            cutSitesCache.clear()
             overhangCache = emptyMap()
             countsStale = false
             visibleEnzymes = emptyList()
@@ -348,6 +383,7 @@ class DigestPanel(
         }
         countsStale = true
         overhangCache = emptyMap()
+        cutSitesCache.clear()
         rebuildEnzymeTable()
         scheduleCutCounts(seq)
         applySelection()
@@ -457,7 +493,9 @@ class DigestPanel(
 
     /**
      * Lists every individual match of the enzyme selected in the enzyme table,
-     * or clears the list when nothing is selected.
+     * or clears the list when nothing is selected. Uses the background-computed
+     * cutSitesCache for small sequences; falls back to on-demand computation
+     * for large sequences.
      */
     private fun showMatchesForSelectedEnzyme(matchToRestore: CutSite? = null) {
         val row = enzymeTable.selectedRow
@@ -467,7 +505,9 @@ class DigestPanel(
             rebuildMergedRows()
             return
         }
-        matches = Digest.cutSites(doc.seq, enzyme)
+        matches = cutSitesCache[enzyme]
+            ?: doc.cutSites.filter { it.enzyme == enzyme }.takeIf { it.isNotEmpty() }
+            ?: Digest.cutSites(doc.seq, enzyme)
         rebuildMergedRows()
         restoreMergedSelection(matchToRestore)
     }
@@ -545,13 +585,13 @@ class DigestPanel(
                 for (enzyme in chunk) {
                     val count = Digest.countSites(seq, enzyme)
                     partial[enzyme] = count
-                    // Geometry is cheap and is always shown. Materializing every
-                    // cut site just to derive observed bases would be too costly
-                    // for genome-scale sequences, so sequence-specific bases are
-                    // limited to the same manageable-size threshold used for
-                    // synchronous digest work.
-                    if (seq.length < asyncDigestThreshold && count > 0 && enzyme.overhangLength != 0) {
-                        partialOverhangs[enzyme] = Digest.cutSites(seq, enzyme)
+                    // For manageable sequences, also cache cut sites so the
+                    // enzyme-selection handler can serve from cache instead of
+                    // rescanning on the EDT.
+                    if (seq.length < asyncDigestThreshold && count > 0) {
+                        val sites = Digest.cutSites(seq, enzyme)
+                        cutSitesCache[enzyme] = sites
+                        partialOverhangs[enzyme] = sites
                             .map { Digest.stickyEnd(seq, it).overhang }
                             .filter { it.isNotBlank() }
                             .distinct()
@@ -797,7 +837,7 @@ class DigestPanel(
 
     private fun revealFirstSiteOfEnzyme(row: Int) {
         val enzyme = visibleEnzymes.getOrNull(row) ?: return
-        val site = Digest.cutSites(doc.seq, enzyme).firstOrNull() ?: return
+        val site = (cutSitesCache[enzyme] ?: Digest.cutSites(doc.seq, enzyme)).firstOrNull() ?: return
         onReveal(site.recognitionStart, site.recognitionStart + enzyme.siteLength)
     }
 

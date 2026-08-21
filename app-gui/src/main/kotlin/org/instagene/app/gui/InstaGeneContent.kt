@@ -390,6 +390,7 @@ class InstaGeneContent(
 
     /** Releases resources held by shared panels when the containing window closes. */
     fun dispose() {
+        projectTreePanel.stopWatching()
         trackedTreeDivider?.removeMouseListener(treeDividerMouseListener)
         trackedTreeDivider = null
         digestPanel.dispose()
@@ -551,11 +552,8 @@ class InstaGeneContent(
         menus.remove(doc)
         recordedFile.remove(doc)
         tabLabels.remove(doc)
-        if (hub.openDocuments.isEmpty()) {
-            persistProject()
-            exitPending = true
-            owner?.dispose()
-        }
+        // When the last tab closes the welcome screen is shown automatically
+        // by updateWorkingState() via onHubChanged(DOCS_CHANGED).
         return true
     }
 
@@ -612,6 +610,7 @@ class InstaGeneContent(
             persistProject()
             updateWorkingState()
             rebuildMenuBar()
+            projectTreePanel.startWatching()
             return
         }
         loadingProject = true
@@ -639,6 +638,7 @@ class InstaGeneContent(
                 loadingProject = false
                 persistProject()
                 rebuildMenuBar()
+                projectTreePanel.startWatching()
             }
         }.apply { isDaemon = false; name = "ProjectLoader" }.start()
     }
@@ -661,6 +661,26 @@ class InstaGeneContent(
         p.setLayout(ProjectLayout(activeToolTab = toolTabs.selectedIndex, treeSplitRatio = splitRatio()))
         p.save()
         editRecorder.flush()
+    }
+
+    /**
+     * Closes the current project: persists its state, closes all open tabs
+     * (prompting for unsaved changes), detaches the project tree and edit
+     * recorder, and shows the welcome screen.
+     */
+    fun closeProject() {
+        if (project == null) return
+        if (!confirmCloseAll(owner)) return
+        // Close all tabs first (force since we already confirmed).
+        while (hub.openDocuments.isNotEmpty()) {
+            closeTab(hub.openDocuments.last(), force = true)
+        }
+        persistProject()
+        project = null
+        projectTreePanel.setProject(null)
+        editRecorder.setProject(null, created = false)
+        rebuildMenuBar()
+        updateWorkingState()
     }
 
     /** The fixed tree width represented as the 0..1 ratio used by the project manifest. */
@@ -824,7 +844,6 @@ class InstaGeneContent(
                 onOpenRecent = { openFileInTab(it) },
                 onNewProject = { newProject() },
                 onOpenProject = { openProject() },
-                onFetchNcbi = { input -> fetchNcbiAccession(input) },
                 onCloseTab = { closeTab(activeDoc ?: newDocument()) },
                 onExit = {
                     if (confirmCloseAll(owner)) {
@@ -860,7 +879,12 @@ class InstaGeneContent(
                 featuresPanel = featuresPanel,
                 primersPanel = primersPanel,
                 libraryPanel = libraryPanel,
-            ) { name -> analysisPanel.selectTool(name) },
+                onAnalysis = { name ->
+                    analysisPanel.selectTool(name)
+                    toolTabs.selectedIndex = toolTabs.indexOfTab("Analysis")
+                },
+                onFetchNcbi = { input -> fetchNcbiAccession(input) },
+            ),
         )
     }
 
@@ -924,6 +948,7 @@ class InstaGeneContent(
         val hasProject = project != null
         add(menuItem("New Project...") { newProject() })
         add(menuItem("Open Project...", KeyEvent.VK_P, shiftShortcut(KeyEvent.VK_P)) { openProject() })
+        add(menuItem("Close Project") { closeProject() }.apply { isEnabled = hasProject })
         addSeparator()
         add(menuItem("Search Project...") { showProjectSearch(promptIfBlank = true) }.apply { isEnabled = hasProject })
         add(menuItem("Collections...") { showProjectCollections() }.apply { isEnabled = hasProject })

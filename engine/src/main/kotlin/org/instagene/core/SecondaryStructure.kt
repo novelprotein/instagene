@@ -66,6 +66,12 @@ object SecondaryStructure {
         return SecondaryStructureResult(original, structure, structure.count { it == '(' }, energy, "ViennaRNA RNAfold")
     }
 
-    private fun pairs(a: Char, b: Char): Boolean = "$a$b" in setOf("AU", "UA", "GC", "CG", "GU", "UG")
+    private fun pairs(a: Char, b: Char): Boolean = when (a) {
+        'A' -> b == 'U' || b == 'T'
+        'U', 'T' -> b == 'A'
+        'G' -> b == 'C' || b == 'U' || b == 'T'
+        'C' -> b == 'G'
+        else -> false
+    }
     private fun Array<IntArray>.getOrZero(i: Int, j: Int): Int = if (i in indices && j in this[i].indices && i <= j) this[i][j] else 0
 }

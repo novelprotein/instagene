@@ -324,6 +324,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
         private fun paintCircular(g2: Graphics2D) {
             val seq = doc.seq
+            val gcPct = SeqOps.gcContent(seq)
             assignLayers()
 
             val available = min(width, height) / 2
@@ -416,7 +417,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             }
 
             // Restriction sites outside the backbone.
-            val sites = if (showRestrictionSites.isSelected) doc.cutSites.sortedBy { it.topCut } else emptyList()
+            val sites = if (showRestrictionSites.isSelected) doc.cutSites else emptyList()
             g2.font = labelFont
             for (site in sites) {
                 val a = angleOf(site.topCut)
@@ -438,10 +439,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             drawStringCentered(
                 g2, "${seq.length} bp ${seq.kind.name.lowercase()} circular", centerX, centerY + 12
             )
-            drawStringCentered(g2, "GC ${"%.1f".format(SeqOps.gcContent(seq))}%", centerX, centerY + 28)
+            drawStringCentered(g2, "GC ${"%.1f".format(gcPct)}%", centerX, centerY + 28)
 
             // Draw labels last so restriction marks and the backbone cannot obscure them.
-            if (showFeatureLabels.isSelected) drawCircularFeatureLabels(g2, labels, fm)
+            if (showFeatureLabels.isSelected) drawCircularFeatureLabels(g2, labels, fm, gcPct)
 
             paintFeatureLegend(g2, seq)
         }
@@ -454,8 +455,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             g2: Graphics2D,
             labels: List<CircularLabel>,
             fm: java.awt.FontMetrics,
+            gcPct: Double = SeqOps.gcContent(doc.seq),
         ) {
-            val occupied = mutableListOf(circularCaptionBounds(g2))
+            val occupied = mutableListOf(circularCaptionBounds(g2, gcPct))
             val callouts = ArrayList<CircularLabel>()
 
             for (label in labels) {
@@ -495,14 +497,14 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             }
         }
 
-        private fun circularCaptionBounds(g2: Graphics2D): Rectangle {
+        private fun circularCaptionBounds(g2: Graphics2D, gcPct: Double = SeqOps.gcContent(doc.seq)): Rectangle {
             val seq = doc.seq
             g2.font = titleFont
             val titleWidth = g2.fontMetrics.stringWidth(seq.name)
             g2.font = subtitleFont
             val detailWidth = maxOf(
                 g2.fontMetrics.stringWidth("${seq.length} bp ${seq.kind.name.lowercase()} circular"),
-                g2.fontMetrics.stringWidth("GC ${"%.1f".format(SeqOps.gcContent(seq))}%"),
+                g2.fontMetrics.stringWidth("GC ${"%.1f".format(gcPct)}%"),
             )
             g2.font = labelFont
             val captionWidth = maxOf(titleWidth, detailWidth) + 12

@@ -48,5 +48,5 @@ nav:
   - CLI Reference: cli.md
   - GUI Reference: gui.md
   - Engine API: engine-api.md
-  - Benchmarks: benchmarks/index.md
+  - Benchmarks: benchmarks/info.md
   - Contributing: contributing.md

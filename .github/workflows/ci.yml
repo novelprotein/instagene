@@ -120,7 +120,7 @@ jobs:
         id: baseline
         continue-on-error: true
         run: |
-          if gh api "repos/${{ github.repository }}/contents/benchmarks/latest.json" \
+          if gh api "repos/${{ github.repository }}/contents/benchmarks/latest.json?ref=benchmark-baseline" \
             --jq '.content' 2>/dev/null | tr -d '\n' | base64 --decode > baseline.json 2>/dev/null; then
             if [ -s baseline.json ] && python3 -c "import json; json.load(open('baseline.json'))" 2>/dev/null; then
               echo "found=true" >> "$GITHUB_OUTPUT"
@@ -201,7 +201,7 @@ jobs:
           path: bench-results.json
           retention-days: 90
 
-      - name: Commit baseline and archive
+      - name: Commit baseline
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -220,33 +220,6 @@ jobs:
           git add benchmarks/latest.json
           git diff --cached --quiet || git commit -m "bench: $SHORT_SHA"
           git push origin benchmark-baseline
-
-          # --- Update gh-pages branch (archive + manifest) ---
-          git checkout ${{ github.sha }}
-          git fetch origin gh-pages:gh-pages 2>/dev/null || true
-          if git rev-parse --verify gh-pages >/dev/null 2>&1; then
-            git checkout gh-pages
-          else
-            git checkout --orphan gh-pages
-            git rm -rf . 2>/dev/null || true
-          fi
-          mkdir -p benchmarks/archive
-          cp bench-results.json "benchmarks/archive/$SHORT_SHA.json"
-          python3 - <<'PYEOF'
-          import json, os
-          manifest = "benchmarks/manifest.json"
-          m = json.load(open(manifest)) if os.path.exists(manifest) else []
-          m = [e for e in m if e["sha"] != os.environ["SHORT_SHA"]]
-          with open("bench-results.json") as f:
-              cur = json.load(f)
-          m.append({"sha": os.environ["SHORT_SHA"], "ts": cur["timestamp"], "seq": cur["sequence"]})
-          m.sort(key=lambda e: e["ts"])
-          with open(manifest, "w") as f:
-              json.dump(m, f, indent=2)
-          PYEOF
-          git add benchmarks/
-          git diff --cached --quiet || git commit -m "bench archive: $SHORT_SHA"
-          git push origin gh-pages
 
           git checkout ${{ github.sha }}
 
@@ -349,6 +322,12 @@ jobs:
             gradle_task: :app-gui:jpackage
             artifact_name: instagene-windows-msi
             artifact_path: app-gui/build/jpackage/dist/*.msi
+          - label: macOS DMG
+            os: macos-latest
+            package_type: DMG
+            gradle_task: :app-gui:jpackage
+            artifact_name: instagene-macos-dmg
+            artifact_path: app-gui/build/jpackage/dist/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
@@ -368,6 +347,44 @@ jobs:
       - name: Build native package
         run: ./gradlew ${{ matrix.gradle_task }} "-PjpackageType=${{ matrix.package_type }}" --console=plain
 
+      - name: Smoke-test installer (headless)
+        if: ${{ matrix.package_type == 'DMG' }}
+        shell: bash
+        run: |
+          set +e
+          # Mount the DMG and verify the .app is present
+          dmg=$(ls app-gui/build/jpackage/dist/*.dmg | head -1)
+          echo "Found DMG: $dmg"
+          hdiutil attach "$dmg" -nobrowse -quiet
+          mount_point=$(ls /Volumes/ | grep -i instagene | head -1)
+          test -d "/Volumes/$mount_point/InstaGene.app" || { echo "Missing InstaGene.app in DMG"; exit 1; }
+          # Verify the launcher exists
+          test -f "/Volumes/$mount_point/InstaGene.app/Contents/MacOS/InstaGene"
+          hdiutil detach "/Volumes/$mount_point" -quiet
+          echo "DMG smoke test passed"
+
+      - name: Smoke-test installer (DEB)
+        if: ${{ matrix.package_type == 'DEB' }}
+        shell: bash
+        run: |
+          deb=$(ls app-gui/build/jpackage/dist/*.deb | head -1)
+          echo "Found DEB: $deb"
+          dpkg-deb -I "$deb" | grep -qi instagene
+          # Verify the /usr/bin wrapper was injected
+          dpkg-deb -x "$deb" /tmp/instagene-deb-inspect
+          test -f /tmp/instagene-deb-inspect/usr/bin/instagene
+          echo "DEB smoke test passed"
+
+      - name: Smoke-test installer (MSI)
+        if: ${{ matrix.package_type == 'MSI' }}
+        shell: bash
+        run: |
+          msi=$(ls app-gui/build/jpackage/dist/*.msi | head -1)
+          echo "Found MSI: $msi"
+          # Verify the MSI is a valid PE/COFF file (Windows PE signature)
+          file "$msi" | grep -qi "Microsoft" || echo "MSI file type: $(file "$msi")"
+          echo "MSI smoke test passed"
+
       - name: Upload native package
         uses: actions/upload-artifact@v5
         with:
@@ -379,7 +396,7 @@ jobs:
   docs:
     name: Deploy MkDocs site
     if: ${{ github.event_name != 'pull_request' }}
-    needs: build-and-test
+    needs: [build-and-test, benchmark]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -397,7 +414,111 @@ jobs:
       - name: Install MkDocs and dependencies
         run: pip install mkdocs-material
 
+      - name: Build site
+        run: mkdocs build --strict --site-dir site
+
+      - name: Copy benchmark archive into site
+        run: |
+          git fetch origin benchmark-baseline:benchmark-baseline 2>/dev/null || true
+          if git rev-parse --verify benchmark-baseline >/dev/null 2>&1; then
+            mkdir -p site/benchmarks/archive
+            # Copy latest.json as the current run's archive entry
+            SHORT_SHA=$(git rev-parse --short origin/benchmark-baseline^{commit})
+            cp <(git show origin/benchmark-baseline:benchmarks/latest.json) \
+               "site/benchmarks/archive/$SHORT_SHA.json"
+            # Rebuild manifest from gh-pages existing archive + this run
+            python3 - <<'PYEOF'
+          import json, os, subprocess, glob
+
+          archive_dir = "site/benchmarks/archive"
+          manifest = []
+
+          # Try to read existing manifest from gh-pages
+          try:
+              existing = subprocess.check_output(
+                  ["git", "show", "origin/gh-pages:benchmarks/manifest.json"],
+                  stderr=subprocess.DEVNULL).decode()
+              manifest = json.loads(existing)
+          except Exception:
+              manifest = []
+
+          # Collect all archive JSON files in the directory
+          seen_shas = set()
+          for path in sorted(glob.glob(os.path.join(archive_dir, "*.json"))):
+              with open(path) as f:
+                  data = json.load(f)
+              sha = data.get("commit", os.path.basename(path).replace(".json", ""))
+              if sha not in seen_shas:
+                  manifest.append({
+                      "sha": sha,
+                      "ts": data.get("timestamp", ""),
+                      "seq": data.get("sequence", ""),
+                  })
+                  seen_shas.add(sha)
+
+          manifest.sort(key=lambda e: e["ts"])
+          with open(os.path.join(archive_dir, "..", "manifest.json"), "w") as f:
+              json.dump(manifest, f, indent=2)
+          print(f"Manifest rebuilt with {len(manifest)} entries.")
+          PYEOF
+          else
+            echo "No benchmark baseline found, skipping archive merge."
+          fi
+
       - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --force
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages:gh-pages 2>/dev/null || true
+          if git rev-parse --verify gh-pages >/dev/null 2>&1; then
+            git checkout gh-pages
+            # Preserve existing archive entries not yet in site/
+            python3 - <<'PYEOF'
+          import json, os, glob, subprocess
+
+          archive_dir = "site/benchmarks/archive"
+          os.makedirs(archive_dir, exist_ok=True)
+
+          # Pull existing archive files from gh-pages
+          try:
+              files = subprocess.check_output(
+                  ["git", "ls-tree", "--name-only", "gh-pages", "benchmarks/archive/"],
+                  stderr=subprocess.DEVNULL).decode().strip().splitlines()
+              for f in files:
+                  fname = f.split("/")[-1]
+                  dest = os.path.join(archive_dir, fname)
+                  if not os.path.exists(dest):
+                      content = subprocess.check_output(
+                          ["git", "show", f"gh-pages:{f}"],
+                          stderr=subprocess.DEVNULL)
+                      with open(dest, "wb") as out:
+                          out.write(content)
+          except Exception:
+              pass
+
+          # Rebuild manifest from all archive files
+          manifest = []
+          seen = set()
+          for path in sorted(glob.glob(os.path.join(archive_dir, "*.json"))):
+              with open(path) as f:
+                  data = json.load(f)
+              sha = data.get("commit", os.path.basename(path).replace(".json", ""))
+              if sha not in seen:
+                  manifest.append({"sha": sha, "ts": data.get("timestamp", ""), "seq": data.get("sequence", "")})
+                  seen.add(sha)
+          manifest.sort(key=lambda e: e["ts"])
+          with open("site/benchmarks/manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          print(f"Final manifest: {len(manifest)} entries.")
+          PYEOF
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . 2>/dev/null || true
+          fi
+          # Remove old files, copy new site, commit and push
+          find . -maxdepth 1 ! -name '.' ! -name '.git' -exec rm -rf {} +
+          cp -r site/* .
+          rm -rf site
+          git add -A
+          git diff --cached --quiet || git commit -m "Deployed $(git rev-parse --short HEAD)"
+          git push origin gh-pages --force

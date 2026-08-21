@@ -210,7 +210,7 @@ object Cli {
         val seq = try {
             load(args)
         } catch (_: CliException) {
-            println("No input file. Fetching pUC19 (U03453) from NCBI...")
+            println("No input file. Fetching U03453 from NCBI...")
             println()
             NcbiClient().fetchGenBank("U03453")
         }

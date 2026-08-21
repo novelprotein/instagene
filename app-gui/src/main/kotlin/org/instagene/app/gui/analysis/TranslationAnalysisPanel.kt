@@ -11,6 +11,7 @@ internal class TranslationAnalysisPanel(private val onOpenSequence: (Seq) -> Uni
     private val window = JSpinner(SpinnerNumberModel(100, 10, 10_000, 10))
     private val output = output()
     private var product: Seq? = null
+    private var worker: SwingWorker<Pair<String, Seq?>, Unit>? = null
 
     init {
         val run = JButton("Analyze").apply {
@@ -28,24 +29,44 @@ internal class TranslationAnalysisPanel(private val onOpenSequence: (Seq) -> Uni
     private fun execute() {
         product = null
         val selectedProfile = CodonDesign.PROFILES[profile.selectedIndex]
-        runCatching {
-            when (operation.selectedIndex) {
-                0 -> SeqOps.findOrfs(doc.seq).joinToString("\n") {
-                    "${it.start + 1}..${it.end}\t${it.strand.symbol}\tframe ${it.frame + 1}\t${it.lengthAa} aa"
-                }.ifBlank { "No ORFs found." }
-                1 -> CodonDesign.makeProtein(doc.seq, (frame.value as Number).toInt() - 1).also { product = it }
-                    .let { "${it.name}: ${it.length} aa\n\n${it.bases.chunked(80).joinToString("\n")}" }
-                2 -> CodonDesign.reverseTranslate(doc.seq, selectedProfile).also { product = it }
-                    .let { "${it.name}: ${it.length} bp\n\n${it.bases.chunked(80).joinToString("\n")}" }
-                3 -> CodonDesign.optimize(doc.seq, selectedProfile, (frame.value as Number).toInt() - 1).also { product = it }
-                    .let { "${it.name}: ${it.length} bp\n\n${it.bases.chunked(80).joinToString("\n")}" }
-                4 -> SequenceProfiles.gcWindows(doc.seq, (window.value as Number).toInt()).joinToString("\n") {
-                    "${it.start + 1}..${it.end}\t${"%.2f".format(it.gcPercent)}% GC"
-                }
-                else -> SecondaryStructure.predict(doc.seq).let {
-                    "${it.algorithm}: ${it.pairedBases} base pair(s), estimated \u0394G ${"%.1f".format(it.estimatedDeltaG)} kcal/mol\n\n${it.sequence}\n${it.dotBracket}"
+        val seq = doc.seq
+        val opIndex = operation.selectedIndex
+        val frameValue = (frame.value as Number).toInt() - 1
+        val windowValue = (window.value as Number).toInt()
+        output.text = "Analyzing\u2026"
+        worker?.cancel(true)
+        worker = object : SwingWorker<Pair<String, Seq?>, Unit>() {
+            override fun doInBackground(): Pair<String, Seq?> {
+                return when (opIndex) {
+                    0 -> SeqOps.findOrfs(seq).joinToString("\n") {
+                        "${it.start + 1}..${it.end}\t${it.strand.symbol}\tframe ${it.frame + 1}\t${it.lengthAa} aa"
+                    }.ifBlank { "No ORFs found." } to null
+                    1 -> CodonDesign.makeProtein(seq, frameValue).let {
+                        "${it.name}: ${it.length} aa\n\n${it.bases.chunked(80).joinToString("\n")}" to it
+                    }
+                    2 -> CodonDesign.reverseTranslate(seq, selectedProfile).let {
+                        "${it.name}: ${it.length} bp\n\n${it.bases.chunked(80).joinToString("\n")}" to it
+                    }
+                    3 -> CodonDesign.optimize(seq, selectedProfile, frameValue).let {
+                        "${it.name}: ${it.length} bp\n\n${it.bases.chunked(80).joinToString("\n")}" to it
+                    }
+                    4 -> SequenceProfiles.gcWindows(seq, windowValue).joinToString("\n") {
+                        "${it.start + 1}..${it.end}\t${"%.2f".format(it.gcPercent)}% GC"
+                    } to null
+                    else -> SecondaryStructure.predict(seq).let {
+                        ("${it.algorithm}: ${it.pairedBases} base pair(s), estimated \u0394G ${"%.1f".format(it.estimatedDeltaG)} kcal/mol\n\n${it.sequence}\n${it.dotBracket}") to null
+                    }
                 }
             }
-        }.onSuccess { output.text = it }.onFailure { output.text = it.message ?: "Analysis failed" }
+
+            override fun done() {
+                if (worker !== this) return
+                worker = null
+                runCatching { get() }.onSuccess { (text, seq) ->
+                    product = seq
+                    output.text = text
+                }.onFailure { output.text = it.message ?: "Analysis failed" }
+            }
+        }.also { it.execute() }
     }
 }

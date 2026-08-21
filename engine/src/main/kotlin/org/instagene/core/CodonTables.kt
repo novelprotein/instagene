@@ -7,21 +7,50 @@ package org.instagene.core
 class CodonTable(
     val id: Int,
     val displayName: String,
-    private val codons: Map<String, Char>,
+    codons: Map<String, Char>,
     val startCodons: Set<String>,
 ) {
+    /** Packed lookup: 64-entry CharArray indexed by (b1*16 + b2*4 + b3) where T=0,C=1,A=2,G=3. */
+    private val translateTable: CharArray = CharArray(64) { 'X' }
+
+    /** Set of packed start-codon indices for O(1) isStart checks. */
+    private val startIndices: IntArray
+
+    init {
+        for ((codon, aa) in codons) {
+            translateTable[codonIndex(codon)] = aa
+        }
+        startIndices = startCodons.map { codonIndex(it) }.toIntArray().also { it.sort() }
+    }
+
     /** Translates a single codon; unknown or degenerate codons become 'X'. */
-    fun translate(codon: String): Char =
-        codons[codon.uppercase().replace('U', 'T')] ?: 'X'
+    fun translate(codon: String): Char {
+        if (codon.length < 3) return 'X'
+        val i = try { codonIndex(codon) } catch (_: IllegalArgumentException) { return 'X' }
+        return translateTable[i]
+    }
 
     /** True when [codon] translates to the stop symbol ('*'). */
     fun isStop(codon: String): Boolean = translate(codon) == '*'
 
     /** True when [codon] (T or U) is one of this table's permitted start codons. */
-    fun isStart(codon: String): Boolean =
-        codon.uppercase().replace('U', 'T') in startCodons
+    fun isStart(codon: String): Boolean {
+        if (codon.length < 3) return false
+        val i = try { codonIndex(codon) } catch (_: IllegalArgumentException) { return false }
+        return startIndices.contains(i)
+    }
 
     companion object {
+        private const val BASES = "TCAG"
+
+        /** Encodes a 3-char codon into a 0–63 index. U is treated as T. */
+        private fun codonIndex(codon: String): Int {
+            val b0 = BASES.indexOf(codon[0].uppercaseChar().let { if (it == 'U') 'T' else it })
+            val b1 = BASES.indexOf(codon[1].uppercaseChar().let { if (it == 'U') 'T' else it })
+            val b2 = BASES.indexOf(codon[2].uppercaseChar().let { if (it == 'U') 'T' else it })
+            if (b0 < 0 || b1 < 0 || b2 < 0) throw IllegalArgumentException("Non-IUPAC base in codon: $codon")
+            return b0 * 16 + b1 * 4 + b2
+        }
         // Amino acids in the canonical NCBI ordering of TTT, TTC, TTA, ... GGG.
         private const val AA_STANDARD =
             "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"

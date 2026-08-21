@@ -5,6 +5,7 @@ import org.instagene.app.gui.installRowContextMenu
 import org.instagene.core.AdvancedSearch
 import org.instagene.core.SearchMode
 import org.instagene.core.SearchRequest
+import org.instagene.core.SequenceMatch
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -21,6 +22,7 @@ internal class SearchAnalysisPanel(private val onReveal: (Int, Int) -> Unit) : B
     private val model = DefaultTableModel(arrayOf("Start", "End", "Strand", "Mismatches", "Match", "Frame"), 0)
     private val table = JTable(model)
     private val status = JLabel("Enter a pattern to search.")
+    private var worker: SwingWorker<List<SequenceMatch>, Unit>? = null
 
     init {
         val run = JButton("Search")
@@ -49,16 +51,27 @@ internal class SearchAnalysisPanel(private val onReveal: (Int, Int) -> Unit) : B
             2 -> SearchMode.AMINO_ACID
             else -> SearchMode.DNA_DEGENERATE
         }
-        runCatching {
-            AdvancedSearch.find(doc.seq, SearchRequest(
-                pattern.text.trim(), searchMode, bothStrands.isSelected, caseSensitive.isSelected,
-                (mismatches.value as Number).toInt(), (threePrime.value as Number).toInt(),
-            ))
-        }.onSuccess { hits ->
-            model.rowCount = 0
-            hits.forEach { model.addRow(arrayOf<Any?>(it.start + 1, it.end, it.strand.symbol, it.mismatches, it.matched, it.frame ?: "")) }
-            status.text = "${hits.size} match(es) in ${doc.seq.name}. Double-click a row to reveal it."
-        }.onFailure { status.text = it.message ?: "Search failed" }
+        val request = SearchRequest(
+            pattern.text.trim(), searchMode, bothStrands.isSelected, caseSensitive.isSelected,
+            (mismatches.value as Number).toInt(), (threePrime.value as Number).toInt(),
+        )
+        val seq = doc.seq
+        status.text = "Searching\u2026"
+        worker?.cancel(true)
+        worker = object : SwingWorker<List<SequenceMatch>, Unit>() {
+            override fun doInBackground(): List<SequenceMatch> =
+                AdvancedSearch.find(seq, request)
+
+            override fun done() {
+                if (worker !== this) return
+                worker = null
+                runCatching { get() }.onSuccess { hits ->
+                    model.rowCount = 0
+                    hits.forEach { model.addRow(arrayOf<Any?>(it.start + 1, it.end, it.strand.symbol, it.mismatches, it.matched, it.frame ?: "")) }
+                    status.text = "${hits.size} match(es) in ${seq.name}. Double-click a row to reveal it."
+                }.onFailure { status.text = it.message ?: "Search failed" }
+            }
+        }.also { it.execute() }
     }
 
     private fun revealSelected() {

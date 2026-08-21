@@ -13,10 +13,12 @@ import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.core.Enzyme
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
+import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JOptionPane
+import javax.swing.KeyStroke
 
 class ToolsMenu(
     private val doc: SeqDocument,
@@ -26,6 +28,7 @@ class ToolsMenu(
     private val primersPanel: PrimersPanel? = null,
     private val libraryPanel: LibraryPanel? = null,
     private val onAnalysis: (String) -> Unit = {},
+    private val onFetchNcbi: (String) -> Unit = {},
 ) {
 
     private val topologyItem = JMenuItem("Make Circular")
@@ -146,10 +149,23 @@ class ToolsMenu(
                 addActionListener { AnalysisDialogs.showDiagnostic(null, doc, digestPanel.selectedEnzymes()) }
             })
             addSeparator()
-            add(alignItem.apply { addActionListener { AnalysisDialogs.showAlignment(null, doc) } })
-            add(gelItem.apply { addActionListener { AnalysisDialogs.showGel(null, doc) } })
-            add(identityItem.apply { addActionListener { AnalysisDialogs.showIdentity(null, doc) } })
-            add(calculatorItem.apply { addActionListener { AnalysisDialogs.showMolecularCalculator(null) } })
+            add(alignItem.apply { addActionListener { onAnalysis("Sanger Alignment") } })
+            add(gelItem.apply { addActionListener { onAnalysis("Virtual Gel") } })
+            add(identityItem.apply { addActionListener { onAnalysis("Statistics / Graphs") } })
+            add(calculatorItem.apply { addActionListener { onAnalysis("Calculators") } })
+            addSeparator()
+            add(JMenuItem("NCBI Search...").apply {
+                accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_G, InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK)
+                addActionListener {
+                    val accession = JOptionPane.showInputDialog(
+                        null,
+                        "Enter an NCBI accession or search term:",
+                        "NCBI Search",
+                        JOptionPane.QUESTION_MESSAGE,
+                    )
+                    if (!accession.isNullOrBlank()) onFetchNcbi(accession)
+                }
+            })
         }
     }
 

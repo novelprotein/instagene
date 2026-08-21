@@ -21,11 +21,20 @@ internal object Parallel {
     /**
      * Parallel map: applies [transform] to each element of [items] concurrently,
      * up to [Parallel.cores] tasks at a time, preserving encounter order.
+     * For large lists, work is chunked to avoid creating one coroutine per item.
      */
     fun <T, R> map(items: List<T>, transform: (T) -> R): List<R> {
         if (items.size <= 1) return items.map(transform)
+        if (items.size <= cores) {
+            return runBlocking(Dispatchers.Default) {
+                items.map { item -> async { transform(item) } }.awaitAll()
+            }
+        }
+        val chunkSize = (items.size + cores - 1) / cores
         return runBlocking(Dispatchers.Default) {
-            items.map { item -> async { transform(item) } }.awaitAll()
+            items.chunked(chunkSize).map { chunk ->
+                async { chunk.map(transform) }
+            }.awaitAll().flatten()
         }
     }
 
@@ -36,8 +45,19 @@ internal object Parallel {
      */
     fun <T, R> mapIndexed(items: List<T>, transform: (Int, T) -> R): List<R> {
         if (items.size <= 1) return items.mapIndexed(transform)
+        if (items.size <= cores) {
+            return runBlocking(Dispatchers.Default) {
+                items.mapIndexed { i, item -> async { transform(i, item) } }.awaitAll()
+            }
+        }
+        val chunkSize = (items.size + cores - 1) / cores
         return runBlocking(Dispatchers.Default) {
-            items.mapIndexed { i, item -> async { transform(i, item) } }.awaitAll()
+            items.chunked(chunkSize).map { chunk ->
+                async {
+                    val base = items.indexOf(chunk[0])
+                    chunk.mapIndexed { i, item -> transform(base + i, item) }
+                }
+            }.awaitAll().flatten()
         }
     }
 
@@ -46,9 +66,19 @@ internal object Parallel {
      */
     fun <T> filter(items: List<T>, predicate: (T) -> Boolean): List<T> {
         if (items.size <= 1) return items.filter(predicate)
+        if (items.size <= cores) {
+            return runBlocking(Dispatchers.Default) {
+                items.map { item -> async { item to predicate(item) } }
+                    .awaitAll()
+                    .filter { it.second }
+                    .map { it.first }
+            }
+        }
+        val chunkSize = (items.size + cores - 1) / cores
         return runBlocking(Dispatchers.Default) {
-            items.map { item -> async { item to predicate(item) } }
-                .awaitAll()
+            items.chunked(chunkSize).map { chunk ->
+                async { chunk.map { it to predicate(it) } }
+            }.awaitAll().flatten()
                 .filter { it.second }
                 .map { it.first }
         }
@@ -59,8 +89,16 @@ internal object Parallel {
      */
     fun <T, R> flatMap(items: List<T>, transform: (T) -> List<R>): List<R> {
         if (items.size <= 1) return items.flatMap(transform)
+        if (items.size <= cores) {
+            return runBlocking(Dispatchers.Default) {
+                items.map { item -> async { transform(item) } }.awaitAll().flatten()
+            }
+        }
+        val chunkSize = (items.size + cores - 1) / cores
         return runBlocking(Dispatchers.Default) {
-            items.map { item -> async { transform(item) } }.awaitAll().flatten()
+            items.chunked(chunkSize).map { chunk ->
+                async { chunk.flatMap(transform) }
+            }.awaitAll().flatten()
         }
     }
 

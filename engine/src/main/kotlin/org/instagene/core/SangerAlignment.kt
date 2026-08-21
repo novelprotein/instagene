@@ -36,9 +36,12 @@ object SangerAlignment {
             for (ss in 0..seq.length) {
                 var score = 0
                 var len = 0
-                while (rs + len < ref.length && ss + len < seq.length) {
+                val maxLen = minOf(ref.length - rs, seq.length - ss)
+                while (len < maxLen) {
                     if (ref[rs + len] == seq[ss + len]) score++ else score--
                     len++
+                    // Prune: even if every remaining base matches, we can't beat bestScore.
+                    if (score + (maxLen - len) <= bestScore) break
                 }
                 if (score > bestScore) {
                     bestScore = score

@@ -45,8 +45,24 @@ object AdvancedSearch {
                 Alphabet.reverseComplement(pattern, seq.kind)
             val maxStart = if (seq.isCircular) seq.length - 1 else seq.length - oriented.length
             if (maxStart < 0) return emptyList()
+            // Bitmap gate: precompute which bases the first pattern character can match.
+            val firstChar = oriented[0].uppercaseChar()
+            val firstAllowed = BooleanArray(256).also { arr ->
+                if (request.mode == SearchMode.LITERAL || request.caseSensitive) {
+                    arr[firstChar.code] = true
+                } else {
+                    val expansion = Alphabet.expansion(firstChar)
+                    if (expansion != null) {
+                        for (c in expansion) arr[c.uppercaseChar().code] = true
+                    } else {
+                        arr[firstChar.code] = true
+                    }
+                }
+            }
             val out = ArrayList<SequenceMatch>()
             for (start in 0..maxStart) {
+                val firstBase = seq.bases[start].uppercaseChar().code
+                if (firstBase !in firstAllowed.indices || !firstAllowed[firstBase]) continue
                 val target = seq.sub(start, start + oriented.length)
                 if (target.length != oriented.length) continue
                 val mismatch = mismatchCount(target, oriented, request)
