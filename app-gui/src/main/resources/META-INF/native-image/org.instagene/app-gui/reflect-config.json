@@ -1,137 +1,135 @@
-{
-  "reflection": [
-    {
-      "name": "com.formdev.flatlaf.FlatLightLaf",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.FlatDarkLaf",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.FlatDarculaLaf",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.FlatIntelliJLaf",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.themes.FlatLightHighContrastIJTheme",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.themes.FlatDarkHighContrastIJTheme",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.themes.FlatMacDarkLaf",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.themes.FlatMacLightLaf",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.IntelliJTheme",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true,
-      "allPublicFields": true
-    },
-    {
-      "name": "com.formdev.flatlaf.FlatLaf",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "com.formdev.flatlaf.util.SystemInfo",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true,
-      "allPublicFields": true
-    },
-    {
-      "name": "org.jfree.chart.JFreeChart",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.chart.plot.CategoryPlot",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.chart.plot.XYPlot",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.chart.plot.PiePlot",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.chart.renderer.category.BarRenderer",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.chart.renderer.xy.XYLineAndShapeRenderer",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.data.category.DefaultCategoryDataset",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.data.xy.XYSeriesCollection",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "org.jfree.data.general.DefaultPieDataset",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "javax.swing.UIManager",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true,
-      "allPublicFields": true
-    },
-    {
-      "name": "javax.swing.plaf.metal.MetalLookAndFeel",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "javax.swing.plaf.synth.SynthLookAndFeel",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "java.awt.Toolkit",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "java.awt.GraphicsEnvironment",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    },
-    {
-      "name": "java.awt.Desktop",
-      "allDeclaredConstructors": true,
-      "allPublicMethods": true
-    }
-  ]
-}
+[
+  {
+    "name": "com.formdev.flatlaf.FlatLightLaf",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.FlatDarkLaf",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.FlatDarculaLaf",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.FlatIntelliJLaf",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.themes.FlatLightHighContrastIJTheme",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.themes.FlatDarkHighContrastIJTheme",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.themes.FlatMacDarkLaf",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.themes.FlatMacLightLaf",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.IntelliJTheme",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "com.formdev.flatlaf.FlatLaf",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.formdev.flatlaf.util.SystemInfo",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "org.jfree.chart.JFreeChart",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.chart.plot.CategoryPlot",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.chart.plot.XYPlot",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.chart.plot.PiePlot",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.chart.renderer.category.BarRenderer",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.chart.renderer.xy.XYLineAndShapeRenderer",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.data.category.DefaultCategoryDataset",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.data.xy.XYSeriesCollection",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.jfree.data.general.DefaultPieDataset",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "javax.swing.UIManager",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "javax.swing.plaf.metal.MetalLookAndFeel",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "javax.swing.plaf.synth.SynthLookAndFeel",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.awt.Toolkit",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.awt.GraphicsEnvironment",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.awt.Desktop",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  }
+]

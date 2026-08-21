@@ -1,64 +1,62 @@
-{
-  "jni": [
-    {
-      "name": "java.awt.Toolkit",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "java.awt.GraphicsEnvironment",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "java.awt.Window",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "java.awt.Frame",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "java.awt.Component",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "java.awt.Graphics",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "java.awt.image.BufferedImage",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "sun.awt.X11.XToolkit",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "sun.awt.X11GraphicsEnvironment",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "sun.lwawt.macosx.LWCToolkit",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "sun.lwawt.macosx.CPlatformWindow",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "name": "sun.awt.windows.WToolkit",
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    }
-  ]
-}
+[
+  {
+    "name": "java.awt.Toolkit",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "java.awt.GraphicsEnvironment",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "java.awt.Window",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "java.awt.Frame",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "java.awt.Component",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "java.awt.Graphics",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "java.awt.image.BufferedImage",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "sun.awt.X11.XToolkit",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "sun.awt.X11GraphicsEnvironment",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "sun.lwawt.macosx.LWCToolkit",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "sun.lwawt.macosx.CPlatformWindow",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "sun.awt.windows.WToolkit",
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  }
+]

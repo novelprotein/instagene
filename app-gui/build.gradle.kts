@@ -37,14 +37,18 @@ graalvmNative {
                 "-H:+ReportExceptionStackTraces",
                 "--no-fallback",
                 "-march=compatibility",
-                "-H:+JNI",
-                "-H:+AWT",
                 "-H:+UnlockExperimentalVMOptions",
+                "-H:+JNI",
                 "-H:+AddAllCharsets",
+                "-H:-UnlockExperimentalVMOptions",
                 "--initialize-at-build-time",
-                "--initialize-at-run-time=java.awt",
-                "--initialize-at-run-time=javax.swing",
-                "--initialize-at-run-time=com.formdev.flatlaf",
+                "--initialize-at-build-time=java.awt.PageAttributes\$MediaType",
+                "--initialize-at-run-time=sun.awt.X11.XWM",
+                "--initialize-at-run-time=sun.awt.X11.XMSelection",
+                "--initialize-at-run-time=sun.awt.X11.XDragAndDropProtocols",
+                "--initialize-at-run-time=sun.awt.X11.MotifDnDDragSourceProtocol",
+                "--initialize-at-run-time=sun.awt.X11.XRootWindow",
+                "--initialize-at-run-time=sun.awt.X11.XBaseWindow",
             )
         }
     }
@@ -220,7 +224,6 @@ fun JPackageTask.configureInstaGenePackage() {
     appDescription = "DNA/RNA editing and plasmid construction."
     copyright = "InstaGene contributors"
     javaOptions = listOf("-Xmx8g")
-    fileAssociations.from(fileTree(jpackageFileAssociations) { include("*.properties") })
     // The plugin logs the jpackage process output at Gradle INFO level. Keep
     // native verbose output available so CI can expose packaging errors.
     verbose = true
@@ -266,6 +269,9 @@ tasks.jpackage {
     macPackageIdentifier = useMacOpts.map { if (it) "io.novelprotein.instagene" else null }
     macPackageName = useMacOpts.map { if (it) "InstaGene" else null }
     macAppCategory = useMacOpts.map { if (it) "public.app-category.education" else null }
+    if (jpackageType.get() != "APP_IMAGE") {
+        fileAssociations.from(fileTree(jpackageFileAssociations) { include("*.properties") })
+    }
 
     // Add the terminal wrapper after packaging: the 'instagene' script into the
     // app image root (APP_IMAGE), and /usr/bin/instagene into the .deb. The
