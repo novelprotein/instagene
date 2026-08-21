@@ -25,6 +25,10 @@ dependencies {
 // generated configs. Use `./gradlew :app-gui:nativeRunAgent` to re-generate
 // configs by tracing a representative GUI session.
 graalvmNative {
+    // CI's graalvm/setup-graalvm action exposes native-image through
+    // GRAALVM_HOME/JAVA_HOME. Keep detection explicit so native package jobs do
+    // not accidentally select the regular Gradle JDK toolchain.
+    toolchainDetection = false
     binaries {
         named("main") {
             mainClass.set("org.instagene.app.gui.GuiMainKt")
@@ -91,6 +95,7 @@ val jpackageType = providers.gradleProperty("jpackage.type")
 val defaultJpackageDest = jpackageType.map { if (it == "APP_IMAGE") "jpackage/app-image-dist" else "jpackage/dist" }
 val jpackageDest = providers.gradleProperty("jpackage.dest").orElse(defaultJpackageDest)
 val instaGeneVersion = providers.gradleProperty("instagene.version").orElse("0.0.0")
+val jpackageFileAssociations = layout.projectDirectory.dir("src/jpackage/file-associations")
 
 // Fixed jar name so --main-jar is stable regardless of Gradle's archive naming.
 tasks.jar {
@@ -215,6 +220,7 @@ fun JPackageTask.configureInstaGenePackage() {
     appDescription = "DNA/RNA editing and plasmid construction."
     copyright = "InstaGene contributors"
     javaOptions = listOf("-Xmx8g")
+    fileAssociations.from(fileTree(jpackageFileAssociations) { include("*.properties") })
     // The plugin logs the jpackage process output at Gradle INFO level. Keep
     // native verbose output available so CI can expose packaging errors.
     verbose = true
@@ -252,9 +258,14 @@ tasks.jpackage {
     linuxDebMaintainer = useDebOpts.map { if (it) "InstaGene <instagene@novelprotein.github.io>" else null }
     linuxRpmLicenseType = useRpmOpts.map { if (it) "MIT" else null }
     winMenu = useWindowsOpts
+    winMenuGroup = useWindowsOpts.map { if (it) "InstaGene" else null }
     winShortcut = useWindowsOpts
+    winDirChooser = useWindowsOpts
     winPerUserInstall = useWindowsOpts
+    winUpgradeUuid = useWindowsOpts.map { if (it) "7EF5A31A-0A2A-40E4-9E30-D98E87BC4D17" else null }
     macPackageIdentifier = useMacOpts.map { if (it) "io.novelprotein.instagene" else null }
+    macPackageName = useMacOpts.map { if (it) "InstaGene" else null }
+    macAppCategory = useMacOpts.map { if (it) "public.app-category.education" else null }
 
     // Add the terminal wrapper after packaging: the 'instagene' script into the
     // app image root (APP_IMAGE), and /usr/bin/instagene into the .deb. The
@@ -332,4 +343,332 @@ tasks.register<Zip>("jpackageAppImageZip") {
     archiveFileName = "instagene-app-image.zip"
     destinationDirectory = layout.buildDirectory.dir("jpackage")
     from(tasks.jpackage.flatMap { it.destination.dir(appImageName) })
+}
+
+// ------------------------------------------------------ GraalVM-native packages
+
+// Official platform packages use the GraalVM native executable. The portable
+// GUI JAR above intentionally remains JVM-based for users who want a single
+// Java 21+ artifact instead of an installer.
+val nativeGuiExecutableName = providers.systemProperty("os.name").map { os ->
+    if (os.lowercase().contains("windows")) "instagene.exe" else "instagene"
+}
+val nativeGuiExecutable = layout.buildDirectory.file(
+    nativeGuiExecutableName.map { "native/nativeCompile/$it" },
+)
+val nativePackageDir = layout.buildDirectory.dir("native-package")
+val nativePackageDistDir = nativePackageDir.map { it.dir("dist") }
+
+fun verifyNativeExecutable(file: File) {
+    check(file.isFile) { "Missing GraalVM native GUI executable: $file" }
+    check(file.canExecute() || file.extension.equals("exe", ignoreCase = true)) {
+        "GraalVM native GUI executable is not executable: $file"
+    }
+}
+
+val prepareNativeLinuxAppImage = tasks.register<Sync>("prepareNativeLinuxAppImage") {
+    group = "distribution"
+    description = "Stages the GraalVM-native Linux app-image directory."
+    dependsOn("nativeCompile")
+    val appDir = nativePackageDir.map { it.dir("linux-app-image/$appImageName") }
+    val nativeExe = nativeGuiExecutable
+    inputs.file(nativeExe)
+    into(appDir)
+    doFirst { verifyNativeExecutable(nativeExe.get().asFile) }
+    into("bin") {
+        from(nativeExe) {
+            rename { "InstaGene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+        from(linuxLauncherScript) {
+            rename { "instagene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+    }
+    into("share/applications") {
+        from(layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.desktop"))
+    }
+    into("share/mime/packages") {
+        from(layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.xml"))
+    }
+}
+
+tasks.register<Zip>("nativeAppImageZip") {
+    group = "distribution"
+    description = "Builds a portable zip containing the GraalVM-native GUI executable."
+    dependsOn(prepareNativeLinuxAppImage)
+    archiveFileName = "instagene-native-app-image.zip"
+    destinationDirectory = nativePackageDistDir
+    from(prepareNativeLinuxAppImage.map { it.destinationDir })
+}
+
+val prepareNativeDebRoot = tasks.register<Sync>("prepareNativeDebRoot") {
+    group = "distribution"
+    description = "Stages the Debian package root for the GraalVM-native GUI."
+    dependsOn("nativeCompile")
+    val rootDir = nativePackageDir.map { it.dir("deb/root") }
+    val nativeExe = nativeGuiExecutable
+    inputs.file(nativeExe)
+    into(rootDir)
+    doFirst { verifyNativeExecutable(nativeExe.get().asFile) }
+    into("opt/instagene/bin") {
+        from(nativeExe) {
+            rename { "InstaGene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+        from(linuxLauncherScript) {
+            rename { "instagene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+    }
+    into("usr/bin") {
+        from(linuxLauncherScript) {
+            rename { "instagene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+    }
+    into("usr/share/applications") {
+        from(layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.desktop"))
+    }
+    into("usr/share/mime/packages") {
+        from(layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.xml"))
+    }
+}
+
+tasks.register("nativeDeb") {
+    group = "distribution"
+    description = "Builds the GraalVM-native Debian package."
+    dependsOn(prepareNativeDebRoot)
+    val rootDir = nativePackageDir.map { it.dir("deb/root") }
+    val debFile = nativePackageDistDir.map { it.file("instagene_${instaGeneVersion.get()}_amd64.deb") }
+    inputs.dir(rootDir)
+    outputs.file(debFile)
+    onlyIf { osIs("linux").get() }
+    doLast {
+        val root = rootDir.get().asFile
+        val controlDir = File(root, "DEBIAN").apply { mkdirs() }
+        File(controlDir, "control").writeText(
+            """
+            Package: instagene
+            Version: ${instaGeneVersion.get()}
+            Section: science
+            Priority: optional
+            Architecture: amd64
+            Maintainer: InstaGene <instagene@novelprotein.github.io>
+            Depends: libc6, libx11-6, libxext6, libxi6, libxrender1, libxtst6, xdg-utils
+            Description: DNA/RNA editing and plasmid construction.
+             InstaGene is a researcher-focused desktop app for reading, editing,
+             analyzing, and constructing nucleic acid and protein sequences.
+            """.trimIndent() + "\n",
+        )
+        nativePackageDistDir.get().asFile.mkdirs()
+        providers.exec {
+            commandLine("dpkg-deb", "-b", "--root-owner-group", root.absolutePath, debFile.get().asFile.absolutePath)
+        }.result.get()
+    }
+}
+
+val prepareNativeRpmBuildRoot = tasks.register<Sync>("prepareNativeRpmBuildRoot") {
+    group = "distribution"
+    description = "Stages the RPM build root for the GraalVM-native GUI."
+    dependsOn("nativeCompile")
+    val buildRoot = nativePackageDir.map { it.dir("rpm/BUILDROOT/instagene-${instaGeneVersion.get()}-1.x86_64") }
+    val nativeExe = nativeGuiExecutable
+    inputs.file(nativeExe)
+    into(buildRoot)
+    doFirst { verifyNativeExecutable(nativeExe.get().asFile) }
+    into("opt/instagene/bin") {
+        from(nativeExe) {
+            rename { "InstaGene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+        from(linuxLauncherScript) {
+            rename { "instagene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+    }
+    into("usr/bin") {
+        from(linuxLauncherScript) {
+            rename { "instagene" }
+            filePermissions { unix("rwxr-xr-x") }
+        }
+    }
+    into("usr/share/applications") {
+        from(layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.desktop"))
+    }
+    into("usr/share/mime/packages") {
+        from(layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.xml"))
+    }
+}
+
+tasks.register("nativeRpm") {
+    group = "distribution"
+    description = "Builds the GraalVM-native RPM package."
+    dependsOn(prepareNativeRpmBuildRoot)
+    val rpmDir = nativePackageDir.map { it.dir("rpm") }
+    val buildRoot = rpmDir.map { it.dir("BUILDROOT/instagene-${instaGeneVersion.get()}-1.x86_64") }
+    val specFile = rpmDir.map { it.file("SPECS/instagene.spec") }
+    outputs.dir(rpmDir.map { it.dir("RPMS") })
+    onlyIf { osIs("linux").get() }
+    doLast {
+        listOf("BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS").forEach {
+            rpmDir.get().dir(it).asFile.mkdirs()
+        }
+        specFile.get().asFile.writeText(
+            """
+            Name: instagene
+            Version: ${instaGeneVersion.get()}
+            Release: 1%{?dist}
+            Summary: DNA/RNA editing and plasmid construction
+            License: MIT
+            Group: Applications/Science
+            BuildArch: x86_64
+            Requires: glibc, libX11, libXext, libXi, libXrender, libXtst, xdg-utils
+
+            %description
+            InstaGene is a researcher-focused desktop app for reading, editing,
+            analyzing, and constructing nucleic acid and protein sequences.
+
+            %files
+            /opt/instagene/bin/InstaGene
+            /opt/instagene/bin/instagene
+            /usr/bin/instagene
+            /usr/share/applications/io.novelprotein.instagene.desktop
+            /usr/share/mime/packages/io.novelprotein.instagene.xml
+            """.trimIndent() + "\n",
+        )
+        nativePackageDistDir.get().asFile.mkdirs()
+        providers.exec {
+            commandLine(
+                "rpmbuild",
+                "--define", "_topdir ${rpmDir.get().asFile.absolutePath}",
+                "--define", "_build_id_links none",
+                "--buildroot", buildRoot.get().asFile.absolutePath,
+                "-bb", specFile.get().asFile.absolutePath,
+            )
+        }.result.get()
+        copy {
+            from(rpmDir.get().dir("RPMS").asFileTree.matching { include("**/*.rpm") })
+            into(nativePackageDistDir)
+        }
+    }
+}
+
+tasks.register("nativeWindowsMsi") {
+    group = "distribution"
+    description = "Builds the GraalVM-native Windows MSI using WiX."
+    dependsOn("nativeCompile")
+    val nativeExe = nativeGuiExecutable
+    val wixDir = nativePackageDir.map { it.dir("windows-msi") }
+    val wxs = wixDir.map { it.file("InstaGene.wxs") }
+    val msi = nativePackageDistDir.map { it.file("InstaGene-${instaGeneVersion.get()}.msi") }
+    inputs.file(nativeExe)
+    outputs.file(msi)
+    onlyIf { osIs("windows").get() }
+    doLast {
+        verifyNativeExecutable(nativeExe.get().asFile)
+        val dir = wixDir.get().asFile.apply { mkdirs() }
+        val exe = nativeExe.get().asFile
+        wxs.get().asFile.writeText(
+            """
+            <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+              <Package Name="InstaGene" Manufacturer="InstaGene" Version="${instaGeneVersion.get()}" UpgradeCode="7EF5A31A-0A2A-40E4-9E30-D98E87BC4D17" Scope="perUser">
+                <MajorUpgrade DowngradeErrorMessage="A newer version of InstaGene is already installed." />
+                <MediaTemplate EmbedCab="yes" />
+                <Feature Id="MainFeature" Title="InstaGene" Level="1">
+                  <ComponentGroupRef Id="InstaGeneComponents" />
+                </Feature>
+              </Package>
+              <Fragment>
+                <StandardDirectory Id="LocalAppDataFolder">
+                  <Directory Id="INSTALLFOLDER" Name="InstaGene" />
+                </StandardDirectory>
+                <StandardDirectory Id="ProgramMenuFolder">
+                  <Directory Id="ApplicationProgramsFolder" Name="InstaGene" />
+                </StandardDirectory>
+              </Fragment>
+              <Fragment>
+                <ComponentGroup Id="InstaGeneComponents" Directory="INSTALLFOLDER">
+                  <Component Id="InstaGeneExe" Guid="*">
+                    <File Id="InstaGeneExeFile" Source="${exe.absolutePath}" Name="InstaGene.exe" KeyPath="yes" />
+                    <Shortcut Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Name="InstaGene" Target="[INSTALLFOLDER]InstaGene.exe" WorkingDirectory="INSTALLFOLDER" />
+                    <RemoveFolder Id="ApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+                  </Component>
+                </ComponentGroup>
+              </Fragment>
+            </Wix>
+            """.trimIndent() + "\n",
+        )
+        nativePackageDistDir.get().asFile.mkdirs()
+        providers.exec {
+            workingDir(dir)
+            commandLine("wix", "build", wxs.get().asFile.absolutePath, "-o", msi.get().asFile.absolutePath)
+        }.result.get()
+    }
+}
+
+tasks.register("nativeMacDmg") {
+    group = "distribution"
+    description = "Builds the GraalVM-native macOS DMG."
+    dependsOn("nativeCompile")
+    val nativeExe = nativeGuiExecutable
+    val appDir = nativePackageDir.map { it.dir("macos/InstaGene.app") }
+    val dmg = nativePackageDistDir.map { it.file("InstaGene-${instaGeneVersion.get()}.dmg") }
+    inputs.file(nativeExe)
+    outputs.file(dmg)
+    onlyIf { osIs("mac").get() }
+    doLast {
+        verifyNativeExecutable(nativeExe.get().asFile)
+        val app = appDir.get().asFile
+        app.deleteRecursively()
+        val contents = File(app, "Contents")
+        val macOs = File(contents, "MacOS").apply { mkdirs() }
+        val resources = File(contents, "Resources").apply { mkdirs() }
+        nativeGuiExecutable.get().asFile.copyTo(File(macOs, "InstaGene"), overwrite = true)
+        File(macOs, "InstaGene").setExecutable(true, false)
+        File(contents, "PkgInfo").writeText("APPL????")
+        File(contents, "Info.plist").writeText(
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+              <key>CFBundleName</key><string>InstaGene</string>
+              <key>CFBundleDisplayName</key><string>InstaGene</string>
+              <key>CFBundleIdentifier</key><string>io.novelprotein.instagene</string>
+              <key>CFBundleVersion</key><string>${macCompatibleJpackageVersion(instaGeneVersion.get())}</string>
+              <key>CFBundleShortVersionString</key><string>${instaGeneVersion.get()}</string>
+              <key>CFBundleExecutable</key><string>InstaGene</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+              <key>LSApplicationCategoryType</key><string>public.app-category.education</string>
+              <key>CFBundleDocumentTypes</key>
+              <array>
+                <dict>
+                  <key>CFBundleTypeName</key><string>Sequence and chromatogram files</string>
+                  <key>CFBundleTypeRole</key><string>Editor</string>
+                  <key>LSHandlerRank</key><string>Alternate</string>
+                  <key>CFBundleTypeExtensions</key>
+                  <array>
+                    <string>fa</string><string>fasta</string><string>fna</string><string>gb</string><string>gbk</string>
+                    <string>gff3</string><string>embl</string><string>ape</string><string>ab1</string><string>scf</string>
+                  </array>
+                </dict>
+              </array>
+            </dict>
+            </plist>
+            """.trimIndent() + "\n",
+        )
+        resources.mkdirs()
+        nativePackageDistDir.get().asFile.mkdirs()
+        providers.exec {
+            commandLine(
+                "hdiutil", "create",
+                "-volname", "InstaGene",
+                "-srcfolder", app.parentFile.absolutePath,
+                "-ov",
+                "-format", "UDZO",
+                dmg.get().asFile.absolutePath,
+            )
+        }.result.get()
+    }
 }

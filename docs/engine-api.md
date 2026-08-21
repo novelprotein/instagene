@@ -18,9 +18,10 @@ dependencies {
 org.instagene.core
 ├── Sequence I/O
 │   ├── Seq                    # Core sequence model
-│   ├── FastaReader            # FASTA format parser
-│   ├── GenBankReader          # GenBank format parser
-│   └── ChromatogramReader     # AB1/FSC chromatogram parser
+│   ├── SeqIO                  # Format detection and read/write entry point
+│   ├── Fasta                  # FASTA format parser/writer
+│   ├── GenBank                # GenBank format parser/writer
+│   └── ChromatogramReader     # ABI/AB1 and SCF chromatogram parser
 ├── Analysis
 │   ├── SequenceStatistics     # GC content, entropy, CpG islands
 │   ├── Digest                 # Restriction enzyme mapping
@@ -51,11 +52,13 @@ The core sequence data class:
 
 ```kotlin
 data class Seq(
-    val name: String,
-    val bases: String,
-    val kind: SeqKind,          // DNA, RNA, PROTEIN
-    val topology: Topology,     // LINEAR, CIRCULAR
-    val features: List<Feature>,
+    val name: String = "unnamed",
+    val bases: String = "",
+    val kind: SeqKind = SeqKind.DNA,
+    val topology: Topology = Topology.LINEAR,
+    val features: List<Feature> = emptyList(),
+    val description: String = "",
+    val metadata: Map<String, String> = emptyMap(),
 )
 ```
 
@@ -98,7 +101,7 @@ val discrepancies = result.discrepancyPositions()
 Primer analysis:
 
 ```kotlin
-val tm = PrimerThermodynamics.meltingTemp(primer)
+val tm = PrimerThermodynamics.thermodynamicResult(primer).tm
 val hairpin = PrimerThermodynamics.assessHairpin(primer)
 val selfDimer = PrimerThermodynamics.assessSelfDimer(primer)
 ```

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-fasta">
+    <comment>FASTA sequence</comment>
+    <glob pattern="*.fa"/>
+    <glob pattern="*.fasta"/>
+    <glob pattern="*.fna"/>
+    <glob pattern="*.fas"/>
+  </mime-type>
+  <mime-type type="chemical/x-genbank">
+    <comment>GenBank sequence</comment>
+    <glob pattern="*.gb"/>
+    <glob pattern="*.gbk"/>
+    <glob pattern="*.genbank"/>
+    <glob pattern="*.ape"/>
+  </mime-type>
+  <mime-type type="text/x-gff3">
+    <comment>GFF3 annotation file</comment>
+    <glob pattern="*.gff"/>
+    <glob pattern="*.gff3"/>
+  </mime-type>
+  <mime-type type="text/x-embl">
+    <comment>EMBL/ENA sequence</comment>
+    <glob pattern="*.embl"/>
+    <glob pattern="*.ena"/>
+  </mime-type>
+  <mime-type type="application/x-instagene-abi">
+    <comment>ABI chromatogram</comment>
+    <glob pattern="*.ab1"/>
+    <glob pattern="*.abi"/>
+  </mime-type>
+  <mime-type type="application/x-instagene-scf">
+    <comment>SCF chromatogram</comment>
+    <glob pattern="*.scf"/>
+  </mime-type>
+</mime-info>

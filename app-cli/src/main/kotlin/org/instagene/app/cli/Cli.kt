@@ -37,8 +37,8 @@ import java.io.IOException
 import kotlin.system.measureNanoTime
 
 /**
- * The command-line half of InstaGene. Every operation the GUI offers is also
- * reachable here, so sequences can be piped through shell pipelines.
+ * The command-line half of InstaGene. It exposes the core scriptable sequence
+ * operations so researchers can run analyses in shell pipelines.
  */
 object Cli {
 

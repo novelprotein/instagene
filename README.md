@@ -170,53 +170,59 @@ java -Xmx8g -jar app-gui/build/distributions/instagene-gui.jar
 ```
 
 This runnable JAR includes the GUI, engine, Kotlin runtime, serialization, and
-FlatLaf dependencies. The separate thin `instagene.jar` remains an internal
-input for native `jpackage` builds.
+FlatLaf dependencies. The separate thin `instagene.jar` remains available for
+developer fallback `jpackage` builds, but official platform installers use the
+GraalVM native executable.
 
 ### Native installers
 
-Cross-platform installers are built with jpackage through the
-`org.panteleyev.jpackageplugin`; jpackage cannot cross-compile, so each
-installer is built on its own OS:
+Official platform installers are built from the GraalVM native GUI executable,
+so they do not require a user-installed JRE. Native images cannot
+cross-compile, so each installer is built on its own OS:
 
 ```bash
-./gradlew :app-gui:jpackage "-PjpackageType=DEB"        # Ubuntu: .deb
-./gradlew :app-gui:jpackage "-PjpackageType=RPM"        # Fedora: .rpm
-./gradlew :app-gui:jpackage "-PjpackageType=MSI"        # Windows (WiX): .msi
-./gradlew :app-gui:jpackage "-PjpackageType=APP_IMAGE"  # raw app image
-./gradlew :app-gui:jpackageAppImageZip "-PjpackageType=APP_IMAGE"  # …zipped
+./gradlew :app-gui:nativeDeb --no-configuration-cache          # Ubuntu: .deb
+./gradlew :app-gui:nativeRpm --no-configuration-cache          # Fedora: .rpm
+./gradlew :app-gui:nativeAppImageZip --no-configuration-cache  # portable native app-image zip
+./gradlew :app-gui:nativeWindowsMsi --no-configuration-cache   # Windows (WiX): .msi
+./gradlew :app-gui:nativeMacDmg --no-configuration-cache       # macOS: .dmg
 ```
 
-- `-Pjpackage.dest=RELATIVE_PATH` overrides the output folder (relative to the
-  project's `build/` directory; default `jpackage/dist`).
-- The legacy `-Pjpackage.type=TYPE` property remains supported; CI uses the
-  dotless alias because it passes through PowerShell reliably.
-- The build pins jpackage to the JDK 21 toolchain, so it never falls back to a
-  random `JAVA_HOME` (a headless JDK would fail to link the runtime image).
-- All installers bundle a private JRE; the GUI jar is fixed as `instagene.jar`
-  so `--main-jar` stays stable.
+- GraalVM 21 is required to build native packages. CI uses
+  `graalvm/setup-graalvm` for all native package jobs.
+- Native package outputs are written to `app-gui/build/native-package/dist/`.
+- The portable GUI JAR remains JVM-based and is the only app artifact that
+  expects Java 21+ on the user's machine.
+- macOS app bundles and Linux desktop packages include metadata for common
+  researcher file types, including FASTA, GenBank/ApE, GFF3, EMBL/ENA, ABI,
+  and SCF files. Windows file association support is planned for a future MSI
+  update.
+- Windows installers use a stable upgrade UUID, per-user install scope, Start
+  Menu group, and shortcuts so upgrades behave consistently.
+- macOS builds use a macOS-compatible package version, bundle identifier,
+  document metadata, and education app category. Official signing/notarization
+  can be layered on top when release secrets are available.
 - The Linux `.deb` adds a `/usr/bin/instagene` wrapper and the app image
   contains an `instagene` script, so the desktop app can be launched from a
-  terminal (`instagene gui`, or just `instagene <file>`); both exec the bundled
-  `InstaGene` launcher. jpackage itself has no hook for PATH-level binaries, so
-  the wrapper is injected by the `injectAppImageLauncher` (app image) and
-  `repackDebWithLauncher` (deb) tasks, which run automatically after packaging.
+  terminal (`instagene <file>`); both exec the GraalVM-native `InstaGene`
+  binary.
 
 ### CI build artifacts
 
 Successful pushes to `master` and manually dispatched CI runs publish
 short-lived downloadable artifacts for Linux (`.deb`, `.rpm`, and app-image
-zip), Windows (`.msi`), and the portable runnable GUI JAR. Pull requests run
-the full test suite without the native packaging jobs. Tagged releases publish
-the same GUI JAR alongside the native installers and release checksums.
+zip), Windows (`.msi`), macOS (`.dmg`), and the portable runnable GUI JAR. Pull
+requests run the full test suite without the native packaging jobs. Tagged
+releases publish the same GUI JAR alongside the native installers and release
+checksums.
 
 To grab the latest builds without building anything yourself, open the
 [Actions tab](https://github.com/novelprotein/instagene/actions), select the
 most recent successful `CI` run, scroll to the bottom **Artifacts** section,
 and download the archive that matches your platform: `instagene-gui-jar`,
-`instagene-linux-deb`, `instagene-linux-rpm`, `instagene-linux-app-image`, or
-`instagene-windows-msi`. Note that GitHub wraps each artifact in a `.zip`
-download.
+`instagene-linux-deb`, `instagene-linux-rpm`, `instagene-linux-app-image`,
+`instagene-windows-msi`, or `instagene-macos-dmg`. Note that GitHub wraps each
+artifact in a `.zip` download.
 
 > **Heads-up:** these are untested snapshots of the latest commit, not stable
 > releases. They can be broken or half-finished at any time — use them for

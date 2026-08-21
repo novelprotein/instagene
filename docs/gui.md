@@ -11,30 +11,40 @@ java -Xmx8g -jar instagene-gui.jar                  # portable JAR
 instagene gui sequence.gb                            # via CLI launcher
 ```
 
+Installed Windows, macOS, and Linux desktop packages use the GraalVM-native GUI
+binary and do not require Java on the researcher's machine. The portable GUI
+JAR remains available for environments where a Java 21+ runtime is preferred.
+
 ## Menus
 
 ### File
 
-- **Open** — Load a sequence file (FASTA, GenBank, plain text)
+- **Open** — Load sequence, annotation, chromatogram, alignment, or lab-note files
 - **Save / Save As** — Export the current sequence
 - **Recent Files** — Quick access to recently opened files
 - **Exit** — Close the application
 
+Files can also be dragged from Finder, Explorer, or a Linux file manager onto
+the InstaGene window. macOS app bundles and Linux desktop packages include
+file-opening metadata for common sequence/chromatogram extensions. Windows MSI
+packages currently install shortcuts; file association support is planned for a
+future installer update.
+
 ### Edit
 
-- **Undo / Redo** — Full edit history with unlimited undo
+- **Undo / Redo** — Document editing history for reversible sequence changes
 - **Cut / Copy / Paste** — Standard clipboard operations
 - **Select All** — Select the entire sequence
 
 ### View
 
 - **Zoom In / Out** — Adjust sequence display size
-- **Wrap Lines** — Toggle line wrapping in the sequence view
+- **Panels / Theme** — Show or hide supporting panels and switch FlatLaf themes
 
 ### Tools
 
 - **Restriction Digest** — Interactive enzyme selection and fragment display
-- **ORF Finder** — Find open reading frames with configurable parameters
+- **Analysis Workspace** — Open analysis workflows, including ORFs, CpG, CRISPR, alignment, and calculators
 - **Primer Design** — Design and screen primers with thermodynamic analysis
 - **Alignment** — Align sequences with Needleman-Wunsch
 - **CpG Analysis** — Detect CpG islands and methylation patterns
@@ -42,7 +52,7 @@ instagene gui sequence.gb                            # via CLI launcher
 
 ### Graph
 
-Generate publication-quality charts:
+Generate interactive analysis charts:
 
 | Chart              | Description                                    |
 |--------------------|------------------------------------------------|
@@ -55,8 +65,8 @@ Generate publication-quality charts:
 
 ### Theme
 
-Switch between installed FlatLaf themes at runtime. All IntelliJ themes
-installed on the system are automatically discovered.
+Switch between FlatLaf themes at runtime. Themes bundled with
+`flatlaf-intellij-themes` are available out of the box.
 
 ## Panels
 
@@ -71,7 +81,7 @@ Displays the nucleotide or amino acid sequence with syntax highlighting:
 ### Annotation Panel
 
 Shows annotated features (CDS, gene, promoter, etc.) with position, type, and
-strand information. Features are draggable for reordering.
+strand information. Selecting a feature coordinates with the sequence view.
 
 ### Analysis Panel
 
@@ -80,14 +90,17 @@ to keep the UI responsive during computation.
 
 ## Keyboard Shortcuts
 
-| Shortcut         | Action              |
-|------------------|---------------------|
-| `Ctrl+O`         | Open file           |
-| `Ctrl+S`         | Save                |
-| `Ctrl+Z`         | Undo                |
-| `Ctrl+Shift+Z`   | Redo                |
-| `Ctrl+Plus`      | Zoom in             |
-| `Ctrl+Minus`     | Zoom out            |
+The app uses the platform menu shortcut key: `Ctrl` on Windows/Linux and
+`Command` on macOS.
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl/Cmd+O` | Open file |
+| `Ctrl/Cmd+S` | Save |
+| `Ctrl/Cmd+Z` | Undo |
+| `Ctrl/Cmd+Shift+Z` | Redo |
+| `Ctrl/Cmd+Plus` | Zoom in |
+| `Ctrl/Cmd+Minus` | Zoom out |
 
 ## Theming
 
@@ -100,6 +113,11 @@ for FlatLaf theme classes. All IntelliJ IDEA themes bundled with
 
 The GUI uses multi-threaded computation:
 
-- **Analysis tasks** run in SwingWorker background threads
+- **File I/O** runs off the Swing event thread so large FASTA/GenBank files do
+  not block the window while they parse
+- **Analysis tasks** run in SwingWorker background threads with cancellation in
+  long-running workflows such as alignment, NCBI/BLAST, graphing, and digest
+  scans
 - **Chart updates** are dispatched on the EDT
-- **Engine parallelism** uses coroutines for CPU-bound operations
+- **Digest cut counts** are computed asynchronously and stale results are
+  discarded when the active sequence changes

@@ -56,7 +56,7 @@ sequences, built as a reusable engine with three independent front-ends.
 
 ## Key Features
 
-- **Sequence I/O** — FASTA, GenBank, and plain-text formats
+- **Sequence I/O** — FASTA, GenBank/ApE, GFF3, EMBL/ENA, Swiss-Prot, alignments, and chromatograms
 - **Restriction mapping** — enzyme catalog, CpG methylation analysis, virtual gel
 - **Alignment** — Needleman-Wunsch with affine gap penalties, Sanger read alignment
 - **Primer design** — melting temperature, thermodynamic screening, primer design
@@ -64,7 +64,7 @@ sequences, built as a reusable engine with three independent front-ends.
 - **ORF finding** — all six reading frames, customizable codon tables
 - **Plasmid construction** — Golden Gate, Gibson assembly, recombination
 - **Genome statistics** — GC content, CpG islands, Shannon entropy, tandem repeats
-- **Theming** — runtime theme discovery from all installed FlatLaf themes
+- **Theming** — runtime theme switching with bundled FlatLaf themes
 
 ## Installation
 
@@ -73,12 +73,13 @@ Pre-built installers are available from the
 
 | Platform | Format | Notes |
 |----------|--------|-------|
-| Linux    | `.deb` | Ubuntu/Debian, includes `/usr/bin/instagene` wrapper |
-| Linux    | `.rpm` | Fedora/RHEL |
-| Linux    | App image zip | Portable, no install required |
-| Windows  | `.msi` | WiX-based installer |
+| Linux    | `.deb` | GraalVM-native app, Ubuntu/Debian, includes `/usr/bin/instagene` wrapper |
+| Linux    | `.rpm` | GraalVM-native app, Fedora/RHEL |
+| Linux    | Native app-image zip | GraalVM-native app, portable, no install required |
+| Windows  | `.msi` | GraalVM-native app, WiX-based installer with shortcuts |
+| macOS    | `.dmg` | GraalVM-native app bundle with file associations |
 | Any      | GUI JAR | `java -Xmx8g -jar instagene-gui.jar` |
-| Any      | CLI zip | `instagene-cli.zip` with launcher script |
+| Linux    | Native CLI | GraalVM-native `instagene` CLI executable |
 
 ## Using the Engine Library
 

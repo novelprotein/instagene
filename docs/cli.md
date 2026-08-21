@@ -1,7 +1,7 @@
 # CLI Reference
 
 The command-line interface (`app-cli`) provides scriptable access to all engine
-features. Run `instagene help` for the full command list.
+workflows. Run `instagene help` for the full command list.
 
 ## Global Options
 
@@ -53,7 +53,7 @@ instagene find --pattern "MVLSPADK" --mode amino-acid protein.fa
 Align multiple sequences using Needleman-Wunsch with affine gap penalties.
 
 ```bash
-instagene align reference.gb query1.gb query2.gb
+instagene align --query query1.gb,query2.gb reference.gb
 ```
 
 ### identity
@@ -77,11 +77,10 @@ instagene digest --enzymes EcoRI,HindIII,BamHI sequence.gb
 
 ### sites
 
-Show all recognition sites for one or more enzymes.
+Show enzymes that cut once and enzymes that do not cut the input sequence.
 
 ```bash
-instagene sites --enzyme EcoRI sequence.gb
-instagene sites --enzymes ALL --unique sequence.gb
+instagene sites sequence.gb
 ```
 
 ### enzymes
@@ -183,16 +182,12 @@ instagene primers --target region.gb --tm 60
 Compute melting temperature using nearest-neighbor thermodynamics.
 
 ```bash
-instagene tm "ATCGATCGATCG"
+echo "ATCGATCGATCG" | instagene tm
+instagene tm primer.fa
 ```
 
-### screen
-
-Full primer screening: hairpin, self-dimer, cross-dimer, delta-G stability.
-
-```bash
-instagene screen "ATCGATCGATCG"
-```
+For full primer screening, use the `primers` command or the desktop primer
+panel.
 
 ## Performance
 
