@@ -682,8 +682,40 @@
 </code></pre></div>
 <p>This compiles all modules and runs the full test suite.</p>
 <h2 id="running">Running<a class="headerlink" href="#running" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Desktop GUI</label><label for="__tabbed_1_2">CLI</label><label for="__tabbed_1_3">Web</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Native desktop installers</label><label for="__tabbed_1_2">Desktop GUI</label><label for="__tabbed_1_3">CLI</label><label for="__tabbed_1_4">Web</label></div>
 <div class="tabbed-content">
+<div class="tabbed-block">
+<p>Download the installer for your operating system from the GitHub Actions
+artifacts or tagged GitHub Releases:</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Artifact</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td><code>.msi</code></td>
+<td>GraalVM-native app; installs Start Menu and desktop shortcuts</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>.dmg</code></td>
+<td>GraalVM-native app; drag <code>InstaGene.app</code> to Applications; registers common sequence/chromatogram file types</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>.deb</code>, <code>.rpm</code>, native app-image zip</td>
+<td>GraalVM-native app; the <code>.deb</code> also installs an <code>instagene</code> terminal launcher</td>
+</tr>
+</tbody>
+</table>
+<p>Native installers do not require Java on the researcher's machine. The
+portable GUI JAR is the Java-based fallback and requires Java 21+.</p>
+</div>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./gradlew<span class="w"> </span>run<span class="w">                              </span><span class="c1"># default front-end</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./gradlew<span class="w"> </span>:app-gui:runGui<span class="w">                  </span><span class="c1"># explicit</span>
@@ -701,37 +733,67 @@
 </div>
 </div>
 <h2 id="opening-files">Opening Files<a class="headerlink" href="#opening-files" title="Permanent link">&para;</a></h2>
-<p>The GUI and CLI accept sequence files directly:</p>
+<p>The GUI and CLI accept sequence files directly. macOS app bundles and Linux
+desktop packages include metadata for common sequence and chromatogram
+extensions, so researchers can open supported files from Finder or a Linux file
+manager. Windows packages currently install shortcuts; file association support
+is planned for a future MSI update.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># GUI: open files in the editor</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>./gradlew<span class="w"> </span>:app-gui:runGui<span class="w"> </span>--args<span class="o">=</span><span class="s2">"plasmid.gb genes.fasta"</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># CLI: inspect a sequence</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>./gradlew<span class="w"> </span>:app-cli:runCli<span class="w"> </span>--args<span class="o">=</span><span class="s2">"info plasmid.gb"</span>
 </code></pre></div>
+<p>The desktop window also accepts drag-and-drop files.</p>
 <h2 id="supported-formats">Supported Formats<a class="headerlink" href="#supported-formats" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
 <th>Format</th>
-<th>Extension</th>
+<th>Extensions</th>
 <th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>FASTA</td>
-<td><code>.fa</code>, <code>.fasta</code>, <code>.fna</code>, <code>.faa</code></td>
-<td>Nucleotide or protein</td>
+<td><code>.fa</code>, <code>.fasta</code>, <code>.fna</code>, <code>.fas</code>, <code>.faa</code>, <code>.seq</code>, <code>.txt</code></td>
+<td>Nucleotide, RNA, protein, and bare pasted bases</td>
 </tr>
 <tr>
-<td>GenBank</td>
-<td><code>.gb</code>, <code>.gbk</code>, <code>.genbank</code></td>
-<td>Features, annotations, topology</td>
+<td>FASTA alignment</td>
+<td><code>.aln</code>, <code>.afa</code>, <code>.msa</code></td>
+<td>Multi-sequence alignment input</td>
 </tr>
 <tr>
-<td>Plain</td>
-<td><code>.txt</code>, <code>.seq</code></td>
-<td>Raw sequence text</td>
+<td>GenBank / ApE</td>
+<td><code>.gb</code>, <code>.gbk</code>, <code>.genbank</code>, <code>.ape</code></td>
+<td>Features, annotations, topology, plasmid maps</td>
+</tr>
+<tr>
+<td>GFF3</td>
+<td><code>.gff</code>, <code>.gff3</code></td>
+<td>Annotation-centric sequence files</td>
+</tr>
+<tr>
+<td>EMBL / ENA</td>
+<td><code>.embl</code>, <code>.ena</code></td>
+<td>EMBL flat-file records</td>
+</tr>
+<tr>
+<td>Swiss-Prot</td>
+<td><code>.swiss</code>, <code>.sprot</code>, <code>.dat</code></td>
+<td>Protein records</td>
+</tr>
+<tr>
+<td>Chromatograms</td>
+<td><code>.ab1</code>, <code>.abi</code>, <code>.scf</code></td>
+<td>Sanger trace files</td>
+</tr>
+<tr>
+<td>Notes / lab documents</td>
+<td><code>.md</code>, <code>.markdown</code>, <code>.notes</code>, <code>.log</code>, images, PDFs</td>
+<td>Opened in the in-app text editor or delegated to the OS</td>
 </tr>
 </tbody>
 </table>
@@ -771,6 +833,18 @@
 <tr>
 <td><code>./gradlew :app-cli:bench</code></td>
 <td>Run performance benchmarks</td>
+</tr>
+<tr>
+<td><code>./gradlew :app-gui:nativeDeb</code></td>
+<td>Build the GraalVM-native Linux <code>.deb</code></td>
+</tr>
+<tr>
+<td><code>./gradlew :app-gui:nativeWindowsMsi</code></td>
+<td>Build the GraalVM-native Windows <code>.msi</code></td>
+</tr>
+<tr>
+<td><code>./gradlew :app-gui:nativeMacDmg</code></td>
+<td>Build the GraalVM-native macOS <code>.dmg</code></td>
 </tr>
 </tbody>
 </table>

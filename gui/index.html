@@ -899,36 +899,44 @@ provides a visual interface for editing, analyzing, and constructing sequences.<
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>java<span class="w"> </span>-Xmx8g<span class="w"> </span>-jar<span class="w"> </span>instagene-gui.jar<span class="w">                  </span><span class="c1"># portable JAR</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>instagene<span class="w"> </span>gui<span class="w"> </span>sequence.gb<span class="w">                            </span><span class="c1"># via CLI launcher</span>
 </code></pre></div>
+<p>Installed Windows, macOS, and Linux desktop packages use the GraalVM-native GUI
+binary and do not require Java on the researcher's machine. The portable GUI
+JAR remains available for environments where a Java 21+ runtime is preferred.</p>
 <h2 id="menus">Menus<a class="headerlink" href="#menus" title="Permanent link">&para;</a></h2>
 <h3 id="file">File<a class="headerlink" href="#file" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Open</strong> — Load a sequence file (FASTA, GenBank, plain text)</li>
+<li><strong>Open</strong> — Load sequence, annotation, chromatogram, alignment, or lab-note files</li>
 <li><strong>Save / Save As</strong> — Export the current sequence</li>
 <li><strong>Recent Files</strong> — Quick access to recently opened files</li>
 <li><strong>Exit</strong> — Close the application</li>
 </ul>
+<p>Files can also be dragged from Finder, Explorer, or a Linux file manager onto
+the InstaGene window. macOS app bundles and Linux desktop packages include
+file-opening metadata for common sequence/chromatogram extensions. Windows MSI
+packages currently install shortcuts; file association support is planned for a
+future installer update.</p>
 <h3 id="edit">Edit<a class="headerlink" href="#edit" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Undo / Redo</strong> — Full edit history with unlimited undo</li>
+<li><strong>Undo / Redo</strong> — Document editing history for reversible sequence changes</li>
 <li><strong>Cut / Copy / Paste</strong> — Standard clipboard operations</li>
 <li><strong>Select All</strong> — Select the entire sequence</li>
 </ul>
 <h3 id="view">View<a class="headerlink" href="#view" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Zoom In / Out</strong> — Adjust sequence display size</li>
-<li><strong>Wrap Lines</strong> — Toggle line wrapping in the sequence view</li>
+<li><strong>Panels / Theme</strong> — Show or hide supporting panels and switch FlatLaf themes</li>
 </ul>
 <h3 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Restriction Digest</strong> — Interactive enzyme selection and fragment display</li>
-<li><strong>ORF Finder</strong> — Find open reading frames with configurable parameters</li>
+<li><strong>Analysis Workspace</strong> — Open analysis workflows, including ORFs, CpG, CRISPR, alignment, and calculators</li>
 <li><strong>Primer Design</strong> — Design and screen primers with thermodynamic analysis</li>
 <li><strong>Alignment</strong> — Align sequences with Needleman-Wunsch</li>
 <li><strong>CpG Analysis</strong> — Detect CpG islands and methylation patterns</li>
 <li><strong>CRISPR Design</strong> — Guide RNA design with Ruleset 3 scoring</li>
 </ul>
 <h3 id="graph">Graph<a class="headerlink" href="#graph" title="Permanent link">&para;</a></h3>
-<p>Generate publication-quality charts:</p>
+<p>Generate interactive analysis charts:</p>
 <table>
 <thead>
 <tr>
@@ -964,8 +972,8 @@ provides a visual interface for editing, analyzing, and constructing sequences.<
 </tbody>
 </table>
 <h3 id="theme">Theme<a class="headerlink" href="#theme" title="Permanent link">&para;</a></h3>
-<p>Switch between installed FlatLaf themes at runtime. All IntelliJ themes
-installed on the system are automatically discovered.</p>
+<p>Switch between FlatLaf themes at runtime. Themes bundled with
+<code>flatlaf-intellij-themes</code> are available out of the box.</p>
 <h2 id="panels">Panels<a class="headerlink" href="#panels" title="Permanent link">&para;</a></h2>
 <h3 id="sequence-view">Sequence View<a class="headerlink" href="#sequence-view" title="Permanent link">&para;</a></h3>
 <p>Displays the nucleotide or amino acid sequence with syntax highlighting:</p>
@@ -976,11 +984,13 @@ installed on the system are automatically discovered.</p>
 </ul>
 <h3 id="annotation-panel">Annotation Panel<a class="headerlink" href="#annotation-panel" title="Permanent link">&para;</a></h3>
 <p>Shows annotated features (CDS, gene, promoter, etc.) with position, type, and
-strand information. Features are draggable for reordering.</p>
+strand information. Selecting a feature coordinates with the sequence view.</p>
 <h3 id="analysis-panel">Analysis Panel<a class="headerlink" href="#analysis-panel" title="Permanent link">&para;</a></h3>
 <p>Orchestrates analysis tools. Each analysis runs in a background thread (SwingWorker)
 to keep the UI responsive during computation.</p>
 <h2 id="keyboard-shortcuts">Keyboard Shortcuts<a class="headerlink" href="#keyboard-shortcuts" title="Permanent link">&para;</a></h2>
+<p>The app uses the platform menu shortcut key: <code>Ctrl</code> on Windows/Linux and
+<code>Command</code> on macOS.</p>
 <table>
 <thead>
 <tr>
@@ -990,27 +1000,27 @@ to keep the UI responsive during computation.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>Ctrl+O</code></td>
+<td><code>Ctrl/Cmd+O</code></td>
 <td>Open file</td>
 </tr>
 <tr>
-<td><code>Ctrl+S</code></td>
+<td><code>Ctrl/Cmd+S</code></td>
 <td>Save</td>
 </tr>
 <tr>
-<td><code>Ctrl+Z</code></td>
+<td><code>Ctrl/Cmd+Z</code></td>
 <td>Undo</td>
 </tr>
 <tr>
-<td><code>Ctrl+Shift+Z</code></td>
+<td><code>Ctrl/Cmd+Shift+Z</code></td>
 <td>Redo</td>
 </tr>
 <tr>
-<td><code>Ctrl+Plus</code></td>
+<td><code>Ctrl/Cmd+Plus</code></td>
 <td>Zoom in</td>
 </tr>
 <tr>
-<td><code>Ctrl+Minus</code></td>
+<td><code>Ctrl/Cmd+Minus</code></td>
 <td>Zoom out</td>
 </tr>
 </tbody>
@@ -1023,9 +1033,14 @@ for FlatLaf theme classes. All IntelliJ IDEA themes bundled with
 <h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
 <p>The GUI uses multi-threaded computation:</p>
 <ul>
-<li><strong>Analysis tasks</strong> run in SwingWorker background threads</li>
+<li><strong>File I/O</strong> runs off the Swing event thread so large FASTA/GenBank files do
+  not block the window while they parse</li>
+<li><strong>Analysis tasks</strong> run in SwingWorker background threads with cancellation in
+  long-running workflows such as alignment, NCBI/BLAST, graphing, and digest
+  scans</li>
 <li><strong>Chart updates</strong> are dispatched on the EDT</li>
-<li><strong>Engine parallelism</strong> uses coroutines for CPU-bound operations</li>
+<li><strong>Digest cut counts</strong> are computed asynchronously and stale results are
+  discarded when the active sequence changes</li>
 </ul>
 
 

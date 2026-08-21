@@ -686,17 +686,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#screen" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        screen
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1183,17 +1172,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#screen" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        screen
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1249,7 +1227,7 @@
 
 <h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
 <p>The command-line interface (<code>app-cli</code>) provides scriptable access to all engine
-features. Run <code>instagene help</code> for the full command list.</p>
+workflows. Run <code>instagene help</code> for the full command list.</p>
 <h2 id="global-options">Global Options<a class="headerlink" href="#global-options" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1292,7 +1270,7 @@ features. Run <code>instagene help</code> for the full command list.</p>
 </code></pre></div>
 <h3 id="align">align<a class="headerlink" href="#align" title="Permanent link">&para;</a></h3>
 <p>Align multiple sequences using Needleman-Wunsch with affine gap penalties.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>instagene<span class="w"> </span>align<span class="w"> </span>reference.gb<span class="w"> </span>query1.gb<span class="w"> </span>query2.gb
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>instagene<span class="w"> </span>align<span class="w"> </span>--query<span class="w"> </span>query1.gb,query2.gb<span class="w"> </span>reference.gb
 </code></pre></div>
 <h3 id="identity">identity<a class="headerlink" href="#identity" title="Permanent link">&para;</a></h3>
 <p>Compute pairwise sequence identity between aligned sequences.</p>
@@ -1305,9 +1283,8 @@ features. Run <code>instagene help</code> for the full command list.</p>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>instagene<span class="w"> </span>digest<span class="w"> </span>--enzymes<span class="w"> </span>EcoRI,HindIII,BamHI<span class="w"> </span>sequence.gb
 </code></pre></div>
 <h3 id="sites">sites<a class="headerlink" href="#sites" title="Permanent link">&para;</a></h3>
-<p>Show all recognition sites for one or more enzymes.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>instagene<span class="w"> </span>sites<span class="w"> </span>--enzyme<span class="w"> </span>EcoRI<span class="w"> </span>sequence.gb
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>instagene<span class="w"> </span>sites<span class="w"> </span>--enzymes<span class="w"> </span>ALL<span class="w"> </span>--unique<span class="w"> </span>sequence.gb
+<p>Show enzymes that cut once and enzymes that do not cut the input sequence.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>instagene<span class="w"> </span>sites<span class="w"> </span>sequence.gb
 </code></pre></div>
 <h3 id="enzymes">enzymes<a class="headerlink" href="#enzymes" title="Permanent link">&para;</a></h3>
 <p>Analyze enzyme cutting frequency across the full catalog.</p>
@@ -1358,17 +1335,16 @@ features. Run <code>instagene help</code> for the full command list.</p>
 <h2 id="primer-analysis">Primer Analysis<a class="headerlink" href="#primer-analysis" title="Permanent link">&para;</a></h2>
 <h3 id="tm">tm<a class="headerlink" href="#tm" title="Permanent link">&para;</a></h3>
 <p>Compute melting temperature using nearest-neighbor thermodynamics.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>instagene<span class="w"> </span>tm<span class="w"> </span><span class="s2">"ATCGATCGATCG"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"ATCGATCGATCG"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>instagene<span class="w"> </span>tm
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>instagene<span class="w"> </span>tm<span class="w"> </span>primer.fa
 </code></pre></div>
-<h3 id="screen">screen<a class="headerlink" href="#screen" title="Permanent link">&para;</a></h3>
-<p>Full primer screening: hairpin, self-dimer, cross-dimer, delta-G stability.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>instagene<span class="w"> </span>screen<span class="w"> </span><span class="s2">"ATCGATCGATCG"</span>
-</code></pre></div>
+<p>For full primer screening, use the <code>primers</code> command or the desktop primer
+panel.</p>
 <h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
 <h3 id="bench">bench<a class="headerlink" href="#bench" title="Permanent link">&para;</a></h3>
 <p>Run built-in performance benchmarks.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>instagene<span class="w"> </span>bench<span class="w">                    </span><span class="c1"># use built-in test sequence</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>instagene<span class="w"> </span>bench<span class="w"> </span>sequence.gb<span class="w">        </span><span class="c1"># benchmark with your sequence</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>instagene<span class="w"> </span>bench<span class="w">                    </span><span class="c1"># use built-in test sequence</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>instagene<span class="w"> </span>bench<span class="w"> </span>sequence.gb<span class="w">        </span><span class="c1"># benchmark with your sequence</span>
 </code></pre></div>
 <p>See the <a href="../benchmarks/info/">Benchmarks</a> page for historical performance data.</p>
 

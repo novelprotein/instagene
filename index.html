@@ -717,7 +717,7 @@ sequences, built as a reusable engine with three independent front-ends.</p>
 </table>
 <h2 id="key-features">Key Features<a class="headerlink" href="#key-features" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Sequence I/O</strong> — FASTA, GenBank, and plain-text formats</li>
+<li><strong>Sequence I/O</strong> — FASTA, GenBank/ApE, GFF3, EMBL/ENA, Swiss-Prot, alignments, and chromatograms</li>
 <li><strong>Restriction mapping</strong> — enzyme catalog, CpG methylation analysis, virtual gel</li>
 <li><strong>Alignment</strong> — Needleman-Wunsch with affine gap penalties, Sanger read alignment</li>
 <li><strong>Primer design</strong> — melting temperature, thermodynamic screening, primer design</li>
@@ -725,7 +725,7 @@ sequences, built as a reusable engine with three independent front-ends.</p>
 <li><strong>ORF finding</strong> — all six reading frames, customizable codon tables</li>
 <li><strong>Plasmid construction</strong> — Golden Gate, Gibson assembly, recombination</li>
 <li><strong>Genome statistics</strong> — GC content, CpG islands, Shannon entropy, tandem repeats</li>
-<li><strong>Theming</strong> — runtime theme discovery from all installed FlatLaf themes</li>
+<li><strong>Theming</strong> — runtime theme switching with bundled FlatLaf themes</li>
 </ul>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
 <p>Pre-built installers are available from the
@@ -742,22 +742,27 @@ sequences, built as a reusable engine with three independent front-ends.</p>
 <tr>
 <td>Linux</td>
 <td><code>.deb</code></td>
-<td>Ubuntu/Debian, includes <code>/usr/bin/instagene</code> wrapper</td>
+<td>GraalVM-native app, Ubuntu/Debian, includes <code>/usr/bin/instagene</code> wrapper</td>
 </tr>
 <tr>
 <td>Linux</td>
 <td><code>.rpm</code></td>
-<td>Fedora/RHEL</td>
+<td>GraalVM-native app, Fedora/RHEL</td>
 </tr>
 <tr>
 <td>Linux</td>
-<td>App image zip</td>
-<td>Portable, no install required</td>
+<td>Native app-image zip</td>
+<td>GraalVM-native app, portable, no install required</td>
 </tr>
 <tr>
 <td>Windows</td>
 <td><code>.msi</code></td>
-<td>WiX-based installer</td>
+<td>GraalVM-native app, WiX-based installer with shortcuts</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>.dmg</code></td>
+<td>GraalVM-native app bundle with file associations</td>
 </tr>
 <tr>
 <td>Any</td>
@@ -765,9 +770,9 @@ sequences, built as a reusable engine with three independent front-ends.</p>
 <td><code>java -Xmx8g -jar instagene-gui.jar</code></td>
 </tr>
 <tr>
-<td>Any</td>
-<td>CLI zip</td>
-<td><code>instagene-cli.zip</code> with launcher script</td>
+<td>Linux</td>
+<td>Native CLI</td>
+<td>GraalVM-native <code>instagene</code> CLI executable</td>
 </tr>
 </tbody>
 </table>
