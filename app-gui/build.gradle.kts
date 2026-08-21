@@ -189,6 +189,15 @@ val packagingJavaLauncher = javaToolchains.launcherFor {
     vendor.set(JvmVendorSpec.ADOPTIUM)
 }
 
+fun macCompatibleJpackageVersion(version: String): String {
+    require(Regex("""\d+(\.\d+){0,2}""").matches(version)) {
+        "macOS jpackage app-version must be one to three dot-separated integers: $version"
+    }
+    return version.split(".")
+        .mapIndexed { index, part -> if (index == 0 && part.toInt() <= 0) "1" else part }
+        .joinToString(".")
+}
+
 fun JPackageTask.configureInstaGenePackage() {
     dependsOn(verifyJpackageInput, tasks.jar)
 
@@ -234,6 +243,9 @@ tasks.jpackage {
     val useMacOpts = providers.zip(jpackageType, osIs("mac")) { t, isMac ->
         t in setOf("DMG", "PKG") || (t == "DEFAULT" && isMac)
     }
+    appVersion = providers.zip(instaGeneVersion, useMacOpts) { version, useMac ->
+        if (useMac) macCompatibleJpackageVersion(version) else version
+    }.get()
     linuxShortcut = useLinuxCommonOpts
     linuxPackageName = useLinuxCommonOpts.map { if (it) "instagene" else null }
     linuxAppCategory = useLinuxCommonOpts.map { if (it) "Science" else null }

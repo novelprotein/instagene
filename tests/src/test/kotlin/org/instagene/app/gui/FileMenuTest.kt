@@ -125,20 +125,24 @@ class FileMenuTest {
         val file = largeFasta("genome", expected)
         val content = onEdt { InstaGeneContent(null) }
 
-        val start = System.currentTimeMillis()
-        FileMenu(null, content.doc).loadFromFile(file)
+        try {
+            val start = System.currentTimeMillis()
+            FileMenu(null, content.doc).loadFromFile(file)
 
-        assertTrue(
-            awaitEdt(180_000) { content.doc.file == file && content.doc.seq.length == expected },
-            "70 Mbp genome was not loaded within the timeout (length=${content.doc.seq.length})",
-        )
-        assertFalse(content.doc.isDirty)
-        // Streaming parsing and inexpensive panel refreshes let the load complete
-        // in seconds rather than minutes.
-        assertTrue(
-            System.currentTimeMillis() - start < 60_000,
-            "Loading a 70 Mbp genome took too long to apply on the EDT",
-        )
+            assertTrue(
+                awaitEdt(180_000) { content.doc.file == file && content.doc.seq.length == expected },
+                "70 Mbp genome was not loaded within the timeout (length=${content.doc.seq.length})",
+            )
+            assertFalse(content.doc.isDirty)
+            // Streaming parsing and inexpensive panel refreshes let the load complete
+            // in seconds rather than minutes.
+            assertTrue(
+                System.currentTimeMillis() - start < 60_000,
+                "Loading a 70 Mbp genome took too long to apply on the EDT",
+            )
+        } finally {
+            onEdt { content.dispose() }
+        }
     }
 
     /**
@@ -152,13 +156,17 @@ class FileMenuTest {
         val file = largeFasta("digest", expected)
         val content = onEdt { InstaGeneContent(null) }
 
-        FileMenu(null, content.doc).loadFromFile(file)
-        assertTrue(awaitEdt { content.doc.seq.length == expected })
+        try {
+            FileMenu(null, content.doc).loadFromFile(file)
+            assertTrue(awaitEdt { content.doc.seq.length == expected })
 
-        assertTrue(
-            awaitEdt(120_000) { content.digestPanel.computedCutCounts()?.values?.any { it > 0 } == true },
-            "Async cut counts never arrived for the 2 Mbp genome",
-        )
+            assertTrue(
+                awaitEdt(120_000) { content.digestPanel.computedCutCounts()?.values?.any { it > 0 } == true },
+                "Async cut counts never arrived for the 2 Mbp genome",
+            )
+        } finally {
+            onEdt { content.dispose() }
+        }
     }
 
     @Test

@@ -582,28 +582,31 @@ class DigestPanel(
         val pending = AtomicInteger(enzymes.chunked(perTask).size)
         for (chunk in enzymes.chunked(perTask)) {
             countPool.submit {
-                for (enzyme in chunk) {
-                    val count = Digest.countSites(seq, enzyme)
-                    partial[enzyme] = count
-                    // For manageable sequences, also cache cut sites so the
-                    // enzyme-selection handler can serve from cache instead of
-                    // rescanning on the EDT.
-                    if (seq.length < asyncDigestThreshold && count > 0) {
-                        val sites = Digest.cutSites(seq, enzyme)
-                        cutSitesCache[enzyme] = sites
-                        partialOverhangs[enzyme] = sites
-                            .map { Digest.stickyEnd(seq, it).overhang }
-                            .filter { it.isNotBlank() }
-                            .distinct()
+                try {
+                    for (enzyme in chunk) {
+                        val count = runCatching { Digest.countSites(seq, enzyme) }.getOrDefault(0)
+                        partial[enzyme] = count
+                        // For manageable sequences, also cache cut sites so the
+                        // enzyme-selection handler can serve from cache instead of
+                        // rescanning on the EDT.
+                        if (seq.length < asyncDigestThreshold && count > 0) {
+                            val sites = runCatching { Digest.cutSites(seq, enzyme) }.getOrDefault(emptyList())
+                            cutSitesCache[enzyme] = sites
+                            partialOverhangs[enzyme] = sites
+                                .map { Digest.stickyEnd(seq, it).overhang }
+                                .filter { it.isNotBlank() }
+                                .distinct()
+                        }
                     }
-                }
-                if (pending.decrementAndGet() == 0) {
-                    SwingUtilities.invokeLater {
-                        if (version != countsVersion) return@invokeLater
-                        countsCache = partial
-                        overhangCache = partialOverhangs
-                        countsStale = false
-                        rebuildEnzymeTable()
+                } finally {
+                    if (pending.decrementAndGet() == 0) {
+                        SwingUtilities.invokeLater {
+                            if (version != countsVersion) return@invokeLater
+                            countsCache = partial
+                            overhangCache = partialOverhangs
+                            countsStale = false
+                            rebuildEnzymeTable()
+                        }
                     }
                 }
             }
