@@ -682,7 +682,7 @@
 </code></pre></div>
 <p>This compiles all modules and runs the full test suite.</p>
 <h2 id="running">Running<a class="headerlink" href="#running" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Native desktop installers</label><label for="__tabbed_1_2">Desktop GUI</label><label for="__tabbed_1_3">CLI</label><label for="__tabbed_1_4">Web</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Desktop installers</label><label for="__tabbed_1_2">Desktop GUI</label><label for="__tabbed_1_3">CLI</label><label for="__tabbed_1_4">Web</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>Download the installer for your operating system from the GitHub Actions
@@ -699,17 +699,17 @@ artifacts or tagged GitHub Releases:</p>
 <tr>
 <td>Windows</td>
 <td><code>.msi</code></td>
-<td>GraalVM-native app; installs Start Menu and desktop shortcuts</td>
+<td>GraalVM-built app; installs Start Menu and desktop shortcuts</td>
 </tr>
 <tr>
 <td>macOS</td>
 <td><code>.dmg</code></td>
-<td>GraalVM-native app; drag <code>InstaGene.app</code> to Applications; registers common sequence/chromatogram file types</td>
+<td>GraalVM-built app; drag <code>InstaGene.app</code> to Applications; registers common sequence/chromatogram file types</td>
 </tr>
 <tr>
 <td>Linux</td>
-<td><code>.deb</code>, <code>.rpm</code>, native app-image zip</td>
-<td>GraalVM-native app; the <code>.deb</code> also installs an <code>instagene</code> terminal launcher</td>
+<td><code>.deb</code>, <code>.rpm</code>, app-image zip</td>
+<td>GraalVM-built app; the <code>.deb</code> also installs an <code>instagene</code> terminal launcher</td>
 </tr>
 </tbody>
 </table>
@@ -835,16 +835,16 @@ is planned for a future MSI update.</p>
 <td>Run performance benchmarks</td>
 </tr>
 <tr>
-<td><code>./gradlew :app-gui:nativeDeb</code></td>
-<td>Build the GraalVM-native Linux <code>.deb</code></td>
+<td><code>./gradlew :app-gui:jpackage -PjpackageType=DEB</code></td>
+<td>Build the Linux <code>.deb</code></td>
 </tr>
 <tr>
-<td><code>./gradlew :app-gui:nativeWindowsMsi</code></td>
-<td>Build the GraalVM-native Windows <code>.msi</code></td>
+<td><code>./gradlew :app-gui:jpackage -PjpackageType=MSI</code></td>
+<td>Build the Windows <code>.msi</code></td>
 </tr>
 <tr>
-<td><code>./gradlew :app-gui:nativeMacDmg</code></td>
-<td>Build the GraalVM-native macOS <code>.dmg</code></td>
+<td><code>./gradlew :app-gui:jpackage -PjpackageType=DMG</code></td>
+<td>Build the macOS <code>.dmg</code></td>
 </tr>
 </tbody>
 </table>
