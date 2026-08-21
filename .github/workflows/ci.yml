@@ -345,7 +345,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build native package
-        run: ./gradlew ${{ matrix.gradle_task }} "-PjpackageType=${{ matrix.package_type }}" --console=plain
+        run: ./gradlew ${{ matrix.gradle_task }} "-PjpackageType=${{ matrix.package_type }}" --console=plain --info --stacktrace
 
       - name: Smoke-test installer (headless)
         if: ${{ matrix.package_type == 'DMG' }}
