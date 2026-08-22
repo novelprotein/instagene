@@ -351,32 +351,44 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Mount the DMG and verify the .app is present
           dmg=$(ls app-gui/build/jpackage/dist/*.dmg | head -1)
           echo "Found DMG: $dmg"
-          hdiutil attach "$dmg" -nobrowse -quiet
-          mount_point=$(ls /Volumes/ | grep -i instagene | head -1)
-          test -d "/Volumes/$mount_point/InstaGene.app" || { echo "Missing InstaGene.app in DMG"; exit 1; }
-          # Verify the launcher exists
-          test -f "/Volumes/$mount_point/InstaGene.app/Contents/MacOS/InstaGene"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "/Volumes/$mount_point/InstaGene.app/Contents/Info.plist" | grep -q 'io.novelprotein.instagene'
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "/Volumes/$mount_point/InstaGene.app/Contents/Info.plist" >/dev/null
-          hdiutil detach "/Volumes/$mount_point" -quiet
+          mount_point=$(mktemp -d /tmp/instagene-dmg.XXXXXX)
+          attached=false
+          cleanup() {
+            if "$attached"; then hdiutil detach "$mount_point" -quiet; fi
+            rm -rf "$mount_point"
+          }
+          trap cleanup EXIT
+          hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse -quiet
+          attached=true
+          app="$mount_point/InstaGene.app"
+          test -d "$app" || { echo "Missing InstaGene.app in DMG"; exit 1; }
+          test -f "$app/Contents/MacOS/InstaGene"
+          plist="$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" | grep -Fx 'io.novelprotein.instagene'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "$plist" >/dev/null
           echo "DMG smoke test passed"
 
       - name: Smoke-test installer (DEB)
         if: ${{ matrix.package_type == 'DEB' }}
         shell: bash
         run: |
+          set -euo pipefail
           deb=$(ls app-gui/build/jpackage/dist/*.deb | head -1)
           echo "Found DEB: $deb"
           dpkg-deb -I "$deb" | grep -qi instagene
-          # Verify the /usr/bin wrapper was injected
-          dpkg-deb -x "$deb" /tmp/instagene-deb-inspect
-          test -f /tmp/instagene-deb-inspect/usr/bin/instagene
-          test -f /tmp/instagene-deb-inspect/usr/share/applications/io.novelprotein.instagene.desktop
-          test -f /tmp/instagene-deb-inspect/usr/share/mime/packages/io.novelprotein.instagene.xml
-          grep -q 'Exec=InstaGene' /tmp/instagene-deb-inspect/usr/share/applications/io.novelprotein.instagene.desktop
+          inspect_dir=$(mktemp -d)
+          trap 'rm -rf "$inspect_dir"' EXIT
+          dpkg-deb -x "$deb" "$inspect_dir"
+          test -x "$inspect_dir/usr/bin/instagene"
+          desktop="$inspect_dir/usr/share/applications/io.novelprotein.instagene.desktop"
+          mime="$inspect_dir/usr/share/mime/packages/io.novelprotein.instagene.xml"
+          test -f "$desktop"
+          test -f "$mime"
+          grep -Fx 'Exec=/opt/instagene/bin/InstaGene %F' "$desktop"
+          grep -Fq 'MimeType=text/x-fasta;chemical/x-genbank;text/x-gff3;text/x-embl;application/x-instagene-abi;application/x-instagene-scf;' "$desktop"
+          grep -Fq '<glob pattern="*.gb"/>' "$mime"
           echo "DEB smoke test passed"
 
       - name: Smoke-test installer (MSI)

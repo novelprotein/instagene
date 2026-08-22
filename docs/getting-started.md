@@ -12,16 +12,18 @@ the commit you want to try. Run the installer and launch **InstaGene** from the
 Start menu or desktop shortcut. The installer includes a Java runtime, so a
 separate Java installation is not required.
 
-Windows file associations are not currently guaranteed. Use **File → Open** or
-drag a file from Explorer into the InstaGene window.
+The installer registers common sequence, annotation, and chromatogram file
+types. Use **File → Open** or drag a file from Explorer into the InstaGene
+window when a file type is not associated.
 
 ### macOS
 
 Download the `.dmg`, open it, and drag `InstaGene.app` to Applications. Launch
-it from Finder, then use **File → Open** or drag files from Finder into the
-window. macOS may show its normal warning for an application downloaded from
-the internet; use the system’s documented **Open** action if you trust the
-release source.
+it from Finder. Common sequence, annotation, and chromatogram files open in
+InstaGene from Finder; **File → Open** and drag-and-drop are also available.
+macOS may show its normal warning for an application downloaded from the
+internet; use the system’s documented **Open** action if you trust the release
+source.
 
 ### Linux
 

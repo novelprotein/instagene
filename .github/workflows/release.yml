@@ -204,13 +204,24 @@ jobs:
       - name: Smoke-test DMG
         shell: bash
         run: |
+          set -euo pipefail
           dmg=$(ls app-gui/build/jpackage/dist/*.dmg | head -1)
           echo "Found DMG: $dmg"
-          hdiutil attach "$dmg" -nobrowse -quiet
-          mount_point=$(ls /Volumes/ | grep -i instagene | head -1)
-          test -d "/Volumes/$mount_point/InstaGene.app"
-          test -f "/Volumes/$mount_point/InstaGene.app/Contents/MacOS/InstaGene"
-          hdiutil detach "/Volumes/$mount_point" -quiet
+          mount_point=$(mktemp -d /tmp/instagene-dmg.XXXXXX)
+          attached=false
+          cleanup() {
+            if "$attached"; then hdiutil detach "$mount_point" -quiet; fi
+            rm -rf "$mount_point"
+          }
+          trap cleanup EXIT
+          hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse -quiet
+          attached=true
+          app="$mount_point/InstaGene.app"
+          test -d "$app"
+          test -f "$app/Contents/MacOS/InstaGene"
+          plist="$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" | grep -Fx 'io.novelprotein.instagene'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "$plist" >/dev/null
 
       - name: Upload installer
         uses: actions/upload-artifact@v5

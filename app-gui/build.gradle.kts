@@ -45,6 +45,9 @@ val jpackageType = providers.gradleProperty("jpackage.type")
 val defaultJpackageDest = jpackageType.map { if (it == "APP_IMAGE") "jpackage/app-image-dist" else "jpackage/dist" }
 val jpackageDest = providers.gradleProperty("jpackage.dest").orElse(defaultJpackageDest)
 val instaGeneVersion = providers.gradleProperty("instagene.version").orElse("0.0.0")
+val nativeFileAssociations = layout.projectDirectory.dir("src/native-package/associations").asFileTree.matching {
+    include("*.properties")
+}
 
 // Fixed jar name so --main-jar is stable regardless of Gradle's archive naming.
 tasks.jar {
@@ -165,6 +168,10 @@ fun JPackageTask.configureInstaGenePackage() {
     mainClass = "org.instagene.app.gui.GuiMainKt"
     mainJar = "instagene.jar"
     input = layout.buildDirectory.dir("jpackage/input")
+    // Each properties file describes one extension. jpackage turns these into
+    // native associations on Windows, macOS, and Linux (including the macOS
+    // CFBundleDocumentTypes entry used by Finder).
+    fileAssociations.from(nativeFileAssociations)
     vendor = "InstaGene"
     appDescription = "DNA/RNA editing and plasmid construction."
     copyright = "InstaGene contributors"
@@ -221,6 +228,8 @@ tasks.jpackage {
 // `instagene`. jpackage only generates a launcher whose name matches the app
 // (InstaGene), so the wrapper is injected after packaging.
 val linuxLauncherScript = layout.projectDirectory.file("src/dist/linux/instagene")
+val linuxDesktopEntry = layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.desktop")
+val linuxMimeDefinition = layout.projectDirectory.file("src/native-package/linux/io.novelprotein.instagene.xml")
 
 // APP_IMAGE: drop the wrapper into the app image root, next to bin/InstaGene.
 // The script resolves its own directory and execs bin/InstaGene, so users can
@@ -255,7 +264,7 @@ val repackDebWithLauncher = tasks.register("repackDebWithLauncher") {
     val execProviders = providers
     val isDeb = jpackageType.map { it == "DEB" }
     val isLinux = osIs("linux")
-    inputs.file(scriptFile)
+    inputs.files(scriptFile, linuxDesktopEntry, linuxMimeDefinition)
     outputs.dir(workDir)
     onlyIf { isDeb.get() && isLinux.get() }
     doLast {
@@ -271,6 +280,16 @@ val repackDebWithLauncher = tasks.register("repackDebWithLauncher") {
         val usrBin = File(work, "usr/bin").apply { mkdirs() }
         scriptFile.copyTo(File(usrBin, "instagene"), overwrite = true)
         File(usrBin, "instagene").setExecutable(true, false)
+        val applications = File(work, "usr/share/applications").apply { mkdirs() }
+        linuxDesktopEntry.asFile.copyTo(
+            File(applications, "io.novelprotein.instagene.desktop"),
+            overwrite = true,
+        )
+        val mimePackages = File(work, "usr/share/mime/packages").apply { mkdirs() }
+        linuxMimeDefinition.asFile.copyTo(
+            File(mimePackages, "io.novelprotein.instagene.xml"),
+            overwrite = true,
+        )
         execProviders.exec {
             commandLine("dpkg-deb", "-b", "--root-owner-group", work.absolutePath, deb.absolutePath)
         }.result.get()
