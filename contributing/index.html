@@ -485,7 +485,7 @@
   <a href="#development-setup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development Setup
+        Development setup
       
     </span>
   </a>
@@ -493,10 +493,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#architecture-rules" class="md-nav__link">
+  <a href="#module-boundaries" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture Rules
+        Module boundaries
       
     </span>
   </a>
@@ -504,10 +504,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-tests" class="md-nav__link">
+  <a href="#tests-and-regression-coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running Tests
+        Tests and regression coverage
       
     </span>
   </a>
@@ -515,10 +515,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adding-tests" class="md-nav__link">
+  <a href="#documentation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Adding Tests
+        Documentation
       
     </span>
   </a>
@@ -526,21 +526,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#code-style" class="md-nav__link">
+  <a href="#code-style-and-pull-requests" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Code Style
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pull-requests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pull Requests
+        Code style and pull requests
       
     </span>
   </a>
@@ -596,7 +585,7 @@
   <a href="#development-setup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development Setup
+        Development setup
       
     </span>
   </a>
@@ -604,10 +593,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#architecture-rules" class="md-nav__link">
+  <a href="#module-boundaries" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture Rules
+        Module boundaries
       
     </span>
   </a>
@@ -615,10 +604,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-tests" class="md-nav__link">
+  <a href="#tests-and-regression-coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running Tests
+        Tests and regression coverage
       
     </span>
   </a>
@@ -626,10 +615,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adding-tests" class="md-nav__link">
+  <a href="#documentation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Adding Tests
+        Documentation
       
     </span>
   </a>
@@ -637,21 +626,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#code-style" class="md-nav__link">
+  <a href="#code-style-and-pull-requests" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Code Style
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pull-requests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pull Requests
+        Code style and pull requests
       
     </span>
   </a>
@@ -690,63 +668,75 @@
 
 
 <h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
-<h2 id="development-setup">Development Setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
-<ol>
-<li>
-<p>Clone the repository:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/novelprotein/instagene.git
+<p>InstaGene is a Kotlin/Gradle project with a reusable engine and separate
+front ends. Contributions should keep scientific behavior explicit, testable,
+and honest about what the application supports.</p>
+<h2 id="development-setup">Development setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
+<p>Requirements:</p>
+<ul>
+<li>Java 21 or newer;</li>
+<li>a checkout of the repository; and</li>
+<li>the included Gradle wrapper.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/novelprotein/instagene.git
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>instagene
-</code></pre></div></p>
-</li>
-<li>
-<p>Install git hooks:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/install-hooks.sh
-</code></pre></div></p>
-</li>
-<li>
-<p>Build and test:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./gradlew<span class="w"> </span>build
-</code></pre></div></p>
-</li>
-</ol>
-<h2 id="architecture-rules">Architecture Rules<a class="headerlink" href="#architecture-rules" title="Permanent link">&para;</a></h2>
-<p>The project enforces strict separation between the engine and front-ends:</p>
-<ul>
-<li><strong>Engine</strong> (<code>engine/</code>) must never reference <code>org.instagene.app</code></li>
-<li><strong>Front-ends</strong> must never reference each other</li>
-<li>The published engine jar must contain only core classes</li>
-</ul>
-<p>Run <code>./gradlew verifySeparation</code> to check these rules.</p>
-<h2 id="running-tests">Running Tests<a class="headerlink" href="#running-tests" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./gradlew<span class="w"> </span><span class="nb">test</span><span class="w">                   </span><span class="c1"># all tests</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>./gradlew<span class="w"> </span>:tests:test<span class="w">            </span><span class="c1"># cross-module tests only</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>./gradlew<span class="w"> </span>:engine:test<span class="w">           </span><span class="c1"># engine tests only</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>./gradlew<span class="w"> </span>build
 </code></pre></div>
-<h2 id="adding-tests">Adding Tests<a class="headerlink" href="#adding-tests" title="Permanent link">&para;</a></h2>
-<p>Every bug fix should include a regression test. Tests live in the <code>tests</code>
-module under <code>tests/src/test/kotlin/</code>. Shared test utilities are in
-<code>tests/src/test/kotlin/org/instagene/TestHelpers.kt</code>.</p>
-<h2 id="code-style">Code Style<a class="headerlink" href="#code-style" title="Permanent link">&para;</a></h2>
+<p>On Windows, use <code>gradlew.bat</code>.</p>
+<p>Install the repository hooks if you want the local commit checks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/install-hooks.sh
+</code></pre></div>
+<h2 id="module-boundaries">Module boundaries<a class="headerlink" href="#module-boundaries" title="Permanent link">&para;</a></h2>
 <ul>
-<li>be smart, don't make code that is not scalable or hard to maintain in a project like this</li>
-<li>please be efficient with imports </li>
-<li>run code clean up before commiting, this is a must</li>
-<li>use kotlin features as much as possible, this is not a java project, it can get ugly</li>
-<li>Functions that do heavy computation should consider the <code>Parallel</code> utility
-  for parallelization</li>
+<li>engine/ contains front-end-free sequence and workflow logic.</li>
+<li>app-cli/ contains the scriptable command line.</li>
+<li>app-gui/ contains the Swing desktop application.</li>
+<li>app-web/ contains the embedded web front end.</li>
+<li>tests/ contains cross-module and integration coverage.</li>
 </ul>
-<h2 id="pull-requests">Pull Requests<a class="headerlink" href="#pull-requests" title="Permanent link">&para;</a></h2>
+<p>The engine must not reference org.instagene.app, and front ends must not
+depend on one another. Check the rule with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./gradlew<span class="w"> </span>verifySeparation
+</code></pre></div>
+<h2 id="tests-and-regression-coverage">Tests and regression coverage<a class="headerlink" href="#tests-and-regression-coverage" title="Permanent link">&para;</a></h2>
+<p>Run the complete gate before opening a pull request:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./gradlew<span class="w"> </span>build
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>./gradlew<span class="w"> </span>:tests:test
+</code></pre></div>
+<p>Every bug fix should include a focused regression test. Headless Swing tests
+construct and exercise GUI panels without requiring a display. Long-running
+large-sequence tests may have explicit timeouts; do not make the event
+dispatch thread wait for background analysis.</p>
+<h2 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h2>
+<p>Documentation should explain the application primarily from a researcher's
+perspective while remaining accurate for contributors. Avoid claims such as
+“all formats,” “publication quality,” or “validated experimentally” unless the
+implementation and tests explicitly support them.</p>
+<p>Build the documentation with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w"> </span>--site-dir<span class="w"> </span>site
+</code></pre></div>
+<p>The screenshots in <code>docs/screenshots/</code> are documentation assets. Use
+descriptive alt text and keep image references relative to the page.</p>
+<h2 id="code-style-and-pull-requests">Code style and pull requests<a class="headerlink" href="#code-style-and-pull-requests" title="Permanent link">&para;</a></h2>
+<p>Prefer clear Kotlin and small, testable functions. Keep imports focused and
+avoid moving heavy computation onto Swing’s event dispatch thread.</p>
+<p>Before opening a pull request:</p>
 <ol>
-<li>Create a feature branch from <code>master</code></li>
-<li>Make your changes and ensure <code>./gradlew build</code> passes</li>
-<li>Open a pull request against <code>master</code></li>
-<li>CI will run the full test suite automatically</li>
+<li>run the relevant tests;</li>
+<li>run <code>./gradlew build</code>;</li>
+<li>run the strict MkDocs build;</li>
+<li>describe user-visible behavior and limitations in the pull request.</li>
 </ol>
 <h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
-<p>Performance benchmarks run on every push to <code>master</code>. Run locally with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./gradlew<span class="w"> </span>:app-cli:bench
+<p>Run the CLI benchmark task locally:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./gradlew<span class="w"> </span>:app-cli:bench
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>-Pinput<span class="o">=</span>sequence.fa
 </code></pre></div>
-<p>Results are published to the <a href="../benchmarks/info/">Benchmarks</a> dashboard.</p>
+<p>The CI workflow records benchmark output. Benchmark numbers depend on hardware,
+input size, JVM, and the current commit. Compare trends rather than treating a
+single run as an absolute performance claim. GitHub Actions runners are broadly
+similar, but relative performance should be compared only across similar
+hardware.</p>
 
 
 

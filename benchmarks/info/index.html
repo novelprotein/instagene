@@ -460,7 +460,7 @@
   <a href="#running-benchmarks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running Benchmarks
+        Running benchmarks
       
     </span>
   </a>
@@ -482,7 +482,7 @@
   <a href="#what-is-measured" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What Is Measured
+        What is measured
       
     </span>
   </a>
@@ -493,7 +493,7 @@
   <a href="#interpreting-results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Interpreting Results
+        Interpreting results
       
     </span>
   </a>
@@ -565,7 +565,7 @@
   <a href="#running-benchmarks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running Benchmarks
+        Running benchmarks
       
     </span>
   </a>
@@ -587,7 +587,7 @@
   <a href="#what-is-measured" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What Is Measured
+        What is measured
       
     </span>
   </a>
@@ -598,7 +598,7 @@
   <a href="#interpreting-results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Interpreting Results
+        Interpreting results
       
     </span>
   </a>
@@ -626,24 +626,26 @@
 
 
 <h1 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h1>
-<p>InstaGene includes a built-in performance benchmark suite that tracks
-execution time across all major engine operations.</p>
-<h2 id="running-benchmarks">Running Benchmarks<a class="headerlink" href="#running-benchmarks" title="Permanent link">&para;</a></h2>
+<p>InstaGene includes a built-in performance benchmark suite for representative
+engine operations. Results are useful for comparing commits under similar
+conditions; they are not a promise of fixed performance on every machine.</p>
+<h2 id="running-benchmarks">Running benchmarks<a class="headerlink" href="#running-benchmarks" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Run with the built-in test sequence</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>./gradlew<span class="w"> </span>:app-cli:bench
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Run with your own sequence</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>-Pinput<span class="o">=</span>sequence.fa
 </code></pre></div>
-<p>Benchmarks are run automatically as part of the CI pipeline. Each operation is
-measured 3 times and averaged.</p>
+<p>The CLI benchmark command uses the bundled sample sequence unless an input is
+provided. The CI workflow may publish results to the dashboard after a
+successful benchmark run.</p>
 <h2 id="dashboard">Dashboard<a class="headerlink" href="#dashboard" title="Permanent link">&para;</a></h2>
 <p>The interactive benchmark dashboard is hosted on GitHub Pages and shows
 historical performance trends:</p>
 <p><a href="https://novelprotein.github.io/instagene/benchmarks/">View Benchmark Dashboard</a></p>
 <p>The dashboard is automatically updated on every push to <code>master</code> via the CI
 workflow.</p>
-<h2 id="what-is-measured">What Is Measured<a class="headerlink" href="#what-is-measured" title="Permanent link">&para;</a></h2>
+<h2 id="what-is-measured">What is measured<a class="headerlink" href="#what-is-measured" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -658,7 +660,7 @@ workflow.</p>
 </tr>
 <tr>
 <td>Digest</td>
-<td>Single enzyme, full catalog (48 enzymes)</td>
+<td>Single enzyme and catalog scans</td>
 </tr>
 <tr>
 <td>Alignment</td>
@@ -682,10 +684,10 @@ workflow.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="interpreting-results">Interpreting Results<a class="headerlink" href="#interpreting-results" title="Permanent link">&para;</a></h2>
+<h2 id="interpreting-results">Interpreting results<a class="headerlink" href="#interpreting-results" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>ms</strong> — milliseconds (lower is better)</li>
-<li><strong>Regression flag</strong> — operations that slow down by &gt;15% are flagged</li>
+<li><strong>Regression flag</strong> — the dashboard flags operations that slow down by &gt;15%</li>
 <li><strong>Baseline comparison</strong> — each run is compared against the previous commit</li>
 </ul>
 
