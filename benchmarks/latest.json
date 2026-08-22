@@ -1,12 +1,12 @@
 {
-  "commit": "fb240a7",
-  "timestamp": "2026-08-21T21:23:24.349720+00:00",
+  "commit": "d5dc5d4",
+  "timestamp": "2026-08-22T01:47:07.648520+00:00",
   "sequence": "PRS424",
   "length": 5616,
   "results": [
     {
       "label": "SequenceStatistics/computeStats",
-      "ms": 5.4
+      "ms": 5.7
     },
     {
       "label": "SequenceStatistics/gcContentProfile(100, 50)",
@@ -18,7 +18,7 @@
     },
     {
       "label": "SequenceStatistics/cumulativeGcSkew(100, 50)",
-      "ms": 0.1
+      "ms": 0.0
     },
     {
       "label": "SequenceStatistics/meltingTempProfile(20, 10)",
@@ -26,67 +26,67 @@
     },
     {
       "label": "SequenceStatistics/nucleotideComposition",
-      "ms": 1.3
+      "ms": 2.7
     },
     {
       "label": "SequenceStatistics/codonUsage",
-      "ms": 2.8
+      "ms": 2.5
     },
     {
       "label": "SequenceStatistics/dinucleotideFrequencies",
-      "ms": 1.1
+      "ms": 1.2
     },
     {
       "label": "SequenceStatistics/tandemRepeats(1..10, minRepeats=3)",
-      "ms": 5.2
+      "ms": 5.4
     },
     {
       "label": "SeqOps/transcribe",
-      "ms": 0.3
+      "ms": 0.5
     },
     {
       "label": "SeqOps/backTranscribe",
-      "ms": 0.3
-    },
-    {
-      "label": "SeqOps/translateBases(frame=0)",
-      "ms": 2.4
-    },
-    {
-      "label": "SeqOps/baseCounts",
       "ms": 0.4
     },
     {
-      "label": "SeqOps/find(ATGCATGC)",
-      "ms": 6.5
-    },
-    {
-      "label": "Digest/cutSites(EcoRI)",
-      "ms": 1.1
-    },
-    {
-      "label": "Digest/cutCounts(ALL 53 enzymes)",
-      "ms": 52.6
-    },
-    {
-      "label": "Digest/digest(EcoRI + HindIII)",
+      "label": "SeqOps/translateBases(frame=0)",
       "ms": 1.8
     },
     {
+      "label": "SeqOps/baseCounts",
+      "ms": 0.5
+    },
+    {
+      "label": "SeqOps/find(ATGCATGC)",
+      "ms": 5.7
+    },
+    {
+      "label": "Digest/cutSites(EcoRI)",
+      "ms": 1.3
+    },
+    {
+      "label": "Digest/cutCounts(ALL 53 enzymes)",
+      "ms": 44.1
+    },
+    {
+      "label": "Digest/digest(EcoRI + HindIII)",
+      "ms": 1.7
+    },
+    {
       "label": "ORFsandSearch/findOrfs(30aa)",
-      "ms": 7.5
+      "ms": 9.4
     },
     {
       "label": "ORFsandSearch/orfDensity(200, 100)",
-      "ms": 8.7
+      "ms": 7.7
     },
     {
       "label": "ORFsandSearch/AdvancedSearch.find(ATGC, DNA, 2strands)",
-      "ms": 7.2
+      "ms": 4.6
     },
     {
       "label": "ORFsandSearch/AdvancedSearch.find(MVSK, AA, 2strands)",
-      "ms": 5.4
+      "ms": 6.1
     },
     {
       "label": "PrimerThermodynamics(30nt)/thermodynamicResult",
@@ -94,7 +94,7 @@
     },
     {
       "label": "PrimerThermodynamics(30nt)/selfDimer",
-      "ms": 0.6
+      "ms": 0.5
     },
     {
       "label": "PrimerThermodynamics(30nt)/heteroDimer(primer, rc)",
@@ -102,7 +102,7 @@
     },
     {
       "label": "PrimerThermodynamics(30nt)/assessHairpin",
-      "ms": 2.7
+      "ms": 2.3
     },
     {
       "label": "PrimerThermodynamics(30nt)/fullScreen",
@@ -110,23 +110,23 @@
     },
     {
       "label": "SiteDomestication/findInternalSites(8 enzymes)",
-      "ms": 4.6
+      "ms": 5.0
     },
     {
       "label": "SiteDomestication/suggestEnzyme(8 enzymes)",
-      "ms": 2.5
+      "ms": 3.1
     },
     {
       "label": "SiteDomestication/domesticate(8 enzymes)",
-      "ms": 3.3
+      "ms": 3.4
     },
     {
       "label": "CodonOptimization/reverseTranslate(1000 aa)",
-      "ms": 2.2
+      "ms": 2.6
     },
     {
       "label": "CodonOptimization/optimize(codon usage)",
-      "ms": 1.7
+      "ms": 2.0
     }
   ]
 }
