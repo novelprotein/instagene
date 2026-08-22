@@ -31,7 +31,11 @@ fun launch(openPath: String?) {
     SwingUtilities.invokeLater {
         val prefs = Prefs(PrefsStore())
         applySavedTheme(prefs)
-        InstaGeneWindow(openPath, prefs).isVisible = true
+        InstaGeneWindow(
+            openPath = openPath,
+            prefs = prefs,
+            onProcessExit = { exitProcess(0) },
+        ).isVisible = true
     }
 }
 

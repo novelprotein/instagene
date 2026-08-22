@@ -25,6 +25,7 @@ import javax.swing.JFrame
 class InstaGeneWindow(
     openPath: String? = null,
     private val prefs: Prefs = Prefs(),
+    private val onProcessExit: () -> Unit = {},
 ) : JFrame("InstaGene ${Version.VERSION} - Sequence Editor") {
 
     val content: InstaGeneContent
@@ -33,11 +34,7 @@ class InstaGeneWindow(
         defaultCloseOperation = DO_NOTHING_ON_CLOSE
         addWindowListener(object : WindowAdapter() {
             override fun windowClosing(e: WindowEvent) {
-                if (content.confirmCloseAll(this@InstaGeneWindow)) {
-                    content.persistProject()
-                    rememberGeometry()
-                    dispose()
-                }
+                requestClose()
             }
         })
 
@@ -53,7 +50,12 @@ class InstaGeneWindow(
         if (saved.windowMaximized) extendedState = MAXIMIZED_BOTH
         isResizable = true
 
-        content = InstaGeneContent(openPath, this, prefs)
+        content = InstaGeneContent(
+            openPath = openPath,
+            owner = this,
+            prefs = prefs,
+            onRequestClose = ::requestClose,
+        )
         jMenuBar = content.menuBar
         contentPane.add(content, BorderLayout.CENTER)
 
@@ -81,6 +83,16 @@ class InstaGeneWindow(
                 e.dropComplete(true)
             }
         })
+    }
+
+    /** Runs the complete close lifecycle for both the OS close button and File → Exit. */
+    private fun requestClose() {
+        if (!content.confirmCloseAll(this)) return
+
+        content.persistProject()
+        rememberGeometry()
+        dispose()
+        onProcessExit()
     }
 
     /** Persists the current bounds so the next launch opens in the same place. */

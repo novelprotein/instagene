@@ -1,5 +1,7 @@
 package org.instagene.app.gui
 
+import org.instagene.app.gui.tool.MapExportOptions
+import org.instagene.app.gui.tool.MapPreset
 import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Feature
@@ -8,6 +10,7 @@ import org.instagene.core.Topology
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
+import java.io.File
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.PI
@@ -227,6 +230,20 @@ class PlasmidMapPanelTest {
                 Feature("zeta", start = 251, end = 254),
             )
             assertEveryFeatureIsLabelled(circular.copy(topology = Topology.LINEAR, features = features), 360, 240)
+        }
+    }
+
+    @Test
+    fun svgExportHonorsPresetTitleAndLabelOptions() {
+        SwingUtilities.invokeAndWait {
+            val file = File.createTempFile("instagene-map-", ".svg")
+            file.deleteOnExit()
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = listOf(Feature("feature", start = 10, end = 20)))))
+            map.exportSvg(file, MapExportOptions(MapPreset.NOTEBOOK, "Paper map", showFeatureLabels = false))
+            val svg = file.readText()
+            assertTrue(svg.contains("Paper map"))
+            assertFalse(svg.contains(">feature</text>"))
+            assertTrue(svg.contains("width=\"900\""))
         }
     }
 }

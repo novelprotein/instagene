@@ -13,7 +13,7 @@ import javax.swing.table.DefaultTableModel
 
 internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
     private val queryFiles = JTextField(30)
-    private val model = DefaultTableModel(arrayOf("Read name", "Identity", "Mismatches", "Aligned length"), 0)
+    private val model = DefaultTableModel(arrayOf("Read name", "Identity", "Mismatches", "Aligned length", "Confidence"), 0)
     private val table = JTable(model)
     private val output = output()
     private var lastResult: org.instagene.core.SangerAlignmentResult? = null
@@ -24,14 +24,20 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
         choose.addActionListener {
             val chooser = JFileChooser().apply { isMultiSelectionEnabled = true }
             if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-                queryFiles.text = chooser.selectedFiles.joinToString(", ") { it.name }
+                // Keep absolute paths in the executable value; displaying only
+                // names made a chooser selection fail unless the working
+                // directory happened to contain the trace files.
+                queryFiles.text = chooser.selectedFiles.joinToString(", ") { it.absolutePath }
                 queryFiles.toolTipText = chooser.selectedFiles.joinToString("\n") { it.absolutePath }
             }
         }
         val run = JButton("Align reads")
         run.toolTipText = "Align the selected chromatogram reads to the current reference sequence."
         run.addActionListener { execute() }
-        add(row(choose, queryFiles, run), BorderLayout.NORTH)
+        val saveReport = JButton("Save report")
+        saveReport.toolTipText = "Export the verification summary as Markdown or JSON."
+        saveReport.addActionListener { saveReport() }
+        add(row(choose, queryFiles, run, saveReport), BorderLayout.NORTH)
         add(JScrollPane(table), BorderLayout.CENTER)
         add(JScrollPane(output).apply { preferredSize = java.awt.Dimension(10, 60) }, BorderLayout.SOUTH)
         table.installRowContextMenu { row -> sangerPopup(row) }
@@ -57,6 +63,7 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
             result.reads.forEach { r ->
                 model.addRow(arrayOf<Any?>(
                     r.readName, "%.2f%%".format(r.identity * 100), r.mismatches.size, r.alignedLength,
+                    r.confidence().name,
                 ))
             }
             output.text = buildString {
@@ -78,5 +85,20 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
         add(ContextMenus.item("Copy row data", "Copy the alignment result row to the clipboard.", hasRow) {
             copyRowToClipboard(model, row)
         })
+    }
+
+    private fun saveReport() {
+        val result = lastResult ?: run {
+            output.text = "Run an alignment before exporting its report."
+            return
+        }
+        val chooser = JFileChooser().apply { dialogTitle = "Save Sanger verification report" }
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return
+        val file = chooser.selectedFile
+        runCatching {
+            val report = org.instagene.core.Reports.verificationReport(doc.seq, result)
+            if (file.extension.equals("json", true)) file.writeText(org.instagene.core.Reports.verificationJson(report))
+            else file.writeText(org.instagene.core.Reports.verificationMarkdown(report))
+        }.onFailure { output.text = it.message ?: "Unable to save verification report" }
     }
 }

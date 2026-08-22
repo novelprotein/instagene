@@ -2,12 +2,22 @@ package org.instagene.core
 
 data class AlignmentMismatch(val refPos: Int, val readPos: Int, val refBase: Char, val readBase: Char)
 
+enum class ReadConfidence { HIGH, REVIEW, LOW }
+
 data class AlignedRead(
     val readName: String,
     val identity: Double,
     val mismatches: List<AlignmentMismatch>,
     val alignedLength: Int,
-)
+    val referenceStart: Int = 0,
+    val readStart: Int = 0,
+) {
+    fun confidence(minIdentity: Double = 0.90, minAlignedLength: Int = 20): ReadConfidence = when {
+        alignedLength < minAlignedLength -> ReadConfidence.LOW
+        identity >= minIdentity -> ReadConfidence.HIGH
+        else -> ReadConfidence.REVIEW
+    }
+}
 
 data class AlignmentSummary(val totalReads: Int, val averageIdentity: Double)
 
@@ -59,6 +69,6 @@ object SangerAlignment {
             if (rb == qb) matches++ else mismatches.add(AlignmentMismatch(bestRefStart + k, bestReadStart + k, rb, qb))
         }
         val identity = if (bestLen > 0) matches.toDouble() / bestLen else 0.0
-        return AlignedRead(read.name, identity, mismatches, bestLen)
+        return AlignedRead(read.name, identity, mismatches, bestLen, bestRefStart, bestReadStart)
     }
 }

@@ -6,6 +6,11 @@ package org.instagene.app.cli
  */
 class Args(argv: List<String>) {
 
+    private val booleanFlags = setOf(
+        "all-frames", "circular", "cutters-only", "delete", "forward-only",
+        "json", "linear", "no-colors", "quiet", "revcomp", "stop-at-stop",
+    )
+
     private val options = LinkedHashMap<String, String>()
     private val flags = LinkedHashSet<String>()
     val positionals = ArrayList<String>()
@@ -25,7 +30,9 @@ class Args(argv: List<String>) {
                 arg.startsWith("--") -> {
                     val key = arg.substring(2)
                     val next = argv.getOrNull(i + 1)
-                    if (next != null && !next.startsWith("--")) {
+                    if (key in booleanFlags) {
+                        flags += key
+                    } else if (next != null && !next.startsWith("--")) {
                         options[key] = next
                         i++
                     } else {

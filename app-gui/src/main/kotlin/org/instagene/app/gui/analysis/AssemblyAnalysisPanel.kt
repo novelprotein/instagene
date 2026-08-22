@@ -20,6 +20,7 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
     private val circular = JCheckBox("Circular product", true)
     private val output = output()
     private var product: Seq? = null
+    private var lastWorkflow: MolecularWorkflowResult? = null
 
     init {
         mode.selectedIndex = 2
@@ -41,11 +42,14 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
                     .onFailure { JOptionPane.showMessageDialog(this, it.message ?: "Unable to save product", "Assembly", JOptionPane.ERROR_MESSAGE) }
             }
         }
+        val saveReport = JButton("Save report")
+        saveReport.toolTipText = "Export the reproducible workflow summary as Markdown or JSON."
+        saveReport.addActionListener { saveWorkflowReport() }
         add(row(JLabel("Workflow"), mode, choose, parts), BorderLayout.NORTH)
         add(JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             add(row(JLabel("Enzymes"), enzymes, JLabel("Overhangs"), overhangs, JLabel("Homology arm"), arm))
-            add(row(JLabel("Gateway left,right"), gatewaySites, JLabel("Name"), productName, circular, run, open, save))
+            add(row(JLabel("Gateway left,right"), gatewaySites, JLabel("Name"), productName, circular, run, open, save, saveReport))
         }, BorderLayout.SOUTH)
         add(JScrollPane(output), BorderLayout.CENTER)
     }
@@ -89,6 +93,7 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
                 }
             }
         }.onSuccess { result ->
+            lastWorkflow = result
             product = result.product
             output.text = buildString {
                 append("Product: ${result.product.name}\nLength: ${result.product.length}\nTopology: ${result.product.topology}\n")
@@ -113,6 +118,32 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
                     }
                 }
             }
-        }.onFailure { product = null; output.text = it.message ?: "Assembly failed" }
+        }.onFailure { lastWorkflow = null; product = null; output.text = it.message ?: "Assembly failed" }
+    }
+
+    private fun saveWorkflowReport() {
+        val result = lastWorkflow ?: run {
+            JOptionPane.showMessageDialog(this, "Run a workflow before exporting its report.", "Assembly report", JOptionPane.INFORMATION_MESSAGE)
+            return
+        }
+        val chooser = JFileChooser().apply { dialogTitle = "Save assembly report" }
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return
+        val file = chooser.selectedFile
+        runCatching {
+            val report = Reports.workflowReport(
+                result,
+                inputs = listOfNotNull(doc.seq.takeIf { it.bases.isNotBlank() }) +
+                    parts.text.split(',').map(String::trim).filter(String::isNotEmpty).map { SeqIO.read(File(it)) },
+                parameters = mapOf(
+                    "workflow" to mode.selectedItem.toString(),
+                    "circular" to circular.isSelected.toString(),
+                    "minimum overlap" to arm.value.toString(),
+                ),
+            )
+            if (file.extension.equals("json", true)) file.writeText(Reports.workflowJson(report))
+            else file.writeText(Reports.workflowMarkdown(report))
+        }.onFailure {
+            JOptionPane.showMessageDialog(this, it.message ?: "Unable to save report", "Assembly report", JOptionPane.ERROR_MESSAGE)
+        }
     }
 }

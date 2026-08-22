@@ -44,6 +44,19 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+enum class MapPreset(val width: Int, val height: Int) {
+    PRESENTATION(1600, 1200),
+    PAPER(1200, 900),
+    NOTEBOOK(900, 700),
+}
+
+data class MapExportOptions(
+    val preset: MapPreset = MapPreset.PAPER,
+    val title: String? = null,
+    val showFeatureLabels: Boolean = true,
+    val showRestrictionSites: Boolean = true,
+)
+
 /**
  * The plasmid map: a circular (or linear) diagram of features and restriction
  * sites. Clicking a feature selects it in the editor; dragging selects the
@@ -169,8 +182,22 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         ImageIO.write(image, "png", file)
     }
 
+    /** Renders a PNG using a named researcher-facing preset. */
+    fun exportPng(file: File, options: MapExportOptions) {
+        exportPng(file, options.preset.width, options.preset.height)
+    }
+
     /** Exports a lightweight, editable SVG representation of the current map. */
     fun exportSvg(file: File, width: Int = 1200, height: Int = 900) {
+        exportSvg(file, MapExportOptions(), width, height)
+    }
+
+    /** Exports an SVG with reproducible title and visibility settings. */
+    fun exportSvg(file: File, options: MapExportOptions) {
+        exportSvg(file, options, options.preset.width, options.preset.height)
+    }
+
+    private fun exportSvg(file: File, options: MapExportOptions, width: Int, height: Int) {
         val seq = doc.seq
         val cx = width / 2
         val cy = height / 2
@@ -180,14 +207,23 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val end = feature.end.toDouble() / seq.length * 360.0 - 90.0
             val color = feature.color ?: "#4c8bf5"
             val y = cy - radius - 18 - (index % 8) * 14
-            "<path d=\"${svgArc(cx, cy, radius + (index % 4) * 12, start, end)}\" fill=\"none\" stroke=\"$color\" stroke-width=\"10\"/><text x=\"${cx + radius + 18}\" y=\"$y\" font-size=\"12\">${escapeSvg(feature.name)}</text>"
+            val label = if (options.showFeatureLabels) "<text x=\"${cx + radius + 18}\" y=\"$y\" font-size=\"12\">${escapeSvg(feature.name)}</text>" else ""
+            "<path d=\"${svgArc(cx, cy, radius + (index % 4) * 12, start, end)}\" fill=\"none\" stroke=\"$color\" stroke-width=\"10\"/>$label"
         }.joinToString("\n")
+        val siteSvg = if (options.showRestrictionSites) doc.cutSites.map { site ->
+            val angle = Math.toRadians(site.recognitionStart.toDouble() / seq.length * 360.0 - 90.0)
+            val x = cx + cos(angle) * (radius + 22)
+            val y = cy + sin(angle) * (radius + 22)
+            "<circle cx=\"$x\" cy=\"$y\" r=\"3\" fill=\"#8a4baf\"/><text x=\"${x + 5}\" y=\"$y\" font-size=\"10\">${escapeSvg(site.enzyme.name)}</text>"
+        }.joinToString("\n") else ""
+        val title = options.title?.takeIf { it.isNotBlank() } ?: "${seq.name} (${seq.length} bp)"
         file.writeText("""
             <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">
               <rect width="100%" height="100%" fill="#ffffff"/>
               <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#9aa3ad" stroke-width="8"/>
-              <text x="$cx" y="${cy + 5}" text-anchor="middle" font-size="16">${escapeSvg(seq.name)} (${seq.length} bp)</text>
+              <text x="$cx" y="${cy + 5}" text-anchor="middle" font-size="16">${escapeSvg(title)}</text>
               $featureSvg
+              $siteSvg
             </svg>
         """.trimIndent())
     }

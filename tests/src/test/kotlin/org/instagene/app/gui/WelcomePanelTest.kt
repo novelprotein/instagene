@@ -115,4 +115,5 @@ class WelcomePanelTest {
         assertTrue(awaitEdt { content.activeDoc?.file == a }, "opening the project did not load its file")
         assertEquals(listOf(root.absolutePath), prefs.value.recentProjects, "opening a project must record it as recent")
     }
+
 }

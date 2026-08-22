@@ -79,7 +79,7 @@ object Cli {
             "tools" -> externalTools(args)
             "sample" -> sample(args)
 
-            "info", "stats" -> info(load(args))
+            "info", "stats" -> info(load(args), args)
             "revcomp", "rc" -> emit(load(args).reverseComplement(), args)
             "complement" -> emit(load(args).complement(), args)
             "transcribe" -> emit(SeqOps.transcribe(load(args)), args)
@@ -91,7 +91,7 @@ object Cli {
             "find" -> find(load(args), args)
             "align" -> align(load(args), args)
             "gel" -> gel(load(args), args)
-            "identity" -> identity(load(args))
+            "identity" -> identity(load(args), args)
             "dilute" -> dilute(args)
             "mix" -> mix(args)
             "blast-url" -> blastUrl(load(args), args)
@@ -124,7 +124,7 @@ object Cli {
             path != null -> {
                 val file = File(path)
                 if (!file.exists()) throw CliException("No such file: $path")
-                SeqIO.read(file)
+                SequenceIdentity.withSourceFile(SeqIO.read(file), file)
             }
 
             else -> {
@@ -202,8 +202,9 @@ object Cli {
 
     // ---------------------------------------------------------------- commands
 
-    private fun info(seq: Seq) {
-        print(Reports.seqSummary(seq))
+    private fun info(seq: Seq, args: Args) {
+        if (args.flag("json")) println(Reports.sequenceSummaryJson(seq))
+        else print(Reports.seqSummary(seq))
     }
 
     private fun benchmark(args: Args) {
@@ -408,8 +409,12 @@ object Cli {
         lane.bands.forEach { println("${it.sizeBp}\tintensity=${round(it.relativeIntensity)}\tmigration=${round(result.migration(it.sizeBp))}") }
     }
 
-    private fun identity(seq: Seq) {
-        println("${SequenceIdentity.cdseguid(seq)}\tverified=${SequenceIdentity.verify(seq)}")
+    private fun identity(seq: Seq, args: Args) {
+        if (args.flag("json")) {
+            println("{\"identity\":\"${SequenceIdentity.cdseguid(seq)}\",\"verified\":${SequenceIdentity.verify(seq)}}")
+        } else {
+            println("${SequenceIdentity.cdseguid(seq)}\tverified=${SequenceIdentity.verify(seq)}")
+        }
     }
 
     private fun dilute(args: Args) {
@@ -715,17 +720,18 @@ object Cli {
         Global options
           --env FILE        apply defaults from a KEY=VALUE file (command line wins)
           --no-colors       plain output, no ANSI colors
+          --json            machine-readable JSON for commands that support it
           --version         print the InstaGene version and exit
 
         Inspecting
-          info FILE                       summary: length, GC, Tm, features, unique cutters
+          info FILE [--json]              summary: length, GC, Tm, features, unique cutters
           gc / tm FILE                    single numbers, handy in scripts
           orf [--min-aa 30] [--table 11]  open reading frames on both strands
           find --pattern GGATCC [--forward-only]
           find --pattern GGATCC [--mismatches 1] [--three-prime 4] [--mode dna|literal|amino]
           align --query read.fa[,read2.fa] reference.fa
           gel --enzymes EcoRI,BamHI sequence.fa [--completion 50]
-          identity FILE                         print a stable sequence identity
+          identity FILE [--json]                print a stable sequence identity
           dilute --stock 100 --final 10 --volume 100
           mix --components buffer=2,water=5 --reactions 10 [--overhead 0.1]
           blast-url FILE [--program blastn] [--expect 100]

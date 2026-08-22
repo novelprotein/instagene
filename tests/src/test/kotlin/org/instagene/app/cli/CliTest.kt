@@ -71,6 +71,21 @@ class CliTest {
     }
 
     @Test
+    fun infoJsonIncludesIdentityAndSourceProvenance() {
+        val dir = createTempDirectory("cli-json").toFile()
+        try {
+            val fa = File(dir, "s.fa").apply { writeText(">s\nACGT\n") }
+            val (code, output) = capture { Cli.run(listOf("info", "--json", fa.absolutePath)) }
+            assertEquals(0, code)
+            assertTrue(output.contains("\"identity\""))
+            assertTrue(output.contains("\"sourceSha256\""))
+            assertTrue(output.contains("\"length\""))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun digestAndEnzymesCommands() {
         val dir = createTempDirectory("cli-digest").toFile()
         try {

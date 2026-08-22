@@ -1,6 +1,7 @@
 package org.instagene.core
 
 import org.instagene.core.io.*
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -125,6 +126,18 @@ class CoreWorkflowTest {
         val seq = Seq(name = "x", bases = "ACGT")
         assertTrue(SequenceIdentity.cdseguid(seq).startsWith("cdseguid-"))
         assertTrue(NcbiClient().blastUrl(seq).toString().contains("PROGRAM=blastn"))
+    }
+
+    @Test
+    fun sourceFileProvenanceIsByteStableAndDoesNotChangeSequenceIdentity() {
+        val file = File.createTempFile("instagene-source-", ".fa").apply {
+            writeText(">source\nACGT\n")
+            deleteOnExit()
+        }
+        val sequence = SeqIO.read(file)
+        val withSource = SequenceIdentity.withSourceFile(sequence, file)
+        assertEquals(SequenceIdentity.cdseguid(sequence), SequenceIdentity.cdseguid(withSource))
+        assertEquals(SequenceIdentity.sourceSha256(file), withSource.metadata["SOURCE_SHA256"])
     }
 
     @Test

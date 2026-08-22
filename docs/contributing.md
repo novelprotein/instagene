@@ -1,69 +1,99 @@
 # Contributing
 
-## Development Setup
+InstaGene is a Kotlin/Gradle project with a reusable engine and separate
+front ends. Contributions should keep scientific behavior explicit, testable,
+and honest about what the application supports.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/novelprotein/instagene.git
-   cd instagene
-   ```
+## Development setup
 
-2. Install git hooks:
-   ```bash
-   ./scripts/install-hooks.sh
-   ```
+Requirements:
 
-3. Build and test:
-   ```bash
-   ./gradlew build
-   ```
+- Java 21 or newer;
+- a checkout of the repository; and
+- the included Gradle wrapper.
 
-## Architecture Rules
+~~~bash
+git clone https://github.com/novelprotein/instagene.git
+cd instagene
+./gradlew build
+~~~
 
-The project enforces strict separation between the engine and front-ends:
+On Windows, use `gradlew.bat`.
 
-- **Engine** (`engine/`) must never reference `org.instagene.app`
-- **Front-ends** must never reference each other
-- The published engine jar must contain only core classes
+Install the repository hooks if you want the local commit checks:
 
-Run `./gradlew verifySeparation` to check these rules.
+~~~bash
+./scripts/install-hooks.sh
+~~~
 
-## Running Tests
+## Module boundaries
 
-```bash
-./gradlew test                   # all tests
-./gradlew :tests:test            # cross-module tests only
-./gradlew :engine:test           # engine tests only
-```
+- engine/ contains front-end-free sequence and workflow logic.
+- app-cli/ contains the scriptable command line.
+- app-gui/ contains the Swing desktop application.
+- app-web/ contains the embedded web front end.
+- tests/ contains cross-module and integration coverage.
 
-## Adding Tests
+The engine must not reference org.instagene.app, and front ends must not
+depend on one another. Check the rule with:
 
-Every bug fix should include a regression test. Tests live in the `tests`
-module under `tests/src/test/kotlin/`. Shared test utilities are in
-`tests/src/test/kotlin/org/instagene/TestHelpers.kt`.
+~~~bash
+./gradlew verifySeparation
+~~~
 
-## Code Style
+## Tests and regression coverage
 
-- be smart, don't make code that is not scalable or hard to maintain in a project like this
-- please be efficient with imports 
-- run code clean up before commiting, this is a must
-- use kotlin features as much as possible, this is not a java project, it can get ugly
-- Functions that do heavy computation should consider the `Parallel` utility
-  for parallelization
+Run the complete gate before opening a pull request:
 
-## Pull Requests
+~~~bash
+./gradlew build
+./gradlew :tests:test
+~~~
 
-1. Create a feature branch from `master`
-2. Make your changes and ensure `./gradlew build` passes
-3. Open a pull request against `master`
-4. CI will run the full test suite automatically
+Every bug fix should include a focused regression test. Headless Swing tests
+construct and exercise GUI panels without requiring a display. Long-running
+large-sequence tests may have explicit timeouts; do not make the event
+dispatch thread wait for background analysis.
+
+## Documentation
+
+Documentation should explain the application primarily from a researcher's
+perspective while remaining accurate for contributors. Avoid claims such as
+“all formats,” “publication quality,” or “validated experimentally” unless the
+implementation and tests explicitly support them.
+
+Build the documentation with:
+
+~~~bash
+mkdocs build --strict --site-dir site
+~~~
+
+The screenshots in `docs/screenshots/` are documentation assets. Use
+descriptive alt text and keep image references relative to the page.
+
+## Code style and pull requests
+
+Prefer clear Kotlin and small, testable functions. Keep imports focused and
+avoid moving heavy computation onto Swing’s event dispatch thread.
+
+Before opening a pull request:
+
+1. run the relevant tests;
+2. run `./gradlew build`;
+3. run the strict MkDocs build;
+4. describe user-visible behavior and limitations in the pull request.
 
 ## Benchmarks
 
-Performance benchmarks run on every push to `master`. Run locally with:
+Run the CLI benchmark task locally:
 
-```bash
+~~~bash
 ./gradlew :app-cli:bench
-```
+./gradlew :app-cli:bench -Pinput=sequence.fa
+~~~
 
-Results are published to the [Benchmarks](benchmarks/info.md) dashboard.
+The CI workflow records benchmark output. Benchmark numbers depend on hardware,
+input size, JVM, and the current commit. Compare trends rather than treating a
+single run as an absolute performance claim. GitHub Actions runners are broadly
+similar, but relative performance should be compared only across similar
+hardware.

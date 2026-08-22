@@ -12,6 +12,7 @@ import java.io.File
 import java.nio.file.Files
 import javax.swing.JButton
 import javax.swing.JCheckBoxMenuItem
+import javax.swing.JMenuItem
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.plaf.basic.BasicSplitPaneUI
@@ -113,6 +114,28 @@ class DocumentTabsTest {
             assertTrue(content.closeTab(second, force = true))
             assertEquals(1, content.docTabs.tabCount)
             assertSame(first, content.activeDocument)
+        }
+    }
+
+    @Test
+    fun fileExitRequestsTheWindowCloseLifecycle() {
+        var closeRequests = 0
+        val content = onEdt {
+            InstaGeneContent(onRequestClose = { closeRequests++ })
+        }
+
+        try {
+            onEdt {
+                val fileMenu = content.menuBar.getMenu(0) ?: fail("File menu missing")
+                val exit = fileMenu.menuComponents
+                    .filterIsInstance<JMenuItem>()
+                    .firstOrNull { it.text == "Exit" }
+                    ?: fail("Exit menu item missing")
+                exit.doClick()
+                assertEquals(1, closeRequests)
+            }
+        } finally {
+            onEdt { content.dispose() }
         }
     }
 
@@ -284,7 +307,7 @@ class DocumentTabsTest {
             assertFalse(tools.isEnabled, "Tools must be disabled with no document open")
             assertEquals(
                 listOf("Theme", "Show File Browser"),
-                view.menuComponents.filterIsInstance<javax.swing.JMenuItem>().map { it.text },
+                view.menuComponents.filterIsInstance<JMenuItem>().map { it.text },
                 "welcome View menu must expose theme and browser controls without sequence-only actions",
             )
 

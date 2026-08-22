@@ -1,9 +1,10 @@
 # Benchmarks
 
-InstaGene includes a built-in performance benchmark suite that tracks
-execution time across all major engine operations.
+InstaGene includes a built-in performance benchmark suite for representative
+engine operations. Results are useful for comparing commits under similar
+conditions; they are not a promise of fixed performance on every machine.
 
-## Running Benchmarks
+## Running benchmarks
 
 ```bash
 # Run with the built-in test sequence
@@ -13,8 +14,9 @@ execution time across all major engine operations.
 ./gradlew :app-cli:bench -Pinput=sequence.fa
 ```
 
-Benchmarks are run automatically as part of the CI pipeline. Each operation is
-measured 3 times and averaged.
+The CLI benchmark command uses the bundled sample sequence unless an input is
+provided. The CI workflow may publish results to the dashboard after a
+successful benchmark run.
 
 ## Dashboard
 
@@ -26,20 +28,20 @@ historical performance trends:
 The dashboard is automatically updated on every push to `master` via the CI
 workflow.
 
-## What Is Measured
+## What is measured
 
 | Category        | Operations                                         |
 |-----------------|----------------------------------------------------|
 | Sequence I/O    | FASTA read/write, GenBank read/write               |
-| Digest          | Single enzyme, full catalog (48 enzymes)           |
+| Digest          | Single enzyme and catalog scans                    |
 | Alignment       | Pairwise NW, multiple query alignment              |
 | Statistics      | GC content, CpG islands, Shannon entropy           |
 | Search          | Forward/reverse pattern search, amino acid search  |
 | Translation     | Codon table translation, ORF finding               |
 | Primer          | Melting temperature, hairpin assessment, self-dimer |
 
-## Interpreting Results
+## Interpreting results
 
 - **ms** — milliseconds (lower is better)
-- **Regression flag** — operations that slow down by >15% are flagged
+- **Regression flag** — the dashboard flags operations that slow down by >15%
 - **Baseline comparison** — each run is compared against the previous commit

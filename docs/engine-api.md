@@ -1,128 +1,112 @@
 # Engine API
 
-The engine (`org.instagene.core`) is a pure Kotlin library with no UI
-dependencies. It provides the core bioinformatics operations used by all
-front-ends.
+`engine` is the Kotlin library used by the desktop, CLI, and web applications.
+It contains sequence models, parsers, analysis algorithms, cloning workflows,
+and reusable project data structures. It has no Swing dependency.
 
-## Module
+## Install the engine
 
-```kotlin
-dependencies {
-    implementation("org.instagene:instagene-engine:0.0.3")
+The published artifact is available from GitHub Packages:
+
+~~~kotlin
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/novelprotein/instagene")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR")
+            password = System.getenv("GITHUB_TOKEN")
+        }
+    }
 }
-```
 
-## Package Structure
+dependencies {
+    implementation("org.instagene:instagene-engine:0.0.4")
+}
+~~~
 
-```
-org.instagene.core
-├── Sequence I/O
-│   ├── Seq                    # Core sequence model
-│   ├── SeqIO                  # Format detection and read/write entry point
-│   ├── Fasta                  # FASTA format parser/writer
-│   ├── GenBank                # GenBank format parser/writer
-│   └── ChromatogramReader     # ABI/AB1 and SCF chromatogram parser
-├── Analysis
-│   ├── SequenceStatistics     # GC content, entropy, CpG islands
-│   ├── Digest                 # Restriction enzyme mapping
-│   ├── Alignment              # Needleman-Wunsch alignment
-│   ├── SangerAlignment        # Sanger read alignment
-│   └── FeatureLibrary         # Feature annotation and search
-├── Design
-│   ├── PrimerThermodynamics   # Melting temperature, hairpin, dimer
-│   ├── PrimerDesign           # Primer design with Tm targeting
-│   ├── CrisprDesign           # CRISPR guide RNA design (Ruleset 3)
-│   └── SiteDomestication      # Restriction site removal
-├── Assembly
-│   ├── Assembly               # Fragment assembly and overlap
-│   ├── Recombination          # Homologous recombination
-│   └── VirtualGel             # Gel electrophoresis simulation
-└── Utilities
-    ├── Alphabet               # IUPAC codes, complements, translations
-    ├── CodonTable             # Codon translation tables
-    ├── Enzymes                # Restriction enzyme catalog
-    └── Parallel               # Coroutine-based parallel computation
-```
+The version is defined by `gradle.properties` in this repository. Tagged
+releases publish the tagged version; other builds include a commit suffix.
 
-## Key Classes
+## Core data model
 
-### Seq
+`Seq` is the central immutable sequence record. It carries bases, name, type
+(`DNA`, `RNA`, or `PROTEIN`), topology (`LINEAR` or `CIRCULAR`), features,
+primers, molecule properties, metadata, and related annotations.
 
-The core sequence data class:
-
-```kotlin
-data class Seq(
-    val name: String = "unnamed",
-    val bases: String = "",
-    val kind: SeqKind = SeqKind.DNA,
-    val topology: Topology = Topology.LINEAR,
-    val features: List<Feature> = emptyList(),
-    val description: String = "",
-    val metadata: Map<String, String> = emptyMap(),
+~~~kotlin
+val plasmid = Seq(
+    name = "pExample",
+    bases = "GAATTCACCGGTT",
+    kind = SeqKind.DNA,
+    topology = Topology.CIRCULAR,
 )
-```
 
-### Digest
+val edited = plasmid.insertAt(6, "GCGC")
+~~~
 
-Restriction enzyme mapping:
+Sequence editing returns a new record and carries compatible annotations.
+Validate the resulting features when an edit crosses an annotation boundary.
 
-```kotlin
-// Count cut sites for all enzymes
+## Sequence I/O
+
+`SeqIO` detects and reads FASTA, GenBank, GFF3, EMBL, Swiss-Prot, alignments,
+and supported ABI/SCF chromatograms. It can read records and write native
+formats through `SeqFormat`.
+
+~~~kotlin
+val seq = SeqIO.read(File("plasmid.gb"))
+val records = SeqIO.readAll(File("multi.fa"))
+val fasta = SeqIO.write(seq, SeqFormat.FASTA)
+val genbank = SeqIO.write(seq, SeqFormat.GENBANK)
+~~~
+
+Use `preferredSaveFormat(seq)` when preserving annotations, topology, primers,
+or molecule properties. Legacy proprietary format support is converter-backed:
+register a command containing `{in}` and ensure that it emits FASTA, GenBank,
+EMBL, or GFF3.
+
+## Analysis and design
+
+The main engine services include:
+
+| Area | APIs |
+|---|---|
+| Sequence operations | Alphabet, SeqOps, SequenceStatistics, SequenceProfiles |
+| Restriction mapping | Enzymes, Digest, EnzymeAnalysis, SiteDomestication |
+| Alignment | Alignment, MultipleAlignment, SangerAlignment, SequenceIdentity |
+| Annotation | FeatureLibrary, AdvancedSearch, ProjectSearch |
+| Primer design | PrimerDesign, PrimerThermodynamics, PcrWorkflows |
+| Assembly | Assembly, AssemblyWorkflows, CloningWorkflows, Recombination |
+| Other workflows | CrisprDesign, VirtualGel, SecondaryStructure, MolecularCalculators |
+| Remote | NcbiClient for NCBI search, fetch, and BLAST polling |
+
+Examples:
+
+~~~kotlin
 val counts = Digest.cutCounts(seq)
+val ecoSites = Digest.cutSites(seq, Enzymes.require("EcoRI"))
+val uniqueCutters = Digest.enzymesCutting(seq, times = 1)
 
-// Find all cut sites for specific enzymes
-val sites = Digest.cutSites(seq, listOf(Enzymes.ECORI, Enzymes.HINDIII))
+val stats = SequenceStatistics.computeStats(seq)
+val gcWindows = SequenceStatistics.gcContentProfile(seq, windowSize = 500)
+val candidates = PrimerDesign.candidates(seq, 100, 400)
+val tm = PrimerThermodynamics.thermodynamicResult("ATCGATCGATCG").tm
+~~~
 
-// Find enzymes that cut exactly once
-val unique = Digest.enzymesCutting(seq, times = 1)
-```
+Most APIs are synchronous functions. Front ends are responsible for placing
+large or remote operations on appropriate background workers and for deciding
+how to present errors and cancellation. The internal `Parallel` helper is not a
+public scheduling contract.
 
-### SequenceStatistics
+## Reports and reproducibility
 
-Genome statistics:
+`Reports` produces text reports for selected workflows. Sequence records also
+carry procedure records that capture a workflow's inputs, warnings, and
+summary. Reports support review, but they do not replace source-record checks
+or laboratory documentation.
 
-```kotlin
-val gc = SequenceStatistics.gcContent(seq)
-val islands = SequenceStatistics.cpgIslands(seq)
-val entropy = SequenceStatistics.computeStats(seq).shannonEntropy
-```
+## Compatibility expectations
 
-### Alignment
-
-Multiple sequence alignment:
-
-```kotlin
-val result = Alignment.align(reference, queries)
-val discrepancies = result.discrepancyPositions()
-```
-
-### PrimerThermodynamics
-
-Primer analysis:
-
-```kotlin
-val tm = PrimerThermodynamics.thermodynamicResult(primer).tm
-val hairpin = PrimerThermodynamics.assessHairpin(primer)
-val selfDimer = PrimerThermodynamics.assessSelfDimer(primer)
-```
-
-## Parallelization
-
-The engine uses `kotlinx.coroutines` for CPU-bound parallel computation via
-the `Parallel` utility class. Methods that iterate over large enzyme catalogs
-or process multiple sequences are automatically parallelized when the input
-size exceeds a threshold.
-
-Key parallelized operations:
-
-- `Digest.cutCounts` / `cutSites` — parallel over enzymes
-- `Alignment.align` — parallel over query sequences
-- `FeatureLibrary.previewMatches` — parallel over feature definitions
-- `SequenceStatistics.cpgIslands` — parallel over window positions
-- `AdvancedSearch.find` — parallel over strands
-
-## Thread Safety
-
-All engine methods are stateless and thread-safe. The `Parallel` utility
-uses `Dispatchers.Default` for CPU-bound work and does not maintain shared
-state between coroutines.
+The engine API is evolving before a stable 1.0 release. Pin the published
+version in consumers, run the project tests when upgrading, and prefer the
+documented public classes over internal helpers.

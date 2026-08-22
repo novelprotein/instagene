@@ -350,7 +350,7 @@ jobs:
         if: ${{ matrix.package_type == 'DMG' }}
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           # Mount the DMG and verify the .app is present
           dmg=$(ls app-gui/build/jpackage/dist/*.dmg | head -1)
           echo "Found DMG: $dmg"
@@ -359,6 +359,8 @@ jobs:
           test -d "/Volumes/$mount_point/InstaGene.app" || { echo "Missing InstaGene.app in DMG"; exit 1; }
           # Verify the launcher exists
           test -f "/Volumes/$mount_point/InstaGene.app/Contents/MacOS/InstaGene"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "/Volumes/$mount_point/InstaGene.app/Contents/Info.plist" | grep -q 'io.novelprotein.instagene'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "/Volumes/$mount_point/InstaGene.app/Contents/Info.plist" >/dev/null
           hdiutil detach "/Volumes/$mount_point" -quiet
           echo "DMG smoke test passed"
 
@@ -372,6 +374,9 @@ jobs:
           # Verify the /usr/bin wrapper was injected
           dpkg-deb -x "$deb" /tmp/instagene-deb-inspect
           test -f /tmp/instagene-deb-inspect/usr/bin/instagene
+          test -f /tmp/instagene-deb-inspect/usr/share/applications/io.novelprotein.instagene.desktop
+          test -f /tmp/instagene-deb-inspect/usr/share/mime/packages/io.novelprotein.instagene.xml
+          grep -q 'Exec=InstaGene' /tmp/instagene-deb-inspect/usr/share/applications/io.novelprotein.instagene.desktop
           echo "DEB smoke test passed"
 
       - name: Smoke-test installer (MSI)
@@ -392,10 +397,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  docs-check:
+    name: Validate MkDocs site
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install MkDocs and dependencies
+        run: pip install -r docs/requirements.txt
+
+      - name: Build documentation in strict mode
+        run: ./scripts/check-docs.sh
+
+      - name: Verify generated site is non-empty
+        shell: bash
+        run: |
+          test -f site/index.html
+          test "$(find site -type f | wc -l)" -gt 0
+
   docs:
     name: Deploy MkDocs site
     if: ${{ github.event_name != 'pull_request' }}
-    needs: [build-and-test, benchmark]
+    needs: [build-and-test, benchmark, docs-check]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -411,10 +441,10 @@ jobs:
           python-version: '3.12'
 
       - name: Install MkDocs and dependencies
-        run: pip install mkdocs-material
+        run: pip install -r docs/requirements.txt
 
       - name: Build site
-        run: mkdocs build --strict --site-dir site
+        run: ./scripts/check-docs.sh
 
       - name: Copy benchmark archive into site
         run: |
@@ -520,7 +550,10 @@ jobs:
           fi
           # Remove old files, copy new site, commit and push
           find . -maxdepth 1 ! -name '.' ! -name '.git' -exec rm -rf {} +
-          cp -r "$deploy_site"/* .
+          # Copy directory contents, including any future hidden files. Using
+          # `site/*` fails when the glob has no matches and caused an empty
+          # generated site to abort deployment with cp: cannot stat.
+          cp -a "$deploy_site"/. .
           git add -A
           git diff --cached --quiet || git commit -m "Deployed $(git rev-parse --short HEAD)"
           git push origin gh-pages --force

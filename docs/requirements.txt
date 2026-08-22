@@ -1,0 +1,2 @@
+# Keep documentation builds reproducible across developer machines and CI.
+mkdocs-material>=9.6,<10

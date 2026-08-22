@@ -99,6 +99,7 @@ class InstaGeneContent(
     private val owner: JFrame? = null,
     private val prefs: Prefs = Prefs(),
     private val ncbiClient: NcbiClient = NcbiClient(),
+    private val onRequestClose: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
 
     /** The parent window, used for dialogs and the system-app opener; null in headless contexts. */
@@ -845,11 +846,7 @@ class InstaGeneContent(
                 onNewProject = { newProject() },
                 onOpenProject = { openProject() },
                 onCloseTab = { closeTab(activeDoc ?: newDocument()) },
-                onExit = {
-                    if (confirmCloseAll(owner)) {
-                        persistProject(); owner?.dispose()
-                    }
-                },
+                onExit = onRequestClose,
                 onTitleChanged = { updateTitle() },
             ),
             edit = EditMenu(
@@ -926,7 +923,7 @@ class InstaGeneContent(
             add(menuItem("Save", KeyEvent.VK_S, menuShortcut(KeyEvent.VK_S)) { activeFileMenu().saveFile() })
             add(menuItem("Save As...", KeyEvent.VK_A, KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK)) { activeFileMenu().saveFileAs() })
             addSeparator()
-            add(menuItem("Exit") { if (confirmCloseAll(owner)) { persistProject(); owner?.dispose() } })
+            add(menuItem("Exit", action = onRequestClose))
         })
         menuBar.add(emptyStateMenuSet.edit.create().apply { isEnabled = false })
         menuBar.add(JMenu("View").apply {
