@@ -96,6 +96,7 @@ import kotlin.math.roundToInt
  */
 class InstaGeneContent(
     openPath: String? = null,
+    openPaths: List<String> = emptyList(),
     private val owner: JFrame? = null,
     private val prefs: Prefs = Prefs(),
     private val ncbiClient: NcbiClient = NcbiClient(),
@@ -290,9 +291,11 @@ class InstaGeneContent(
     }
 
     init {
-        val initialFile = if (openPath != null && File(openPath).exists()) File(openPath) else null
-        val initialSeq = initialFile?.let { runCatching { SeqIO.read(it) }.getOrNull() } ?: Seq("")
-        val initial = SeqDocument(initialSeq, initialFile)
+        val requestedPaths = buildList {
+            openPath?.let(::add)
+            addAll(openPaths)
+        }.distinct()
+        val initial = SeqDocument(Seq(""))
 
         sequenceView = SequenceView(initial)
         textEditorView = TextEditorView(TextDocument())
@@ -383,7 +386,11 @@ class InstaGeneContent(
         hub.addListener { _, reason -> onHubChanged(reason) }
         // With no file to open the window starts in the welcome state: nothing
         // is open until the user opens a file, a project or starts fresh.
-        if (initialFile != null) addDocument(initial)
+        if (requestedPaths.isEmpty()) {
+            // With no file to open the window starts in the welcome state.
+        } else {
+            requestedPaths.forEach { path -> openFileInTab(File(path)) }
+        }
 
         onActiveDocumentChanged()
         rebuildMenuBar()

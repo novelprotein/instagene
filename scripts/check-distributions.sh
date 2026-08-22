@@ -27,6 +27,9 @@ echo "== Checking portable GUI JAR =="
 "${gradle[@]}" :app-gui:verifyStandaloneJar
 test -f app-gui/build/distributions/instagene-gui.jar
 
+echo "== Checking native file associations =="
+"${gradle[@]}" :app-gui:verifyNativeFileAssociations
+
 echo "== Checking CLI distribution ZIP =="
 "${gradle[@]}" :app-cli:distZip
 cli_zip="app-cli/build/distributions/instagene-cli.zip"
@@ -54,6 +57,11 @@ case "$(uname -s)" in
         trap cleanup_inspect_dir EXIT
         dpkg-deb -x "$deb" "$inspect_dir"
         test -x "$inspect_dir/usr/bin/instagene"
+        mime_info="$inspect_dir/opt/instagene/lib/instagene-InstaGene-MimeInfo.xml"
+        test -f "$mime_info"
+        grep -q 'text/x-fasta' "$mime_info"
+        dpkg-deb -e "$deb" "$inspect_dir/DEBIAN"
+        grep -q 'xdg-mime install' "$inspect_dir/DEBIAN/postinst"
 
         echo "== Checking Linux app-image ZIP =="
         "${gradle[@]}" :app-gui:jpackageAppImageZip -PjpackageType=APP_IMAGE

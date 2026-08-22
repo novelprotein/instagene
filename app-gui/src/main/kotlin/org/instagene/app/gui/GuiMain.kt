@@ -15,7 +15,7 @@ fun main(argv: Array<String>) {
         System.err.println("Use the CLI front-end (`:app-cli:runCli`) or the web front-end (`:app-web:runWeb`) instead.")
         exitProcess(2)
     }
-    launch(argv.firstOrNull { !it.startsWith("-") })
+    launch(argv.filterNot { it.startsWith("-") })
 }
 
 private val launched = AtomicBoolean(false)
@@ -26,13 +26,13 @@ private val launched = AtomicBoolean(false)
  * This is the single launch path for the desktop platform; calling it twice in
  * one JVM (e.g. from a double-click plus an IDE launch) is ignored.
  */
-fun launch(openPath: String?) {
+fun launch(openPaths: List<String>) {
     if (!launched.compareAndSet(false, true)) return
     SwingUtilities.invokeLater {
         val prefs = Prefs(PrefsStore())
         applySavedTheme(prefs)
         InstaGeneWindow(
-            openPath = openPath,
+            openPaths = openPaths,
             prefs = prefs,
             onProcessExit = { exitProcess(0) },
         ).isVisible = true

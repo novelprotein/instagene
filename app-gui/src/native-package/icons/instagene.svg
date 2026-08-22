@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="InstaGene">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17324d"/>
+      <stop offset="1" stop-color="#0b1826"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <path d="M82 47c62 28 62 134 0 162M174 47c-62 28-62 134 0 162" fill="none" stroke="#65d6a3" stroke-width="16" stroke-linecap="round"/>
+  <path d="M94 75h68M82 107h92M82 149h92M94 181h68" fill="none" stroke="#d9f4e8" stroke-width="10" stroke-linecap="round"/>
+</svg>

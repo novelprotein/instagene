@@ -9,8 +9,6 @@ and honest about what the application supports.
 Requirements:
 
 - Java 21 or newer;
-- a checkout of the repository; and
-- the included Gradle wrapper.
 
 ~~~bash
 git clone https://github.com/novelprotein/instagene.git

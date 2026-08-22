@@ -59,6 +59,9 @@ read as sequencing data. A file with an unknown extension is inspected by
 content where possible, so a text file containing bare bases can still open as
 a sequence.
 
+Installed desktop packages register these native sequence formats with the
+host operating system. Portable distributions remain association-neutral.
+
 ### Optional converters
 
 The project catalogues several legacy or proprietary sequence formats, but

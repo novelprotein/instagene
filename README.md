@@ -5,10 +5,8 @@
 ![Java](https://img.shields.io/badge/Java-21+-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-InstaGene is a desktop-first toolkit for reading, editing, analyzing, and
-constructing DNA, RNA, and protein sequences. It combines a researcher-focused
-desktop GUI with a scriptable CLI, a local web front end, and a reusable Kotlin
-engine.
+InstaGene is a toolkit for reading, editing and analyzing DNA, RNA, and protein sequences. It combines a researcher-focused
+desktop GUI with a scriptable CLI, a local web front end, and a reusable engine all written in Kotlin.
 
 ![InstaGene sequence workspace](docs/screenshots/seq.png)
 
@@ -85,9 +83,7 @@ one another. Check the boundary with:
   workflows;
 - optional external converters and command-line tool integrations.
 
-The implementation and tests are the source of truth for supported behavior.
-The documentation distinguishes native support from converter-backed, optional,
-and planned features.
+
 
 ## Useful commands
 

@@ -120,3 +120,19 @@ not included with the application.
 
 Native installers must be built on their target operating system because
 `jpackage` does not cross-compile desktop packages.
+
+### File associations
+
+Installed Windows, macOS, and Linux packages register InstaGene as an available
+handler for FASTA (`.fa`, `.fasta`, `.fna`, `.fas`, `.seq`), GenBank (`.gb`,
+`.gbk`, `.genbank`, `.ape`), GFF3 (`.gff`, `.gff3`), EMBL/ENA (`.embl`, `.ena`),
+Swiss-Prot (`.swiss`, `.sprot`, `.dat`), and FASTA alignment (`.aln`, `.afa`,
+`.msa`) files. The installer does not force a new default application; choose
+InstaGene from the operating system's **Open With** or **Default Apps** UI when
+needed.
+
+Portable JAR and app-image downloads do not modify operating-system file
+associations. Open files from InstaGene, drag them onto the window, or create a
+manual association to the portable launcher if that is preferred. ABI/AB1 and
+SCF chromatograms are not registered yet because their direct in-app analysis
+workflow is still separate from the general sequence opener.

@@ -4,13 +4,44 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build, for example v0.0.4
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag and project version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "Release must use a semantic version tag like v0.0.4: $TAG" >&2
+            exit 1
+          }
+          version="${TAG#v}"
+          expected="$(sed -n 's/^instagene.version=//p' gradle.properties)"
+          test "$version" = "$expected" || {
+            echo "Release tag $TAG does not match gradle.properties version $expected" >&2
+            exit 1
+          }
+
   linux:
     name: Linux (deb, rpm, app-image, CLI dist)
+    needs: validate
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -62,6 +93,7 @@ jobs:
 
   gui-jar:
     name: Portable runnable GUI JAR
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -100,6 +132,7 @@ jobs:
 
   linux-cli:
     name: Linux (CLI distribution zip)
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -126,6 +159,7 @@ jobs:
 
   native-cli:
     name: Native CLI image (GraalVM)
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -145,6 +179,15 @@ jobs:
       - name: Build native CLI image
         run: ./gradlew :app-cli:nativeCompile --no-configuration-cache --console=plain
 
+      - name: Smoke-test native CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=./app-cli/build/native/nativeCompile/instagene
+          test -x "$binary"
+          "$binary" --help >/tmp/instagene-native-help.txt
+          "$binary" --version | grep -Fx 'InstaGene 0.0.4'
+
       - name: Upload native CLI image
         uses: actions/upload-artifact@v5
         with:
@@ -154,6 +197,7 @@ jobs:
 
   windows:
     name: Windows (.msi via WiX)
+    needs: validate
     runs-on: windows-latest
     steps:
       - name: Check out repository
@@ -173,6 +217,18 @@ jobs:
       - name: Build installer
         run: ./gradlew :app-gui:jpackage "-PjpackageType=MSI" --console=plain
 
+      - name: Verify installed file association
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem app-gui/build/jpackage/dist/*.msi | Select-Object -First 1).FullName
+          $log = Join-Path $env:RUNNER_TEMP "instagene-msi.log"
+          $install = Start-Process msiexec.exe -ArgumentList "/i", $msi, "/qn", "/norestart", "/l*v", $log -Wait -PassThru
+          if ($install.ExitCode -ne 0) { Get-Content $log; throw "MSI installation failed: $($install.ExitCode)" }
+          $association = Get-ItemProperty "Registry::HKEY_CURRENT_USER\Software\Classes\.fa"
+          if ([string]::IsNullOrWhiteSpace($association.'(default)')) { throw "FASTA association was not registered" }
+          $uninstall = Start-Process msiexec.exe -ArgumentList "/x", $msi, "/qn", "/norestart" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed: $($uninstall.ExitCode)" }
+
       - name: Upload installer
         uses: actions/upload-artifact@v5
         with:
@@ -182,6 +238,7 @@ jobs:
 
   macos:
     name: macOS (.dmg)
+    needs: validate
     runs-on: macos-latest
     steps:
       - name: Check out repository
@@ -219,6 +276,9 @@ jobs:
           app="$mount_point/InstaGene.app"
           test -d "$app"
           test -f "$app/Contents/MacOS/InstaGene"
+          plutil -extract CFBundleDocumentTypes xml1 -o /dev/null "$app/Contents/Info.plist"
+          plutil -p "$app/Contents/Info.plist" > "$RUNNER_TEMP/instagene-info-plist.txt"
+          grep -q 'fa' "$RUNNER_TEMP/instagene-info-plist.txt"
 
       - name: Upload installer
         uses: actions/upload-artifact@v5
@@ -229,6 +289,7 @@ jobs:
 
   engine-sources:
     name: Engine sources jar
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -257,7 +318,7 @@ jobs:
 
   publish:
     name: Create GitHub Release
-    needs: [linux, linux-cli, native-cli, windows, macos, gui-jar, engine-sources]
+    needs: [validate, linux, linux-cli, native-cli, windows, macos, gui-jar, engine-sources]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -274,7 +335,7 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           gh release create "$TAG" artifacts/* \
             --repo "$GITHUB_REPOSITORY" \

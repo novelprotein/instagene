@@ -290,8 +290,12 @@ jobs:
 
       - name: Smoke-test native CLI
         run: |
-          ./app-cli/build/native/nativeCompile/instagene --help || true
-          file ./app-cli/build/native/nativeCompile/instagene
+          set -euo pipefail
+          binary=./app-cli/build/native/nativeCompile/instagene
+          test -x "$binary"
+          "$binary" --help >/tmp/instagene-native-help.txt
+          "$binary" --version | grep -F 'InstaGene 0.0.4'
+          file "$binary"
 
       - name: Upload native CLI image
         uses: actions/upload-artifact@v5
@@ -365,6 +369,9 @@ jobs:
           app="$mount_point/InstaGene.app"
           test -d "$app" || { echo "Missing InstaGene.app in DMG"; exit 1; }
           test -f "$app/Contents/MacOS/InstaGene"
+          plutil -extract CFBundleDocumentTypes xml1 -o /dev/null "$app/Contents/Info.plist"
+          plutil -p "$app/Contents/Info.plist" > "$RUNNER_TEMP/instagene-info-plist.txt"
+          grep -q 'fa' "$RUNNER_TEMP/instagene-info-plist.txt"
           echo "DMG smoke test passed"
 
       - name: Smoke-test installer (DEB)
@@ -379,16 +386,25 @@ jobs:
           trap 'rm -rf "$inspect_dir"' EXIT
           dpkg-deb -x "$deb" "$inspect_dir"
           test -x "$inspect_dir/usr/bin/instagene"
+          test -f "$inspect_dir/opt/instagene/lib/instagene-InstaGene-MimeInfo.xml"
+          grep -q 'text/x-fasta' "$inspect_dir/opt/instagene/lib/instagene-InstaGene-MimeInfo.xml"
+          dpkg-deb -e "$deb" "$inspect_dir/control"
+          grep -q 'xdg-mime install' "$inspect_dir/control/postinst"
           echo "DEB smoke test passed"
 
       - name: Smoke-test installer (MSI)
         if: ${{ matrix.package_type == 'MSI' }}
-        shell: bash
+        shell: pwsh
         run: |
-          msi=$(ls app-gui/build/jpackage/dist/*.msi | head -1)
-          echo "Found MSI: $msi"
-          # Verify the MSI is a valid PE/COFF file (Windows PE signature)
-          file "$msi" | grep -qi "Microsoft" || echo "MSI file type: $(file "$msi")"
+          $msi = (Get-ChildItem app-gui/build/jpackage/dist/*.msi | Select-Object -First 1).FullName
+          Write-Host "Found MSI: $msi"
+          $log = Join-Path $env:RUNNER_TEMP "instagene-msi.log"
+          $install = Start-Process msiexec.exe -ArgumentList "/i", $msi, "/qn", "/norestart", "/l*v", $log -Wait -PassThru
+          if ($install.ExitCode -ne 0) { Get-Content $log; throw "MSI installation failed: $($install.ExitCode)" }
+          $association = Get-ItemProperty "Registry::HKEY_CURRENT_USER\Software\Classes\.fa"
+          if ([string]::IsNullOrWhiteSpace($association.'(default)')) { throw "FASTA association was not registered" }
+          $uninstall = Start-Process msiexec.exe -ArgumentList "/x", $msi, "/qn", "/norestart" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed: $($uninstall.ExitCode)" }
           echo "MSI smoke test passed"
 
       - name: Upload desktop package

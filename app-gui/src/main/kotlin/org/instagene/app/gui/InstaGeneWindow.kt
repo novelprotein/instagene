@@ -24,6 +24,7 @@ import javax.swing.JFrame
  */
 class InstaGeneWindow(
     openPath: String? = null,
+    openPaths: List<String> = emptyList(),
     private val prefs: Prefs = Prefs(),
     private val onProcessExit: () -> Unit = {},
 ) : JFrame("InstaGene ${Version.VERSION} - Sequence Editor") {
@@ -52,6 +53,7 @@ class InstaGeneWindow(
 
         content = InstaGeneContent(
             openPath = openPath,
+            openPaths = openPaths,
             owner = this,
             prefs = prefs,
             onRequestClose = ::requestClose,

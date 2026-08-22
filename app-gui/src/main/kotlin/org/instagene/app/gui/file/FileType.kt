@@ -1,7 +1,7 @@
 package org.instagene.app.gui.file
 
 import org.instagene.core.Alphabet
-import org.instagene.core.io.SequenceFormatCatalog
+import org.instagene.core.io.NativeFileAssociations
 import java.io.File
 import javax.swing.filechooser.FileNameExtensionFilter
 
@@ -33,7 +33,7 @@ enum class FileType {
 object FileTypes {
 
     /** Extensions that make a file eligible for the open-file dialog. */
-    val sequenceExtensions = setOf("fasta", "fa", "fna", "fas", "gb", "gbk", "genbank", "gp", "ape", "seq", "gff", "gff3") + SequenceFormatCatalog.allExtensions
+    val sequenceExtensions = NativeFileAssociations.extensions
     private val textExtensions = setOf("md", "markdown", "notes", "log")
     private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "tif", "tiff")
     private val pdfExtensions = setOf("pdf")

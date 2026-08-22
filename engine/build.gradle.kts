@@ -17,9 +17,9 @@ dependencies {
 
 // ------------------------------------------------------------------ versioning
 // The version is derived once from `instagene.version` (gradle.properties) plus
-// the git state: tagged releases publish exactly `0.0.1`, every other build
-// publishes `0.0.1-<sha>`. The generated `Version.VERSION` uses the SemVer
-// build-metadata form (`0.0.1+<sha>`) for display.
+// the git state: tagged releases publish exactly the configured base version,
+// every other build publishes the base version with a commit suffix. The
+// generated `Version.VERSION` uses SemVer build metadata for display.
 //
 // All closures below only capture provider parameters (never the build script
 // itself), which keeps them serializable for the configuration cache.
@@ -51,9 +51,8 @@ version = providers.zip(taggedAsRelease, baseVersion) { release, base ->
 
 // Bake the version into `org.instagene.core.Version`, the single source that
 // every front-end reads at runtime. Development builds carry the short git
-// commit as SemVer build metadata (`0.0.1+abc1234`); a build whose HEAD is
-// tagged `v<version>` (or `<version>`) is an official release and reports
-// exactly `0.0.1`.
+// commit as SemVer build metadata; a build whose HEAD is tagged `v<version>`
+// (or `<version>`) is an official release and reports exactly the base version.
 val generateVersion = tasks.register("generateVersion") {
     description = "Generates org.instagene.core.Version from instagene.version and the git state."
     val outDir = layout.buildDirectory.dir("generated/version")

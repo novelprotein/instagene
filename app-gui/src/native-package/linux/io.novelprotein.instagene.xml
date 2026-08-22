@@ -24,13 +24,16 @@
     <glob pattern="*.embl"/>
     <glob pattern="*.ena"/>
   </mime-type>
-  <mime-type type="application/x-instagene-abi">
-    <comment>ABI chromatogram</comment>
-    <glob pattern="*.ab1"/>
-    <glob pattern="*.abi"/>
+  <mime-type type="chemical/x-swiss-prot">
+    <comment>Swiss-Prot sequence</comment>
+    <glob pattern="*.swiss"/>
+    <glob pattern="*.sprot"/>
+    <glob pattern="*.dat"/>
   </mime-type>
-  <mime-type type="application/x-instagene-scf">
-    <comment>SCF chromatogram</comment>
-    <glob pattern="*.scf"/>
+  <mime-type type="text/x-fasta-alignment">
+    <comment>FASTA alignment</comment>
+    <glob pattern="*.aln"/>
+    <glob pattern="*.afa"/>
+    <glob pattern="*.msa"/>
   </mime-type>
 </mime-info>

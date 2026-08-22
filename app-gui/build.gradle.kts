@@ -1,5 +1,6 @@
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JvmVendorSpec
+import org.instagene.build.VerifyNativeFileAssociationsTask
 import org.panteleyev.jpackage.ImageType
 import org.panteleyev.jpackage.JPackageTask
 import java.util.jar.JarFile
@@ -152,8 +153,22 @@ fun macCompatibleJpackageVersion(version: String): String {
         .joinToString(".")
 }
 
+val nativeAssociationDirectory = layout.projectDirectory.dir("src/native-package/associations")
+val windowsIcon = layout.projectDirectory.file("src/native-package/icons/instagene.ico")
+val linuxIcon = layout.projectDirectory.file("src/native-package/icons/instagene.png")
+val nativeAssociationManifest = rootProject.layout.projectDirectory.file(
+    "engine/src/main/resources/org/instagene/core/io/native-file-associations.tsv"
+)
+
+val verifyNativeFileAssociations = tasks.register<VerifyNativeFileAssociationsTask>("verifyNativeFileAssociations") {
+    group = "verification"
+    description = "Verifies native file associations match the runtime association manifest."
+    manifestFile.set(nativeAssociationManifest)
+    packageFiles.from(nativeAssociationDirectory.asFileTree)
+}
+
 fun JPackageTask.configureInstaGenePackage() {
-    dependsOn(verifyJpackageInput, tasks.jar)
+    dependsOn(verifyJpackageInput, verifyNativeFileAssociations, tasks.jar)
 
     // jpackage links a runtime image with the JDK it runs on; pin it to the
     // same toolchain as the rest of the build so it cannot fall back to a
@@ -209,6 +224,24 @@ tasks.jpackage {
     winShortcut = useWindowsOpts
     winPerUserInstall = useWindowsOpts
     macPackageIdentifier = useMacOpts.map { if (it) "io.novelprotein.instagene" else null }
+    macPackageName = useMacOpts.map { if (it) "InstaGene" else null }
+    // jpackage accepts associations only for installable packages, not app
+    // images. An app-image remains portable and association-neutral.
+    if (jpackageType.get() != "APP_IMAGE") {
+        fileAssociations.from(nativeAssociationDirectory.asFileTree)
+    }
+
+    windows {
+        icon = windowsIcon
+        winMenuGroup = useWindowsOpts.map { if (it) "InstaGene" else null }
+    }
+    linux {
+        icon = linuxIcon
+        linuxMenuGroup = useLinuxCommonOpts.map { if (it) "Science" else null }
+    }
+    mac {
+        macAppCategory = useMacOpts.map { if (it) "public.app-category.education" else null }
+    }
 
     // Add the terminal wrapper after packaging: the 'instagene' script into the
     // app image root (APP_IMAGE), and /usr/bin/instagene into the .deb. The
