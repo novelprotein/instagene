@@ -4,6 +4,7 @@ import org.instagene.core.io.*
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class CoreWorkflowTest {
@@ -176,5 +177,18 @@ class CoreWorkflowTest {
         val product = AssemblyWorkflows.goldenGate(parts, listOf("A", "B", "A"), circular = true)
         assertEquals("AAAACCCC", product.product.bases)
         assertTrue(product.product.isCircular)
+    }
+
+    @Test
+    fun goldenGateRejectsForbiddenInternalSites() {
+        val part = Seq("part", "AAAAGAATTCTTT")
+        val error = assertFailsWith<IllegalArgumentException> {
+            AssemblyWorkflows.goldenGate(
+                parts = listOf(part),
+                overhangs = listOf("AATT", "GGAG"),
+                forbiddenEnzymes = listOf(Enzymes.require("EcoRI")),
+            )
+        }
+        assertTrue(error.message.orEmpty().contains("EcoRI"))
     }
 }

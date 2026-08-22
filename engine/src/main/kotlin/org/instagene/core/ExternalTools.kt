@@ -38,6 +38,14 @@ data class ToolResult(
     fun payload(): String = outputFile?.let { File(it).takeIf(File::exists)?.readText() } ?: stdout
 }
 
+data class ToolHealth(
+    val tool: ExternalTool,
+    val available: Boolean,
+    val path: String? = null,
+    val version: String? = null,
+    val error: String? = null,
+)
+
 /**
  * Discovery and invocation of external CLI tools.
  *
@@ -190,6 +198,24 @@ object ExternalTools {
 
     /** True when [tool]'s executable is installed on `PATH`. */
     fun isAvailable(tool: ExternalTool): Boolean = locate(tool.executable) != null
+
+    /** Checks availability and asks the executable for a short version string. */
+    fun healthCheck(tool: ExternalTool, timeoutSeconds: Long = 5): ToolHealth {
+        val path = locate(tool.executable) ?: return ToolHealth(tool, false, error = "${tool.executable} is not on PATH")
+        return try {
+            val process = ProcessBuilder(path, "--version").redirectErrorStream(true).start()
+            val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                ToolHealth(tool, true, path, error = "version check timed out")
+            } else {
+                val output = process.inputStream.bufferedReader().readText().trim()
+                ToolHealth(tool, process.exitValue() == 0, path, output.ifBlank { null }, if (process.exitValue() == 0) null else "exit ${process.exitValue()}")
+            }
+        } catch (e: Exception) {
+            ToolHealth(tool, false, path, error = e.message ?: "version check failed")
+        }
+    }
 
     /** Every catalog entry that is actually installed on this machine. */
     fun available(): List<ExternalTool> = CATALOG.filter(::isAvailable)

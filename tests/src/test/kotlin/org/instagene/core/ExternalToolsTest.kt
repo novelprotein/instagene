@@ -49,4 +49,20 @@ class ExternalToolsTest {
         val result = ExternalTools.run(tool, Seq(bases = "ACGTACGTACGT"), placeholders = emptyMap())
         assertTrue(result.exitCode != 0)
     }
+
+    @Test
+    fun healthCheckReportsMissingToolsWithoutThrowing() {
+        val tool = ExternalTool(
+            id = "missing-test-tool",
+            displayName = "Missing test tool",
+            executable = "instagene-command-that-does-not-exist",
+            argsTemplate = emptyList(),
+            description = "test",
+            installHint = "none",
+            builtinEquivalent = "test",
+        )
+        val health = ExternalTools.healthCheck(tool)
+        assertFalse(health.available)
+        assertTrue(health.error.orEmpty().contains("not on PATH"))
+    }
 }

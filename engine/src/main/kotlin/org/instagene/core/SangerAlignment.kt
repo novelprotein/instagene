@@ -1,6 +1,35 @@
 package org.instagene.core
 
-data class AlignmentMismatch(val refPos: Int, val readPos: Int, val refBase: Char, val readBase: Char)
+data class AlignmentMismatch(
+    val refPos: Int,
+    val readPos: Int,
+    val refBase: Char,
+    val readBase: Char,
+    val kind: MismatchKind = MismatchKind.SUBSTITUTION,
+)
+
+enum class MismatchKind { SUBSTITUTION, LOW_QUALITY }
+
+data class SangerOptions(
+    val minQuality: Int = 20,
+    val trimQuality: Int = 20,
+    val minIdentity: Double = 0.90,
+    val minAlignedLength: Int = 20,
+)
+
+data class SangerRead(
+    val name: String,
+    val bases: String,
+    val qualities: List<Int> = emptyList(),
+) {
+    fun trimmed(minQuality: Int): SangerRead {
+        if (qualities.size != bases.length || bases.isEmpty()) return this
+        val start = qualities.indexOfFirst { it >= minQuality }
+        if (start < 0) return copy(bases = "", qualities = emptyList())
+        val end = qualities.indexOfLast { it >= minQuality } + 1
+        return copy(bases = bases.substring(start, end), qualities = qualities.subList(start, end))
+    }
+}
 
 enum class ReadConfidence { HIGH, REVIEW, LOW }
 
@@ -11,8 +40,12 @@ data class AlignedRead(
     val alignedLength: Int,
     val referenceStart: Int = 0,
     val readStart: Int = 0,
+    val lowQualityBases: Int = 0,
+    val trimmedBases: Int = 0,
+    val minIdentityThreshold: Double = 0.90,
+    val minAlignedLengthThreshold: Int = 20,
 ) {
-    fun confidence(minIdentity: Double = 0.90, minAlignedLength: Int = 20): ReadConfidence = when {
+    fun confidence(minIdentity: Double = minIdentityThreshold, minAlignedLength: Int = minAlignedLengthThreshold): ReadConfidence = when {
         alignedLength < minAlignedLength -> ReadConfidence.LOW
         identity >= minIdentity -> ReadConfidence.HIGH
         else -> ReadConfidence.REVIEW
@@ -26,17 +59,30 @@ data class SangerAlignmentResult(val reads: List<AlignedRead>, val summary: Alig
 object SangerAlignment {
 
     fun align(reference: Seq, reads: List<Seq>): SangerAlignmentResult {
+        return align(reference, reads.map { SangerRead(it.name, it.bases) }, SangerOptions())
+    }
+
+    fun align(reference: Seq, reads: List<SangerRead>, options: SangerOptions = SangerOptions()): SangerAlignmentResult {
         val ref = reference.bases.uppercase()
         val aligned = if (reads.size <= 4) {
-            reads.map { read -> alignOne(ref, read) }
+            reads.map { read ->
+                val trimmed = read.trimmed(options.trimQuality)
+                alignOne(ref, trimmed, options, read.bases.length - trimmed.bases.length)
+            }
         } else {
-            Parallel.map(reads) { read -> alignOne(ref, read) }
+            Parallel.map(reads) { read ->
+                val trimmed = read.trimmed(options.trimQuality)
+                alignOne(ref, trimmed, options, read.bases.length - trimmed.bases.length)
+            }
         }
         val avgIdentity = if (aligned.isNotEmpty()) aligned.map { it.identity }.average() else 0.0
         return SangerAlignmentResult(aligned, AlignmentSummary(aligned.size, avgIdentity))
     }
 
-    private fun alignOne(ref: String, read: Seq): AlignedRead {
+    fun alignChromatograms(reference: Seq, reads: List<ChromatogramRecord>, options: SangerOptions = SangerOptions()): SangerAlignmentResult =
+        align(reference, reads.map { SangerRead(it.name, it.bases, it.qualities) }, options)
+
+    private fun alignOne(ref: String, read: SangerRead, options: SangerOptions, trimmedBases: Int): AlignedRead {
         val seq = read.bases.uppercase()
         var bestScore = Int.MIN_VALUE
         var bestRefStart = 0
@@ -66,9 +112,19 @@ object SangerAlignment {
         for (k in 0 until bestLen) {
             val rb = ref[bestRefStart + k]
             val qb = seq[bestReadStart + k]
-            if (rb == qb) matches++ else mismatches.add(AlignmentMismatch(bestRefStart + k, bestReadStart + k, rb, qb))
+            if (rb == qb) matches++ else {
+                val quality = read.qualities.getOrNull(bestReadStart + k)
+                mismatches.add(AlignmentMismatch(
+                    bestRefStart + k, bestReadStart + k, rb, qb,
+                    if (quality != null && quality < options.minQuality) MismatchKind.LOW_QUALITY else MismatchKind.SUBSTITUTION,
+                ))
+            }
         }
         val identity = if (bestLen > 0) matches.toDouble() / bestLen else 0.0
-        return AlignedRead(read.name, identity, mismatches, bestLen, bestRefStart, bestReadStart)
+        val lowQuality = read.qualities.count { it < options.minQuality }
+        return AlignedRead(
+            read.name, identity, mismatches, bestLen, bestRefStart, bestReadStart,
+            lowQuality, trimmedBases, options.minIdentity, options.minAlignedLength,
+        )
     }
 }

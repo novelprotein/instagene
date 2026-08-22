@@ -40,6 +40,8 @@ object Reports {
         val alignedLength: Int,
         val mismatchCount: Int,
         val confidence: String,
+        val lowQualityBases: Int = 0,
+        val trimmedBases: Int = 0,
         val mismatches: List<String> = emptyList(),
     )
 
@@ -200,6 +202,8 @@ object Reports {
                 alignedLength = read.alignedLength,
                 mismatchCount = read.mismatches.size,
                 confidence = read.confidence().name,
+                lowQualityBases = read.lowQualityBases,
+                trimmedBases = read.trimmedBases,
                 mismatches = read.mismatches.map { "${it.refPos + 1}: ${it.refBase} -> ${it.readBase}" },
             )
         }

@@ -6,6 +6,7 @@ import java.nio.ByteOrder
 
 data class ChromatogramRecord(val name: String, val bases: String, val qualities: List<Int> = emptyList(), val source: String = "") {
     fun toSeq(): Seq = Seq(name, bases, SeqKind.DNA, metadata = mapOf("CHROMATOGRAM" to source))
+    fun toSangerRead(): SangerRead = SangerRead(name, bases, qualities)
 }
 
 /** Reader for the called-base and quality channels of ABI/AB1 chromatograms. */

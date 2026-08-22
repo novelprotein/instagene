@@ -3,9 +3,8 @@ package org.instagene.app.gui.analysis
 import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.installRowContextMenu
 import org.instagene.core.ChromatogramReader
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
 import org.instagene.core.SangerAlignment
+import org.instagene.core.SangerOptions
 import java.awt.BorderLayout
 import java.io.File
 import javax.swing.*
@@ -13,6 +12,7 @@ import javax.swing.table.DefaultTableModel
 
 internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
     private val queryFiles = JTextField(30)
+    private val minQuality = JSpinner(SpinnerNumberModel(20, 0, 99, 1))
     private val model = DefaultTableModel(arrayOf("Read name", "Identity", "Mismatches", "Aligned length", "Confidence"), 0)
     private val table = JTable(model)
     private val output = output()
@@ -37,10 +37,27 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
         val saveReport = JButton("Save report")
         saveReport.toolTipText = "Export the verification summary as Markdown or JSON."
         saveReport.addActionListener { saveReport() }
-        add(row(choose, queryFiles, run, saveReport), BorderLayout.NORTH)
+        add(row(choose, queryFiles, JLabel("Min quality"), minQuality, run, saveReport), BorderLayout.NORTH)
         add(JScrollPane(table), BorderLayout.CENTER)
         add(JScrollPane(output).apply { preferredSize = java.awt.Dimension(10, 60) }, BorderLayout.SOUTH)
         table.installRowContextMenu { row -> sangerPopup(row) }
+        table.selectionModel.addListSelectionListener {
+            val row = table.selectedRow
+            val result = lastResult
+            if (row >= 0 && result != null && row < result.reads.size) {
+                val read = result.reads[row]
+                output.text = buildString {
+                    append("${read.readName}: ${read.alignedLength} aligned bases\n")
+                    append("Identity: ${"%.2f".format(read.identity * 100)}%  Confidence: ${read.confidence()}\n")
+                    append("Low-quality bases: ${read.lowQualityBases}\n\n")
+                    if (read.mismatches.isEmpty()) append("No mismatches.")
+                    else read.mismatches.forEach { mismatch ->
+                        append("Reference ${mismatch.refPos + 1}, read ${mismatch.readPos + 1}: ")
+                        append("${mismatch.refBase} -> ${mismatch.readBase} (${mismatch.kind})\n")
+                    }
+                }
+            }
+        }
     }
 
     private fun execute() {
@@ -50,14 +67,17 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
             val reads = paths.map { path ->
                 val file = File(path)
                 val bytes = file.readBytes()
-                val record = when {
+                when {
                     ChromatogramReader.looksLikeAbi(bytes) -> ChromatogramReader.readAbi(bytes, file.name)
                     ChromatogramReader.looksLikeScf(bytes) -> ChromatogramReader.readScf(bytes, file.name)
                     else -> error("Unrecognized format: ${file.name}")
                 }
-                Seq(record.name, record.bases, SeqKind.DNA)
             }
-            val result = SangerAlignment.align(doc.seq, reads)
+            val result = SangerAlignment.alignChromatograms(
+                doc.seq,
+                reads,
+                SangerOptions(minQuality = (minQuality.value as Number).toInt(), trimQuality = (minQuality.value as Number).toInt()),
+            )
             lastResult = result
             model.rowCount = 0
             result.reads.forEach { r ->

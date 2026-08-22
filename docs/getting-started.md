@@ -12,8 +12,10 @@ the commit you want to try. Run the installer and launch **InstaGene** from the
 Start menu or desktop shortcut. The installer includes a Java runtime, so a
 separate Java installation is not required.
 
-Windows file associations are not currently guaranteed. Use **File → Open** or
-drag a file from Explorer into the InstaGene window.
+The MSI registers the supported sequence and alignment extensions for the
+installed user. Chromatogram files are opened through the Sanger and
+chromatogram tools. If Windows has another default application for a format, use
+**Open with → InstaGene** or drag the file from Explorer into the window.
 
 ### macOS
 

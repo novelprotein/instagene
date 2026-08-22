@@ -224,8 +224,13 @@ jobs:
           $log = Join-Path $env:RUNNER_TEMP "instagene-msi.log"
           $install = Start-Process msiexec.exe -ArgumentList "/i", $msi, "/qn", "/norestart", "/l*v", $log -Wait -PassThru
           if ($install.ExitCode -ne 0) { Get-Content $log; throw "MSI installation failed: $($install.ExitCode)" }
-          $association = Get-ItemProperty "Registry::HKEY_CURRENT_USER\Software\Classes\.fa"
-          if ([string]::IsNullOrWhiteSpace($association.'(default)')) { throw "FASTA association was not registered" }
+          $extensions = @('.fa', '.fasta', '.fna', '.fas', '.seq', '.gb', '.gbk', '.genbank', '.ape', '.gff', '.gff3', '.embl', '.ena', '.swiss', '.sprot', '.dat', '.aln', '.afa', '.msa')
+          foreach ($extension in $extensions) {
+            $association = Get-ItemProperty "Registry::HKEY_CURRENT_USER\Software\Classes\$extension" -ErrorAction SilentlyContinue
+            if ($null -eq $association -or [string]::IsNullOrWhiteSpace($association.'(default)')) {
+              throw "File association was not registered for $extension"
+            }
+          }
           $uninstall = Start-Process msiexec.exe -ArgumentList "/x", $msi, "/qn", "/norestart" -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed: $($uninstall.ExitCode)" }
 

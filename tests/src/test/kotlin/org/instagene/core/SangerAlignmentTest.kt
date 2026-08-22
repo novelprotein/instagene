@@ -33,4 +33,16 @@ class SangerAlignmentTest {
         assertEquals(2, result.summary.totalReads)
         assertTrue(result.summary.averageIdentity > 0.9, "Average identity should be >90%")
     }
+
+    @Test
+    fun qualityAwareAlignmentTrimsLowQualityEndsAndClassifiesLowQualityMismatch() {
+        val ref = Seq(name = "ref", bases = "ACGTACGT", kind = SeqKind.DNA)
+        val read = SangerRead("trace", "ACGTTC", listOf(40, 40, 40, 40, 8, 40))
+        val result = SangerAlignment.align(ref, listOf(read), SangerOptions(minQuality = 20, trimQuality = 20))
+
+        val aligned = result.reads.single()
+        assertEquals(1, aligned.mismatches.size)
+        assertEquals(MismatchKind.LOW_QUALITY, aligned.mismatches.single().kind)
+        assertEquals(0, aligned.readStart)
+    }
 }

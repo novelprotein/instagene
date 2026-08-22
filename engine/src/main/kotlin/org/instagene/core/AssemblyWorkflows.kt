@@ -29,8 +29,20 @@ object AssemblyWorkflows {
         return AssemblyWorkflowResult(product, treated, listOf("Joined ${treated.size} fragment(s)", "Product ${product.length} bp"))
     }
 
-    fun goldenGate(parts: List<Seq>, overhangs: List<String>, name: String = "golden_gate_product", circular: Boolean = true): AssemblyWorkflowResult {
+    fun goldenGate(
+        parts: List<Seq>,
+        overhangs: List<String>,
+        name: String = "golden_gate_product",
+        circular: Boolean = true,
+        forbiddenEnzymes: List<Enzyme> = emptyList(),
+    ): AssemblyWorkflowResult {
         require(parts.isNotEmpty() && overhangs.size == parts.size + 1) { "Need one left/right overhang around every part" }
+        val internalSites = parts.flatMap { part ->
+            forbiddenEnzymes.filter { enzyme -> Digest.cutSites(part, listOf(enzyme)).isNotEmpty() }.map { it.name to part.name }
+        }
+        require(internalSites.isEmpty()) {
+            "Forbidden internal Type IIS sites: ${internalSites.joinToString { (enzyme, part) -> "$enzyme in $part" }}"
+        }
         val fragments = parts.mapIndexed { index, part ->
             Fragment(part.bases, StickyEnd(EndType.FIVE_PRIME_OVERHANG, overhangs[index].uppercase(), "Type IIS"), StickyEnd(EndType.FIVE_PRIME_OVERHANG, overhangs[index + 1].uppercase(), "Type IIS"), part.name, 0, part.features)
         }
