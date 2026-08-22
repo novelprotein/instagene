@@ -26,6 +26,11 @@ Install the repository hooks if you want the local commit checks:
 ./scripts/install-hooks.sh
 ~~~
 
+The pre-commit hook runs the full Gradle build, strict documentation validation,
+and distribution checks for the current operating system. On Linux, this
+includes the DEB and app-image archive; Windows MSI and macOS DMG checks remain
+in their native CI jobs because `jpackage` cannot cross-compile installers.
+
 ## Module boundaries
 
 - engine/ contains front-end-free sequence and workflow logic.
@@ -81,7 +86,8 @@ Before opening a pull request:
 1. run the relevant tests;
 2. run `./gradlew build`;
 3. run the strict MkDocs build;
-4. describe user-visible behavior and limitations in the pull request.
+4. run `./scripts/check-distributions.sh` on the development host;
+5. describe user-visible behavior and limitations in the pull request.
 
 ## Benchmarks
 

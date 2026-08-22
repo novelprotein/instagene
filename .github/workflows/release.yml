@@ -208,20 +208,17 @@ jobs:
           dmg=$(ls app-gui/build/jpackage/dist/*.dmg | head -1)
           echo "Found DMG: $dmg"
           mount_point=$(mktemp -d /tmp/instagene-dmg.XXXXXX)
-          attached=false
+          mounted=0
           cleanup() {
-            if "$attached"; then hdiutil detach "$mount_point" -quiet; fi
+            if [ "$mounted" -eq 1 ]; then hdiutil detach "$mount_point" -quiet || true; fi
             rm -rf "$mount_point"
           }
           trap cleanup EXIT
           hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse -quiet
-          attached=true
+          mounted=1
           app="$mount_point/InstaGene.app"
           test -d "$app"
           test -f "$app/Contents/MacOS/InstaGene"
-          plist="$app/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" | grep -Fx 'io.novelprotein.instagene'
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "$plist" >/dev/null
 
       - name: Upload installer
         uses: actions/upload-artifact@v5

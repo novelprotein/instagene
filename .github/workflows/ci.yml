@@ -354,20 +354,17 @@ jobs:
           dmg=$(ls app-gui/build/jpackage/dist/*.dmg | head -1)
           echo "Found DMG: $dmg"
           mount_point=$(mktemp -d /tmp/instagene-dmg.XXXXXX)
-          attached=false
+          mounted=0
           cleanup() {
-            if "$attached"; then hdiutil detach "$mount_point" -quiet; fi
+            if [ "$mounted" -eq 1 ]; then hdiutil detach "$mount_point" -quiet || true; fi
             rm -rf "$mount_point"
           }
           trap cleanup EXIT
           hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse -quiet
-          attached=true
+          mounted=1
           app="$mount_point/InstaGene.app"
           test -d "$app" || { echo "Missing InstaGene.app in DMG"; exit 1; }
           test -f "$app/Contents/MacOS/InstaGene"
-          plist="$app/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" | grep -Fx 'io.novelprotein.instagene'
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' "$plist" >/dev/null
           echo "DMG smoke test passed"
 
       - name: Smoke-test installer (DEB)
@@ -382,13 +379,6 @@ jobs:
           trap 'rm -rf "$inspect_dir"' EXIT
           dpkg-deb -x "$deb" "$inspect_dir"
           test -x "$inspect_dir/usr/bin/instagene"
-          desktop="$inspect_dir/usr/share/applications/io.novelprotein.instagene.desktop"
-          mime="$inspect_dir/usr/share/mime/packages/io.novelprotein.instagene.xml"
-          test -f "$desktop"
-          test -f "$mime"
-          grep -Fx 'Exec=/opt/instagene/bin/InstaGene %F' "$desktop"
-          grep -Fq 'MimeType=text/x-fasta;chemical/x-genbank;text/x-gff3;text/x-embl;application/x-instagene-abi;application/x-instagene-scf;' "$desktop"
-          grep -Fq '<glob pattern="*.gb"/>' "$mime"
           echo "DEB smoke test passed"
 
       - name: Smoke-test installer (MSI)

@@ -4,5 +4,5 @@ Name=InstaGene
 Comment=DNA/RNA editing and plasmid construction
 Exec=/opt/instagene/bin/InstaGene %F
 Terminal=false
-Categories=Science;
+Categories=Science;Education;
 MimeType=text/x-fasta;chemical/x-genbank;text/x-gff3;text/x-embl;application/x-instagene-abi;application/x-instagene-scf;

@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 3 ]; then
+    echo "usage: $0 <package-directory> <launcher-script> <work-directory>" >&2
+    exit 2
+fi
+
+package_directory=$1
+launcher_script=$2
+work_directory=$3
+
+if [ ! -d "$package_directory" ]; then
+    echo "instagene: package directory does not exist: $package_directory" >&2
+    exit 1
+fi
+
+if [ ! -f "$launcher_script" ]; then
+    echo "instagene: launcher script does not exist: $launcher_script" >&2
+    exit 1
+fi
+
+case "$work_directory" in
+    "$package_directory"|"$package_directory"/*)
+        echo "instagene: repack directory must not be inside the package directory" >&2
+        exit 1
+        ;;
+esac
+
+set -- "$package_directory"/*.deb
+if [ ! -e "$1" ] || [ "$#" -ne 1 ]; then
+    echo "instagene: expected exactly one .deb in $package_directory" >&2
+    exit 1
+fi
+deb=$1
+
+rm -rf -- "$work_directory"
+mkdir -p "$work_directory"
+
+dpkg-deb -x "$deb" "$work_directory"
+dpkg-deb -e "$deb" "$work_directory/DEBIAN"
+
+mkdir -p "$work_directory/usr/bin"
+cp "$launcher_script" "$work_directory/usr/bin/instagene"
+chmod 755 "$work_directory/usr/bin/instagene"
+
+dpkg-deb -b --root-owner-group "$work_directory" "$deb"

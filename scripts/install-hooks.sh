@@ -12,5 +12,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 git config core.hooksPath "$ROOT/.githooks"
 echo "Git hooks installed from $ROOT/.githooks (core.hooksPath)."
-echo "On every commit: pre-commit runs './gradlew test', commit-msg validates the message."
+echo "On every commit: pre-commit runs the build, strict docs, and local distribution checks."
+echo "Commit-msg validates the commit message."
 echo "Temporarily bypass with: git commit --no-verify"

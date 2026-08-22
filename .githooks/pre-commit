@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# InstaGene pre-commit hook: an automatic test gate.
+# InstaGene pre-commit hook: the local CI gate.
 #
-# Runs the full test suite (which compiles every module) before a commit so
-# broken code cannot be committed.
+# Runs the build, strict documentation validation, and host-supported
+# distribution checks before a commit so common CI failures are caught locally.
 #
 # Install with:  ./scripts/install-hooks.sh   (or: git config core.hooksPath .githooks)
 # Bypass once with:  git commit --no-verify
@@ -18,12 +18,20 @@ if [ -f "$ROOT/.git/MERGE_HEAD" ] || [ -f "$ROOT/.git/CHERRY_PICK_HEAD" ] || [ -
     exit 0
 fi
 
-echo "== InstaGene: running the full test suite before commit =="
-if ! ./gradlew test --console=plain; then
-    echo
-    echo "Commit blocked: the test suite failed."
-    echo "Fix the failures, then commit again (or bypass with: git commit --no-verify)."
-    exit 1
-fi
+run_gate() {
+    label="$1"
+    shift
+    echo "== InstaGene: $label =="
+    if ! "$@"; then
+        echo
+        echo "Commit blocked: $label failed."
+        echo "Fix the failures, then commit again (or bypass with: git commit --no-verify)."
+        exit 1
+    fi
+}
 
-echo "== Commit OK: tests pass =="
+run_gate "building all modules and running tests" ./gradlew build --console=plain
+run_gate "building documentation in strict mode" ./scripts/check-docs.sh
+run_gate "checking distributions" ./scripts/check-distributions.sh
+
+echo "== Commit OK: local CI gate passed =="
