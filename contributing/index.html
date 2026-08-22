@@ -686,6 +686,10 @@ and honest about what the application supports.</p>
 <p>Install the repository hooks if you want the local commit checks:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/install-hooks.sh
 </code></pre></div>
+<p>The pre-commit hook runs the full Gradle build, strict documentation validation,
+and distribution checks for the current operating system. On Linux, this
+includes the DEB and app-image archive; Windows MSI and macOS DMG checks remain
+in their native CI jobs because <code>jpackage</code> cannot cross-compile installers.</p>
 <h2 id="module-boundaries">Module boundaries<a class="headerlink" href="#module-boundaries" title="Permanent link">&para;</a></h2>
 <ul>
 <li>engine/ contains front-end-free sequence and workflow logic.</li>
@@ -725,6 +729,7 @@ avoid moving heavy computation onto Swing’s event dispatch thread.</p>
 <li>run the relevant tests;</li>
 <li>run <code>./gradlew build</code>;</li>
 <li>run the strict MkDocs build;</li>
+<li>run <code>./scripts/check-distributions.sh</code> on the development host;</li>
 <li>describe user-visible behavior and limitations in the pull request.</li>
 </ol>
 <h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
