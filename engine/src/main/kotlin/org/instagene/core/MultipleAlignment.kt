@@ -17,6 +17,59 @@ data class MultipleAlignmentResult(
     val warnings: List<String> = emptyList(),
 )
 
+/** Presentation-independent consensus and conservation information for an alignment. */
+data class AlignmentView(
+    val consensus: String,
+    /** Fraction (0.0–1.0) of non-gap residues supporting the consensus at each column. */
+    val conservation: List<Double>,
+    /** One-based reference coordinate at each column, or null for a reference gap. */
+    val referencePositions: List<Int?>,
+)
+
+/**
+ * Computes a conservative DNA/protein consensus. A tied nucleotide/protein
+ * call is represented as `N`/`X`, making ambiguity visible instead of silently
+ * choosing one of the input rows.
+ */
+fun MultipleAlignmentResult.view(): AlignmentView {
+    require(sequences.isNotEmpty()) { "Alignment contains no sequences" }
+    val width = sequences.maxOf { it.bases.length }
+    require(sequences.all { it.bases.length == width }) { "Alignment rows have different lengths" }
+    val protein = sequences.first().kind == SeqKind.PROTEIN
+    val consensus = StringBuilder(width)
+    val conservation = ArrayList<Double>(width)
+    val positions = ArrayList<Int?>(width)
+    var referencePosition = 0
+    for (column in 0 until width) {
+        val residues = sequences.map { it.bases[column] }.filter { it != '-' && !it.isWhitespace() }
+        val counts = residues.groupingBy { it.uppercaseChar() }.eachCount()
+        val best = counts.maxByOrNull { it.value }
+        val tied = best != null && counts.count { it.value == best.value } > 1
+        consensus.append(
+            when {
+                best == null -> '-'
+                tied -> if (protein) 'X' else 'N'
+                else -> best.key
+            },
+        )
+        conservation += if (residues.isEmpty()) 0.0 else best!!.value.toDouble() / residues.size
+        val referenceBase = sequences.first().bases[column]
+        positions += if (referenceBase == '-') null else ++referencePosition
+    }
+    return AlignmentView(consensus.toString(), conservation, positions)
+}
+
+/** Emits valid aligned FASTA while retaining row names and gap characters. */
+fun MultipleAlignmentResult.toFasta(lineWidth: Int = 80): String {
+    require(lineWidth > 0) { "lineWidth must be positive" }
+    return buildString {
+        sequences.forEach { sequence ->
+            append('>').append(sequence.name).append('\n')
+            sequence.bases.chunked(lineWidth).forEach { append(it).append('\n') }
+        }
+    }
+}
+
 /** One interface over the bundled reference aligner and optional trusted alignment tools. */
 object MultipleAlignment {
     fun align(

@@ -38,6 +38,30 @@ class CliTest {
     }
 
     @Test
+    fun externalToolPreviewDoesNotRequireAnInputFile() {
+        val (code, output) = capture { Cli.run(listOf("tools", "--run", "primer3", "--preview")) }
+        assertEquals(0, code)
+        assertTrue(output.contains("primer3_core"))
+        assertTrue(!output.contains("<input.fasta>"))
+    }
+
+    @Test
+    fun advancedBuiltInPrimerDesignPrintsBackendAndCandidates() {
+        val dir = createTempDirectory("cli-primers").toFile()
+        try {
+            val fasta = File(dir, "template.fa").apply { writeText(">template\n${"ACGT".repeat(100)}\n") }
+            val (code, output) = capture {
+                Cli.run(listOf("primers", "--from", "1", "--to", "400", "--advanced", "--backend", "builtin", fasta.absolutePath))
+            }
+            assertEquals(0, code)
+            assertTrue(output.contains("Backend: BUILTIN"))
+            assertTrue(output.contains("Amplicon 1..400"))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun unknownCommandFails() {
         val (code, out) = capture { Cli.run(listOf("not-a-command")) }
         assertEquals(1, code)

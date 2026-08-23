@@ -8,7 +8,7 @@ data class AlignmentMismatch(
     val kind: MismatchKind = MismatchKind.SUBSTITUTION,
 )
 
-enum class MismatchKind { SUBSTITUTION, LOW_QUALITY }
+enum class MismatchKind { SUBSTITUTION, LOW_QUALITY, INSERTION, DELETION }
 
 data class SangerOptions(
     val minQuality: Int = 20,
@@ -21,13 +21,15 @@ data class SangerRead(
     val name: String,
     val bases: String,
     val qualities: List<Int> = emptyList(),
+    /** Offset into the source chromatogram after quality trimming. */
+    val sourceOffset: Int = 0,
 ) {
     fun trimmed(minQuality: Int): SangerRead {
         if (qualities.size != bases.length || bases.isEmpty()) return this
         val start = qualities.indexOfFirst { it >= minQuality }
         if (start < 0) return copy(bases = "", qualities = emptyList())
         val end = qualities.indexOfLast { it >= minQuality } + 1
-        return copy(bases = bases.substring(start, end), qualities = qualities.subList(start, end))
+        return copy(bases = bases.substring(start, end), qualities = qualities.subList(start, end), sourceOffset = sourceOffset + start)
     }
 }
 
@@ -44,7 +46,11 @@ data class AlignedRead(
     val trimmedBases: Int = 0,
     val minIdentityThreshold: Double = 0.90,
     val minAlignedLengthThreshold: Int = 20,
+    /** Number of reference bases consumed by the local alignment (excludes read insertions). */
+    val referenceLength: Int = alignedLength,
 ) {
+    val insertionCount: Int get() = mismatches.count { it.kind == MismatchKind.INSERTION }
+    val deletionCount: Int get() = mismatches.count { it.kind == MismatchKind.DELETION }
     fun confidence(minIdentity: Double = minIdentityThreshold, minAlignedLength: Int = minAlignedLengthThreshold): ReadConfidence = when {
         alignedLength < minAlignedLength -> ReadConfidence.LOW
         identity >= minIdentity -> ReadConfidence.HIGH
@@ -52,7 +58,11 @@ data class AlignedRead(
     }
 }
 
-data class AlignmentSummary(val totalReads: Int, val averageIdentity: Double)
+data class AlignmentSummary(
+    val totalReads: Int,
+    val averageIdentity: Double,
+    val uncoveredReferenceBases: Int = 0,
+)
 
 data class SangerAlignmentResult(val reads: List<AlignedRead>, val summary: AlignmentSummary)
 
@@ -76,7 +86,8 @@ object SangerAlignment {
             }
         }
         val avgIdentity = if (aligned.isNotEmpty()) aligned.map { it.identity }.average() else 0.0
-        return SangerAlignmentResult(aligned, AlignmentSummary(aligned.size, avgIdentity))
+        val covered = aligned.flatMap { it.referenceStart until (it.referenceStart + it.referenceLength) }.toSet()
+        return SangerAlignmentResult(aligned, AlignmentSummary(aligned.size, avgIdentity, (0 until ref.length).count { it !in covered }))
     }
 
     fun alignChromatograms(reference: Seq, reads: List<ChromatogramRecord>, options: SangerOptions = SangerOptions()): SangerAlignmentResult =
@@ -84,47 +95,82 @@ object SangerAlignment {
 
     private fun alignOne(ref: String, read: SangerRead, options: SangerOptions, trimmedBases: Int): AlignedRead {
         val seq = read.bases.uppercase()
-        var bestScore = Int.MIN_VALUE
-        var bestRefStart = 0
-        var bestReadStart = 0
-        var bestLen = 0
-        for (rs in 0..ref.length) {
-            for (ss in 0..seq.length) {
-                var score = 0
-                var len = 0
-                val maxLen = minOf(ref.length - rs, seq.length - ss)
-                while (len < maxLen) {
-                    if (ref[rs + len] == seq[ss + len]) score++ else score--
-                    len++
-                    // Prune: even if every remaining base matches, we can't beat bestScore.
-                    if (score + (maxLen - len) <= bestScore) break
+        if (ref.isEmpty() || seq.isEmpty()) return AlignedRead(
+            read.name, 0.0, emptyList(), 0,
+            lowQualityBases = read.qualities.count { it < options.minQuality }, trimmedBases = trimmedBases,
+            minIdentityThreshold = options.minIdentity, minAlignedLengthThreshold = options.minAlignedLength,
+        )
+        val width = seq.length + 1
+        val directions = ByteArray((ref.length + 1) * width)
+        var previous = IntArray(width)
+        var bestScore = 0
+        var bestRefEnd = 0
+        var bestReadEnd = 0
+        for (refIndex in 1..ref.length) {
+            val current = IntArray(width)
+            for (readIndex in 1..seq.length) {
+                val diagonal = previous[readIndex - 1] + if (ref[refIndex - 1] == seq[readIndex - 1]) 2 else -1
+                val deletion = previous[readIndex] - 2
+                val insertion = current[readIndex - 1] - 2
+                val score = maxOf(0, diagonal, deletion, insertion)
+                current[readIndex] = score
+                directions[refIndex * width + readIndex] = when (score) {
+                    0 -> 0
+                    diagonal -> 1
+                    deletion -> 2
+                    else -> 3
                 }
                 if (score > bestScore) {
                     bestScore = score
-                    bestRefStart = rs
-                    bestReadStart = ss
-                    bestLen = len
+                    bestRefEnd = refIndex
+                    bestReadEnd = readIndex
                 }
             }
+            previous = current
         }
         val mismatches = mutableListOf<AlignmentMismatch>()
         var matches = 0
-        for (k in 0 until bestLen) {
-            val rb = ref[bestRefStart + k]
-            val qb = seq[bestReadStart + k]
-            if (rb == qb) matches++ else {
-                val quality = read.qualities.getOrNull(bestReadStart + k)
-                mismatches.add(AlignmentMismatch(
-                    bestRefStart + k, bestReadStart + k, rb, qb,
-                    if (quality != null && quality < options.minQuality) MismatchKind.LOW_QUALITY else MismatchKind.SUBSTITUTION,
-                ))
+        var columns = 0
+        var referenceLength = 0
+        var refIndex = bestRefEnd
+        var readIndex = bestReadEnd
+        while (refIndex > 0 && readIndex > 0) {
+            when (directions[refIndex * width + readIndex].toInt()) {
+                0 -> break
+                1 -> {
+                    val refBase = ref[refIndex - 1]
+                    val readBase = seq[readIndex - 1]
+                    columns++
+                    referenceLength++
+                    if (refBase == readBase) matches++ else {
+                        val quality = read.qualities.getOrNull(readIndex - 1)
+                        mismatches += AlignmentMismatch(
+                            refIndex - 1, read.sourceOffset + readIndex - 1, refBase, readBase,
+                            if (quality != null && quality < options.minQuality) MismatchKind.LOW_QUALITY else MismatchKind.SUBSTITUTION,
+                        )
+                    }
+                    refIndex--
+                    readIndex--
+                }
+                2 -> {
+                    columns++
+                    referenceLength++
+                    mismatches += AlignmentMismatch(refIndex - 1, read.sourceOffset + readIndex, ref[refIndex - 1], '-', MismatchKind.DELETION)
+                    refIndex--
+                }
+                3 -> {
+                    columns++
+                    mismatches += AlignmentMismatch(refIndex, read.sourceOffset + readIndex - 1, '-', seq[readIndex - 1], MismatchKind.INSERTION)
+                    readIndex--
+                }
             }
         }
-        val identity = if (bestLen > 0) matches.toDouble() / bestLen else 0.0
+        mismatches.reverse()
+        val identity = if (columns > 0) matches.toDouble() / columns else 0.0
         val lowQuality = read.qualities.count { it < options.minQuality }
         return AlignedRead(
-            read.name, identity, mismatches, bestLen, bestRefStart, bestReadStart,
-            lowQuality, trimmedBases, options.minIdentity, options.minAlignedLength,
+            read.name, identity, mismatches, columns, refIndex, read.sourceOffset + readIndex,
+            lowQuality, trimmedBases, options.minIdentity, options.minAlignedLength, referenceLength,
         )
     }
 }

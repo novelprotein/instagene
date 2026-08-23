@@ -65,4 +65,17 @@ class ExternalToolsTest {
         assertFalse(health.available)
         assertTrue(health.error.orEmpty().contains("not on PATH"))
     }
+
+    @Test
+    fun commandPreviewIsReproducibleAndReportsMissingInputs() {
+        val tool = ExternalTools.CATALOG.first { it.id == "seqkit-locate" }
+        val missing = ExternalTools.commandPreview(tool)
+        assertFalse(missing.runnable)
+        assertTrue("pattern" in missing.missingPlaceholders)
+
+        val preview = ExternalTools.commandPreview(tool, mapOf("pattern" to "GAATTC"))
+        assertTrue(preview.runnable)
+        assertTrue(preview.render().contains("GAATTC"))
+        assertTrue(ToolCapability.LOCAL_SEARCH in tool.capabilities)
+    }
 }

@@ -89,6 +89,15 @@ assembly, recombination, CRISPR guides, site domestication, and calculators.
 Read the inputs and warnings shown by each workflow before treating a result as
 an experimental decision.
 
+The Sanger Alignment workflow accepts multiple ABI/AB1 or SCF files, and can
+also scan a selected folder recursively. Set the minimum quality threshold,
+align the reads, then select a result row to inspect mismatch coordinates,
+nearby called bases/quality values, and raw A/C/G/T signal traces when the file
+contains them. The report distinguishes substitutions, low-quality calls,
+insertions, deletions, and uncovered reference bases. Unreadable files are
+summarized without discarding valid reads; export the completed verification as
+Markdown or JSON.
+
 ### Features
 
 ![Features tab showing annotated regions](screenshots/features.png)

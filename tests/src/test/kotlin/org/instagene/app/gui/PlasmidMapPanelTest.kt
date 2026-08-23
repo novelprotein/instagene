@@ -246,4 +246,21 @@ class PlasmidMapPanelTest {
             assertTrue(svg.contains("width=\"900\""))
         }
     }
+
+    @Test
+    fun svgExportKeepsEveryCrowdedFeatureLabelAsAnEditableCallout() {
+        SwingUtilities.invokeAndWait {
+            val file = File.createTempFile("instagene-crowded-map-", ".svg")
+            file.deleteOnExit()
+            val features = (0 until 18).map { index ->
+                Feature("feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = features)))
+            map.exportSvg(file, MapExportOptions(MapPreset.NOTEBOOK, featureLaneSpacing = 16))
+            val svg = file.readText()
+            features.forEach { feature ->
+                assertEquals(1, Regex(">${feature.name}</text>").findAll(svg).count(), "missing or duplicate label for ${feature.name}")
+            }
+        }
+    }
 }

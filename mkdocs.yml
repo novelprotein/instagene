@@ -47,6 +47,8 @@ nav:
   - Getting Started: getting-started.md
   - CLI Reference: cli.md
   - GUI Reference: gui.md
+  - Reproducible Workflows: workflows.md
   - Engine API: engine-api.md
+  - Release and Packaging: releasing.md
   - Benchmarks: benchmarks/info.md
   - Contributing: contributing.md

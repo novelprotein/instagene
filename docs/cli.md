@@ -90,10 +90,14 @@ downstream workflow.
 
 ~~~bash
 instagene primers --from 100 --to 400 --tm 60 sequence.gb
+instagene primers --from 100 --to 400 --advanced --backend primer3 sequence.gb
 echo ATCGATCGATCG | instagene tm
 ~~~
 
-The `primers` command searches candidates for an amplicon. The GUI provides
+The `primers` command designs an amplicon primer pair. `--advanced` prints the
+ranked, explainable candidate set. `--backend primer3` uses an installed
+`primer3_core` through Boulder-IO; if it is missing or fails, InstaGene records
+the reason and falls back to the deterministic built-in search. The GUI provides
 additional screening, library storage, and feature integration.
 
 ## Optional external tools
@@ -102,13 +106,16 @@ Use `tools` to see the external-tool catalog and availability:
 
 ~~~bash
 instagene tools
+instagene tools --run primer3 --preview
 instagene tools --run seqkit-stats sequence.fa
 instagene tools --run emboss-restrict sequence.fa
 instagene tools --run seqkit-locate --pattern GGATCC sequence.fa
 ~~~
 
 External tools are not bundled. Configure and install them separately, and
-review their own licensing and output conventions.
+review their own licensing and output conventions. Add `--preview` to inspect
+the resolved command and any missing required values without creating files or
+running an executable.
 
 ## Desktop handoff and benchmarks
 

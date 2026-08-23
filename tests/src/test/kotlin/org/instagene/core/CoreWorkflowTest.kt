@@ -143,7 +143,7 @@ class CoreWorkflowTest {
 
     @Test
     fun scfChromatogramsExposeCalledBasesAndQuality() {
-        val bytes = ByteArray(128 + 24)
+        val bytes = ByteArray(128 + 16 + 24)
         ".scf".encodeToByteArray().copyInto(bytes)
         fun putInt(offset: Int, value: Int) {
             bytes[offset] = (value ushr 24).toByte()
@@ -151,13 +151,30 @@ class CoreWorkflowTest {
             bytes[offset + 2] = (value ushr 8).toByte()
             bytes[offset + 3] = value.toByte()
         }
+        putInt(4, 4)
+        putInt(8, 128)
         putInt(12, 2)
-        putInt(16, 128)
-        bytes[128 + 4] = 10
-        bytes[128 + 8] = 'A'.code.toByte()
-        bytes[140 + 7] = 80
-        bytes[140 + 8] = 'T'.code.toByte()
-        assertEquals("AT", ChromatogramReader.readScf(bytes, "read.scf").bases)
+        putInt(16, 144)
+        putInt(40, 1)
+        "2.00".encodeToByteArray().copyInto(bytes, 36)
+        // SCF v2 sample data is interleaved A/C/G/T.
+        bytes[128] = 11
+        bytes[133] = 22
+        bytes[138] = 33
+        bytes[143] = 44
+        putInt(144, 1)
+        bytes[144 + 4] = 10
+        bytes[144 + 8] = 'A'.code.toByte()
+        putInt(156, 3)
+        bytes[156 + 7] = 80
+        bytes[156 + 8] = 'T'.code.toByte()
+        val trace = ChromatogramReader.readScf(bytes, "read.scf")
+        assertEquals("AT", trace.bases)
+        assertEquals(listOf(1, 3), trace.trace?.peakPositions)
+        assertEquals(11, trace.trace?.channels?.get('A')?.get(0))
+        assertEquals(22, trace.trace?.channels?.get('C')?.get(1))
+        assertEquals(33, trace.trace?.channels?.get('G')?.get(2))
+        assertEquals(44, trace.trace?.channels?.get('T')?.get(3))
         assertEquals(FileType.CHROMATOGRAM, FileSniffer.typeOf(bytes))
     }
 
@@ -177,6 +194,14 @@ class CoreWorkflowTest {
         val product = AssemblyWorkflows.goldenGate(parts, listOf("A", "B", "A"), circular = true)
         assertEquals("AAAACCCC", product.product.bases)
         assertTrue(product.product.isCircular)
+    }
+
+    @Test
+    fun goldenGateReportsAmbiguousOrderAndRejectsBadCircularBoundary() {
+        val parts = listOf(Seq("a", "ACGT"), Seq("b", "TGCA"), Seq("c", "AAAA"))
+        val diagnostics = AssemblyWorkflows.goldenGateOrderDiagnostics(parts, listOf("GGAG", "AATG", "AATG", "GGAG"))
+        assertTrue(diagnostics.any { it.severity == DiagnosticSeverity.WARNING && it.message.contains("repeated") })
+        assertTrue(AssemblyWorkflows.goldenGateOrderDiagnostics(parts, listOf("GGAG", "AATG", "AATG", "TACT")).any { it.severity == DiagnosticSeverity.ERROR })
     }
 
     @Test

@@ -28,16 +28,21 @@ class FileMenuTest {
     /** Writes a FASTA containing [bases] of deterministic pseudorandom nucleotide data. */
     private fun largeFasta(name: String, bases: Int): File {
         val alphabet = "ACGT"
-        val sb = StringBuilder()
+        // Do not build millions of intermediate strings with chunked()/joinToString():
+        // the 70 Mbp regression fixture must exercise file loading, not exhaust
+        // the test worker while manufacturing its input.
+        val sb = StringBuilder(bases + bases / 60 + name.length + 16)
+        sb.append('>').append(name).append("_large\n")
         // Deterministic pseudo-random so the test is reproducible.
         var x = 123456789
-        repeat(bases) {
+        repeat(bases) { index ->
             x = x * 1664525 + 1013904223 and 0xFFFFFFFF.toInt()
             sb.append(alphabet[Math.floorMod(x, 4)])
+            if ((index + 1) % 60 == 0) sb.append('\n')
         }
-        val body = sb.toString().chunked(60).joinToString("\n")
+        if (bases % 60 != 0) sb.append('\n')
         val file = Files.createTempFile(name, ".fasta").toFile()
-        file.writeText(">${name}_large\n$body\n")
+        file.writeText(sb.toString())
         file.deleteOnExit()
         return file
     }

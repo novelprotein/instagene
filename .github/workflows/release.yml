@@ -158,9 +158,22 @@ jobs:
           if-no-files-found: error
 
   native-cli:
-    name: Native CLI image (GraalVM)
+    name: Native CLI image (${{ matrix.label }})
     needs: validate
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux
+            os: ubuntu-latest
+            binary: app-cli/build/native/nativeCompile/instagene
+          - label: Windows
+            os: windows-latest
+            binary: app-cli/build/native/nativeCompile/instagene.exe
+          - label: macOS
+            os: macos-latest
+            binary: app-cli/build/native/nativeCompile/instagene
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -179,20 +192,32 @@ jobs:
       - name: Build native CLI image
         run: ./gradlew :app-cli:nativeCompile --no-configuration-cache --console=plain
 
-      - name: Smoke-test native CLI
+      - name: Smoke-test native CLI (Linux/macOS)
+        if: ${{ runner.os != 'Windows' }}
         shell: bash
         run: |
           set -euo pipefail
-          binary=./app-cli/build/native/nativeCompile/instagene
+          binary=./${{ matrix.binary }}
           test -x "$binary"
           "$binary" --help >/tmp/instagene-native-help.txt
           "$binary" --version | grep -Fx 'InstaGene 0.0.4'
 
+      - name: Smoke-test native CLI (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $binary = "${{ matrix.binary }}"
+          if (-not (Test-Path $binary)) { throw "Missing native CLI: $binary" }
+          & $binary --help | Out-File "$env:RUNNER_TEMP/instagene-native-help.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Native --help failed: $LASTEXITCODE" }
+          $version = & $binary --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne 'InstaGene 0.0.4') { throw "Unexpected native version: $version" }
+
       - name: Upload native CLI image
         uses: actions/upload-artifact@v5
         with:
-          name: native-cli-linux
-          path: app-cli/build/native/nativeCompile/instagene
+          name: native-cli-${{ matrix.label }}
+          path: ${{ matrix.binary }}
           if-no-files-found: error
 
   windows:
@@ -224,13 +249,38 @@ jobs:
           $log = Join-Path $env:RUNNER_TEMP "instagene-msi.log"
           $install = Start-Process msiexec.exe -ArgumentList "/i", $msi, "/qn", "/norestart", "/l*v", $log -Wait -PassThru
           if ($install.ExitCode -ne 0) { Get-Content $log; throw "MSI installation failed: $($install.ExitCode)" }
+          $uninstallKey = Get-ChildItem @(
+            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+          ) -ErrorAction SilentlyContinue |
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq 'InstaGene' } |
+            Select-Object -First 1
+          if ($null -eq $uninstallKey -or [string]::IsNullOrWhiteSpace($uninstallKey.InstallLocation)) {
+            throw "MSI did not register an InstaGene install location"
+          }
+          $executable = Join-Path $uninstallKey.InstallLocation 'InstaGene.exe'
+          if (-not (Test-Path $executable)) { throw "Missing installed executable: $executable" }
+          $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\InstaGene\InstaGene.lnk'
+          if (-not (Test-Path $shortcut)) { throw "Missing Start Menu shortcut: $shortcut" }
           $extensions = @('.fa', '.fasta', '.fna', '.fas', '.seq', '.gb', '.gbk', '.genbank', '.ape', '.gff', '.gff3', '.embl', '.ena', '.swiss', '.sprot', '.dat', '.aln', '.afa', '.msa')
           foreach ($extension in $extensions) {
             $association = Get-ItemProperty "Registry::HKEY_CURRENT_USER\Software\Classes\$extension" -ErrorAction SilentlyContinue
             if ($null -eq $association -or [string]::IsNullOrWhiteSpace($association.'(default)')) {
               throw "File association was not registered for $extension"
             }
+            $openCommand = Get-ItemPropertyValue "Registry::HKEY_CURRENT_USER\Software\Classes\$($association.'(default)')\shell\open\command" -Name '(default)' -ErrorAction SilentlyContinue
+            if ([string]::IsNullOrWhiteSpace($openCommand) -or $openCommand -notmatch 'InstaGene\.exe') {
+              throw "File association for $extension has no InstaGene open command"
+            }
           }
+          $sample = Join-Path $env:RUNNER_TEMP 'instagene-association-smoke.fa'
+          Set-Content -Path $sample -Value ">smoke`nACGT" -NoNewline
+          Start-Process $sample
+          Start-Sleep -Seconds 3
+          $launched = Get-Process -Name 'InstaGene' -ErrorAction SilentlyContinue
+          if ($null -eq $launched) { throw "Opening a FASTA file did not launch InstaGene" }
+          $launched | Stop-Process -Force
           $uninstall = Start-Process msiexec.exe -ArgumentList "/x", $msi, "/qn", "/norestart" -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed: $($uninstall.ExitCode)" }
 

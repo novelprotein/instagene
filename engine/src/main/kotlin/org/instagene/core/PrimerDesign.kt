@@ -10,6 +10,19 @@ data class PrimerDesignParameters(
     val maxGc: Double = 70.0,
     val maxHomopolymer: Int = 5,
     val maxSelfComplementarity: Int = 8,
+    /** Zero-based, half-open template regions that may not overlap a primer. */
+    val excludedRegions: List<IntRange> = emptyList(),
+)
+
+/** Selects the explainable bundled search or an installed Primer3 binary. */
+enum class PrimerDesignBackend { BUILTIN, PRIMER3 }
+
+/** Candidates plus provenance, so results remain auditable when a tool falls back. */
+data class PrimerDesignResult(
+    val candidates: List<PrimerCandidate>,
+    val backend: PrimerDesignBackend,
+    val warnings: List<String> = emptyList(),
+    val command: String? = null,
 )
 
 data class PrimerCandidate(
@@ -22,6 +35,30 @@ data class PrimerCandidate(
 
 /** Exhaustive, explainable primer candidate search for PCR and assembly tools. */
 object PrimerDesign {
+    /**
+     * Designs candidates with the requested backend. Primer3 is optional: an
+     * unavailable or failing executable returns the deterministic built-in
+     * candidates and records why, instead of making normal installations fail.
+     */
+    fun design(
+        seq: Seq,
+        start: Int,
+        end: Int,
+        parameters: PrimerDesignParameters = PrimerDesignParameters(),
+        backend: PrimerDesignBackend = PrimerDesignBackend.BUILTIN,
+        cancellationRequested: () -> Boolean = { false },
+    ): PrimerDesignResult {
+        if (backend == PrimerDesignBackend.BUILTIN) return PrimerDesignResult(candidates(seq, start, end, parameters), backend)
+        val tool = ExternalTools.CATALOG.first { it.id == "primer3" }
+        val result = ExternalTools.runText(tool, primer3Input(seq, start, end, parameters), cancellationRequested = cancellationRequested)
+        if (result.succeeded) {
+            return runCatching { parsePrimer3Output(result.stdout, seq, parameters) }
+                .map { PrimerDesignResult(it, PrimerDesignBackend.PRIMER3, command = result.command) }
+                .getOrElse { error -> fallback(seq, start, end, parameters, "Primer3 output could not be read: ${error.message}", result.command) }
+        }
+        return fallback(seq, start, end, parameters, result.stderr.ifBlank { "Primer3 failed (exit ${result.exitCode})" }, result.command)
+    }
+
     fun candidates(seq: Seq, start: Int, end: Int, parameters: PrimerDesignParameters = PrimerDesignParameters()): List<PrimerCandidate> {
         require(start in 0 until seq.length && end in (start + 1)..seq.length) { "Invalid primer target" }
         val output = ArrayList<PrimerCandidate>()
@@ -35,9 +72,63 @@ object PrimerDesign {
         return output.filter {
             it.primer.tm in parameters.minTm..parameters.maxTm &&
                 it.primer.gc in parameters.minGc..parameters.maxGc &&
-                it.selfComplementarity <= parameters.maxSelfComplementarity
+                it.selfComplementarity <= parameters.maxSelfComplementarity &&
+                parameters.excludedRegions.none { excluded -> it.start < excluded.last + 1 && excluded.first < it.end }
         }.sortedBy { it.score }
     }
+
+    /** Primer3 Boulder-IO request, kept public for reproducible CLI/report provenance. */
+    fun primer3Input(seq: Seq, start: Int, end: Int, parameters: PrimerDesignParameters): String = buildString {
+        appendLine("SEQUENCE_ID=${seq.name.ifBlank { "instagene" }}")
+        appendLine("SEQUENCE_TEMPLATE=${seq.bases.uppercase()}")
+        appendLine("SEQUENCE_INCLUDED_REGION=$start,${end - start}")
+        if (parameters.excludedRegions.isNotEmpty()) {
+            val regions = parameters.excludedRegions.joinToString(" ") { "${it.first},${it.last - it.first + 1}" }
+            appendLine("SEQUENCE_EXCLUDED_REGION=$regions")
+        }
+        appendLine("PRIMER_TASK=generic")
+        appendLine("PRIMER_PICK_LEFT_PRIMER=1")
+        appendLine("PRIMER_PICK_RIGHT_PRIMER=1")
+        appendLine("PRIMER_NUM_RETURN=10")
+        appendLine("PRIMER_MIN_SIZE=${parameters.minLength}")
+        appendLine("PRIMER_OPT_SIZE=${((parameters.minLength + parameters.maxLength) / 2)}")
+        appendLine("PRIMER_MAX_SIZE=${parameters.maxLength}")
+        appendLine("PRIMER_MIN_TM=${parameters.minTm}")
+        appendLine("PRIMER_OPT_TM=${parameters.targetTm}")
+        appendLine("PRIMER_MAX_TM=${parameters.maxTm}")
+        appendLine("PRIMER_MIN_GC=${parameters.minGc}")
+        appendLine("PRIMER_MAX_GC=${parameters.maxGc}")
+        appendLine("=")
+    }
+
+    /** Parses the stable, line-oriented subset of Primer3 Boulder-IO output. */
+    fun parsePrimer3Output(output: String, seq: Seq, parameters: PrimerDesignParameters = PrimerDesignParameters()): List<PrimerCandidate> {
+        val fields = output.lineSequence()
+            .mapNotNull { line -> line.split('=', limit = 2).takeIf { it.size == 2 } }
+            .associate { it[0].trim() to it[1].trim() }
+        fields["PRIMER_ERROR"]?.takeIf(String::isNotBlank)?.let { error("Primer3: $it") }
+        val pairs = Regex("PRIMER_(LEFT|RIGHT)_(\\d+)(?:_SEQUENCE)?").findAll(fields.keys.joinToString("\n"))
+            .map { it.groupValues[2].toInt() }.toSet().sorted()
+        return pairs.flatMap { index ->
+            listOfNotNull(
+                fields["PRIMER_LEFT_${index}_SEQUENCE"]?.let { bases -> primer3Candidate("F", bases, fields["PRIMER_LEFT_$index"], fields["PRIMER_PAIR_${index}_PENALTY"], parameters) },
+                fields["PRIMER_RIGHT_${index}_SEQUENCE"]?.let { bases -> primer3Candidate("R", bases, fields["PRIMER_RIGHT_$index"], fields["PRIMER_PAIR_${index}_PENALTY"], parameters) },
+            )
+        }.filter { it.start >= 0 && it.end <= seq.length }.sortedBy { it.score }
+    }
+
+    private fun primer3Candidate(kind: String, bases: String, position: String?, penalty: String?, p: PrimerDesignParameters): PrimerCandidate? {
+        val numbers = position?.split(',')?.mapNotNull(String::toIntOrNull) ?: return null
+        if (numbers.size != 2) return null
+        val (coordinate, length) = numbers
+        val start = if (kind == "R") coordinate - length + 1 else coordinate
+        val end = start + length
+        val primer = SeqOps.Primer("primer3_$kind", bases, SeqOps.meltingTemp(bases), SeqOps.gcContent(bases))
+        return PrimerCandidate(primer, start, end, penalty?.toDoubleOrNull() ?: kotlin.math.abs(primer.tm - p.targetTm), selfComplementarity(bases))
+    }
+
+    private fun fallback(seq: Seq, start: Int, end: Int, parameters: PrimerDesignParameters, reason: String, command: String?): PrimerDesignResult =
+        PrimerDesignResult(candidates(seq, start, end, parameters), PrimerDesignBackend.BUILTIN, listOf("Primer3 unavailable; used built-in design: $reason"), command)
 
     private fun candidate(bases: String, start: Int, end: Int, p: PrimerDesignParameters, suffix: String): PrimerCandidate {
         val primer = SeqOps.Primer("candidate_$suffix", bases.uppercase(), SeqOps.meltingTemp(bases), SeqOps.gcContent(bases))

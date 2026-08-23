@@ -18,6 +18,9 @@ import org.instagene.core.MasterMixComponent
 import org.instagene.core.MolecularCalculators
 import org.instagene.core.NcbiClient
 import org.instagene.core.PrimerThermodynamics
+import org.instagene.core.PrimerDesign
+import org.instagene.core.PrimerDesignBackend
+import org.instagene.core.PrimerDesignParameters
 import org.instagene.core.Recombination
 import org.instagene.core.Reports
 import org.instagene.core.SearchMode
@@ -532,6 +535,27 @@ object Cli {
     private fun primers(seq: Seq, args: Args) {
         val (from, to) = range(args, seq)
         val targetTm = args.double("tm", 60.0)
+        val requestedBackend = when (args.opt("backend", "builtin").lowercase()) {
+            "builtin", "built-in" -> PrimerDesignBackend.BUILTIN
+            "primer3" -> PrimerDesignBackend.PRIMER3
+            else -> throw CliException("--backend expects builtin or primer3")
+        }
+        if (args.flag("advanced") || requestedBackend == PrimerDesignBackend.PRIMER3) {
+            val result = PrimerDesign.design(
+                seq, from, to,
+                PrimerDesignParameters(targetTm = targetTm),
+                requestedBackend,
+            )
+            println("Amplicon ${from + 1}..$to (${to - from} bp) from ${seq.name}")
+            println("Backend: ${result.backend}")
+            result.warnings.forEach { System.err.println("warning: $it") }
+            result.command?.let { System.err.println("command: $it") }
+            if (result.candidates.isEmpty()) println("No candidates passed the filters.")
+            result.candidates.take(100).forEach { candidate ->
+                println("${candidate.primer.name}\t${candidate.start + 1}..${candidate.end}\t${candidate.primer.bases}\tTm=${"%.1f".format(candidate.primer.tm)}\tGC=${"%.1f".format(candidate.primer.gc)}\tscore=${"%.2f".format(candidate.score)}")
+            }
+            return
+        }
         val (fwd, rev) = SeqOps.designPrimers(seq, from, to, targetTm)
         println("Amplicon ${from + 1}..$to (${to - from} bp) from ${seq.name}")
         println("  $fwd")
@@ -614,12 +638,20 @@ object Cli {
             ?: throw CliException(
                 "Unknown tool '$toolId'. Available: ${ExternalTools.CATALOG.joinToString(", ") { it.id }}"
             )
-        val seq = load(args)
         val placeholders = buildMap {
             args.opt("pattern")?.let { put("pattern", it) }
             args.opt("other")?.let { put("other", File(it).absolutePath) }
         }
         val extra = args.opt("args")?.split(' ')?.filter { it.isNotBlank() } ?: emptyList()
+        if (args.flag("preview")) {
+            val preview = ExternalTools.commandPreview(tool, placeholders, extra)
+            println("$ ${preview.render()}")
+            if (preview.missingPlaceholders.isNotEmpty()) {
+                println("Missing required values: ${preview.missingPlaceholders.joinToString(", ")}")
+            }
+            return
+        }
+        val seq = load(args)
         val result = ExternalTools.run(tool, seq, placeholders, extra)
         System.err.println("$ ${result.command}")
         print(result.payload())
@@ -758,10 +790,11 @@ object Cli {
           golden-gate --parts a.fa,b.fa --overhangs A,G,A [--linear]
           recombine --target target.fa --donor donor.fa --arm 20 [--candidate 1]
           digest --enzymes EcoRI,BamHI [--fasta]   cut sites and fragments
-          primers --from 100 --to 400 [--tm 60]
+          primers --from 100 --to 400 [--tm 60] [--advanced] [--backend builtin|primer3]
 
         External CLI tools (optional)
           tools                           what is installed, and how to install the rest
+          tools --run primer3 --preview   show a reproducible command without running it
           tools --run seqkit-stats FILE
           tools --run emboss-restrict FILE
           tools --run seqkit-locate --pattern GGATCC FILE

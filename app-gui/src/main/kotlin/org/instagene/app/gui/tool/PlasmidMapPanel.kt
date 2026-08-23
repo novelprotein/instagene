@@ -55,6 +55,7 @@ data class MapExportOptions(
     val title: String? = null,
     val showFeatureLabels: Boolean = true,
     val showRestrictionSites: Boolean = true,
+    val featureLaneSpacing: Int = 12,
 )
 
 /**
@@ -100,6 +101,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     )
 
     private val mapCanvas = MapCanvas()
+    private var exportFeatureLaneSpacing: Int? = null
 
     init {
         background = Palette.BACKGROUND
@@ -184,7 +186,20 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
     /** Renders a PNG using a named researcher-facing preset. */
     fun exportPng(file: File, options: MapExportOptions) {
-        exportPng(file, options.preset.width, options.preset.height)
+        require(options.featureLaneSpacing > 0) { "Feature lane spacing must be positive" }
+        val previousLabels = showFeatureLabels.isSelected
+        val previousSites = showRestrictionSites.isSelected
+        val previousLaneSpacing = exportFeatureLaneSpacing
+        try {
+            showFeatureLabels.isSelected = options.showFeatureLabels
+            showRestrictionSites.isSelected = options.showRestrictionSites
+            exportFeatureLaneSpacing = options.featureLaneSpacing
+            exportPng(file, options.preset.width, options.preset.height)
+        } finally {
+            showFeatureLabels.isSelected = previousLabels
+            showRestrictionSites.isSelected = previousSites
+            exportFeatureLaneSpacing = previousLaneSpacing
+        }
     }
 
     /** Exports a lightweight, editable SVG representation of the current map. */
@@ -198,18 +213,22 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     }
 
     private fun exportSvg(file: File, options: MapExportOptions, width: Int, height: Int) {
+        require(options.featureLaneSpacing > 0) { "Feature lane spacing must be positive" }
         val seq = doc.seq
         val cx = width / 2
         val cy = height / 2
         val radius = min(width, height) / 3
-        val featureSvg = seq.features.filter { it.visible }.mapIndexed { index, feature ->
+        val features = seq.features.filter { it.visible }
+        val laneOf = HashMap<Feature, Int>()
+        packLanes(features, laneOf)
+        val featureSvg = features.mapIndexed { index, feature ->
             val start = feature.start.toDouble() / seq.length * 360.0 - 90.0
             val end = feature.end.toDouble() / seq.length * 360.0 - 90.0
-            val color = feature.color ?: "#4c8bf5"
-            val y = cy - radius - 18 - (index % 8) * 14
-            val label = if (options.showFeatureLabels) "<text x=\"${cx + radius + 18}\" y=\"$y\" font-size=\"12\">${escapeSvg(feature.name)}</text>" else ""
-            "<path d=\"${svgArc(cx, cy, radius + (index % 4) * 12, start, end)}\" fill=\"none\" stroke=\"$color\" stroke-width=\"10\"/>$label"
+            val color = svgColor(feature, index)
+            val lane = laneOf[feature] ?: 0
+            "<path d=\"${svgArc(cx, cy, radius + lane * options.featureLaneSpacing, start, end)}\" fill=\"none\" stroke=\"$color\" stroke-width=\"10\"/>"
         }.joinToString("\n")
+        val labelSvg = if (options.showFeatureLabels) svgFeatureLabels(features, laneOf, cx, cy, radius, width, height, options.featureLaneSpacing) else ""
         val siteSvg = if (options.showRestrictionSites) doc.cutSites.map { site ->
             val angle = Math.toRadians(site.recognitionStart.toDouble() / seq.length * 360.0 - 90.0)
             val x = cx + cos(angle) * (radius + 22)
@@ -223,6 +242,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
               <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#9aa3ad" stroke-width="8"/>
               <text x="$cx" y="${cy + 5}" text-anchor="middle" font-size="16">${escapeSvg(title)}</text>
               $featureSvg
+              $labelSvg
               $siteSvg
             </svg>
         """.trimIndent())
@@ -238,6 +258,50 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         val large = if (abs(end - start) > 180) 1 else 0
         return "M $x1 $y1 A $radius $radius 0 $large 1 $x2 $y2"
     }
+
+    /**
+     * Places exported feature callouts in independent left/right columns. This
+     * mirrors the map canvas's callout behavior while keeping SVG text editable
+     * and prevents crowded constructs from producing overlapping labels.
+     */
+    private fun svgFeatureLabels(
+        features: List<Feature>,
+        laneOf: Map<Feature, Int>,
+        cx: Int,
+        cy: Int,
+        radius: Int,
+        width: Int,
+        height: Int,
+        laneSpacing: Int,
+    ): String {
+        data class Callout(val feature: Feature, val lane: Int, val angle: Double, val anchorX: Double, val anchorY: Double)
+        val callouts = features.map { feature ->
+            val lane = laneOf[feature] ?: 0
+            val angle = Math.toRadians((feature.start + feature.end) / 2.0 / doc.seq.length * 360.0 - 90.0)
+            val ring = radius + lane * laneSpacing
+            Callout(feature, lane, angle, cx + cos(angle) * ring, cy + sin(angle) * ring)
+        }
+        return callouts.groupBy { cos(it.angle) < 0 }.flatMap { (left, side) ->
+            val sorted = side.sortedBy { it.anchorY }
+            val minY = 20.0
+            val maxY = (height - 14).toDouble()
+            val spacing = 15.0
+            val requested = sorted.map { it.anchorY.coerceIn(minY, maxY) }.toMutableList()
+            for (index in 1 until requested.size) requested[index] = maxOf(requested[index], requested[index - 1] + spacing)
+            if ((requested.lastOrNull() ?: minY) > maxY) {
+                sorted.indices.forEach { index -> requested[index] = minY + (maxY - minY) * (index + 1) / (sorted.size + 1) }
+            }
+            sorted.indices.map { index ->
+                val callout = sorted[index]
+                val text = escapeSvg(callout.feature.name)
+                val x = if (left) 12 else width - 12
+                val anchor = if (left) "end" else "start"
+                "<path d=\"M ${callout.anchorX} ${callout.anchorY} L $x ${requested[index] - 4}\" fill=\"none\" stroke=\"#69727d\" stroke-width=\"1\"/><text x=\"$x\" y=\"${requested[index]}\" text-anchor=\"$anchor\" font-size=\"12\">$text</text>"
+            }
+        }.joinToString("\n")
+    }
+
+    private fun svgColor(feature: Feature, index: Int): String = feature.color ?: "#%06x".format(featureColor(feature, index).rgb and 0xffffff)
 
     private fun escapeSvg(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
@@ -426,7 +490,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val fm = g2.fontMetrics
             val labels = ArrayList<CircularLabel>(seq.features.size)
             seq.features.filter { it.visible }.forEachIndexed { index, f ->
-                val ring = r - 24 - (ringOf[f] ?: 0) * 15
+                val ring = r - 24 - (ringOf[f] ?: 0) * (exportFeatureLaneSpacing ?: 15)
                 val color = featureColor(f, index)
                 val startAngle = 90.0 - f.start * 360.0 / seq.length
                 val extent = -(f.length * 360.0 / seq.length)

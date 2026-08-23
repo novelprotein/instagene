@@ -11,6 +11,8 @@ import java.util.concurrent.TimeUnit
  * holding the current sequence) and `{out}` (path the tool should write to).
  * When neither appears, the FASTA is piped to standard input instead.
  */
+enum class ToolCapability { PRIMER_DESIGN, LOCAL_SEARCH, ALIGNMENT, MULTIPLE_ALIGNMENT, ASSEMBLY, TRANSLATION, RESTRICTION_ANALYSIS, SECONDARY_STRUCTURE, SEQUENCE_STATS }
+
 data class ExternalTool(
     val id: String,
     val displayName: String,
@@ -19,6 +21,8 @@ data class ExternalTool(
     val description: String,
     val installHint: String,
     val builtinEquivalent: String,
+    val capabilities: Set<ToolCapability> = emptySet(),
+    val minimumVersion: String? = null,
     val readsStdin: Boolean = argsTemplate.none { it.contains("{in}") },
     val producesOutFile: Boolean = argsTemplate.any { it.contains("{out}") },
 )
@@ -44,7 +48,18 @@ data class ToolHealth(
     val path: String? = null,
     val version: String? = null,
     val error: String? = null,
+    val compatible: Boolean = available && error == null,
 )
+
+/** A reproducible command preview that never creates temporary files or executes a process. */
+data class ToolCommandPreview(
+    val tool: ExternalTool,
+    val command: List<String>,
+    val missingPlaceholders: List<String> = emptyList(),
+) {
+    val runnable: Boolean get() = missingPlaceholders.isEmpty()
+    fun render(): String = command.joinToString(" ")
+}
 
 /**
  * Discovery and invocation of external CLI tools.
@@ -64,6 +79,7 @@ object ExternalTools {
             description = "Detailed sequence statistics (N50, GC, length distribution).",
             installHint = "conda install -c bioconda seqkit",
             builtinEquivalent = "instagene stats",
+            capabilities = setOf(ToolCapability.SEQUENCE_STATS),
         ),
         ExternalTool(
             id = "seqkit-locate",
@@ -73,6 +89,7 @@ object ExternalTools {
             description = "Locates a (degenerate) pattern on both strands.",
             installHint = "conda install -c bioconda seqkit",
             builtinEquivalent = "instagene find --pattern ...",
+            capabilities = setOf(ToolCapability.LOCAL_SEARCH),
         ),
         ExternalTool(
             id = "emboss-revseq",
@@ -82,6 +99,7 @@ object ExternalTools {
             description = "Reverse complement.",
             installHint = "apt install emboss",
             builtinEquivalent = "instagene revcomp",
+            capabilities = setOf(ToolCapability.TRANSLATION),
         ),
         ExternalTool(
             id = "emboss-transeq",
@@ -91,6 +109,7 @@ object ExternalTools {
             description = "Six-frame-capable translation.",
             installHint = "apt install emboss",
             builtinEquivalent = "instagene translate",
+            capabilities = setOf(ToolCapability.TRANSLATION),
         ),
         ExternalTool(
             id = "emboss-restrict",
@@ -100,6 +119,7 @@ object ExternalTools {
             description = "Restriction map against the full REBASE enzyme set.",
             installHint = "apt install emboss",
             builtinEquivalent = "instagene digest --enzymes ...",
+            capabilities = setOf(ToolCapability.RESTRICTION_ANALYSIS),
         ),
         ExternalTool(
             id = "emboss-needle",
@@ -109,15 +129,19 @@ object ExternalTools {
             description = "Needleman-Wunsch global alignment against a second sequence.",
             installHint = "apt install emboss",
             builtinEquivalent = "(no built-in aligner)",
+            capabilities = setOf(ToolCapability.ALIGNMENT),
         ),
         ExternalTool(
             id = "primer3",
             displayName = "primer3_core",
             executable = "primer3_core",
-            argsTemplate = listOf("{in}"),
+            // primer3_core speaks Boulder-IO on standard input; passing a FASTA
+            // path here works with neither the packaged binary nor Homebrew.
+            argsTemplate = emptyList(),
             description = "Thermodynamically rigorous primer design.",
             installHint = "apt install primer3",
             builtinEquivalent = "instagene primers --from --to",
+            capabilities = setOf(ToolCapability.PRIMER_DESIGN),
         ),
         ExternalTool(
             id = "blastn",
@@ -127,6 +151,7 @@ object ExternalTools {
             description = "Nucleotide BLAST against a second sequence.",
             installHint = "apt install ncbi-blast+",
             builtinEquivalent = "(no built-in aligner)",
+            capabilities = setOf(ToolCapability.LOCAL_SEARCH, ToolCapability.ALIGNMENT),
         ),
         ExternalTool(
             id = "muscle",
@@ -136,6 +161,7 @@ object ExternalTools {
             description = "Multiple sequence alignment.",
             installHint = "apt install muscle",
             builtinEquivalent = "(no built-in aligner)",
+            capabilities = setOf(ToolCapability.MULTIPLE_ALIGNMENT),
         ),
         ExternalTool(
             id = "clustalo",
@@ -145,6 +171,7 @@ object ExternalTools {
             description = "Multiple DNA, RNA, or protein sequence alignment.",
             installHint = "conda install -c bioconda clustalo",
             builtinEquivalent = "InstaGene pairwise/reference alignment",
+            capabilities = setOf(ToolCapability.MULTIPLE_ALIGNMENT),
         ),
         ExternalTool(
             id = "mafft",
@@ -154,6 +181,7 @@ object ExternalTools {
             description = "Fast multiple sequence alignment for DNA, RNA, and protein.",
             installHint = "conda install -c bioconda mafft",
             builtinEquivalent = "InstaGene pairwise/reference alignment",
+            capabilities = setOf(ToolCapability.MULTIPLE_ALIGNMENT),
         ),
         ExternalTool(
             id = "tcoffee",
@@ -163,6 +191,7 @@ object ExternalTools {
             description = "Consistency-based multiple sequence alignment.",
             installHint = "conda install -c bioconda t_coffee",
             builtinEquivalent = "InstaGene pairwise/reference alignment",
+            capabilities = setOf(ToolCapability.MULTIPLE_ALIGNMENT),
         ),
         ExternalTool(
             id = "cap3",
@@ -172,6 +201,7 @@ object ExternalTools {
             description = "De novo assembly of Sanger sequencing reads into contigs.",
             installHint = "conda install -c bioconda cap3",
             builtinEquivalent = "InstaGene reference alignment",
+            capabilities = setOf(ToolCapability.ASSEMBLY),
         ),
         ExternalTool(
             id = "rnafold",
@@ -181,6 +211,7 @@ object ExternalTools {
             description = "Predicts RNA and single-stranded nucleic-acid secondary structure.",
             installHint = "conda install -c bioconda viennarna",
             builtinEquivalent = "InstaGene Nussinov secondary-structure prediction",
+            capabilities = setOf(ToolCapability.SECONDARY_STRUCTURE),
         ),
     )
 
@@ -207,10 +238,14 @@ object ExternalTools {
             val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
-                ToolHealth(tool, true, path, error = "version check timed out")
+                ToolHealth(tool, true, path, error = "version check timed out", compatible = false)
             } else {
                 val output = process.inputStream.bufferedReader().readText().trim()
-                ToolHealth(tool, process.exitValue() == 0, path, output.ifBlank { null }, if (process.exitValue() == 0) null else "exit ${process.exitValue()}")
+                ToolHealth(
+                    tool, process.exitValue() == 0, path, output.ifBlank { null },
+                    if (process.exitValue() == 0) null else "exit ${process.exitValue()}",
+                    compatible = process.exitValue() == 0 && versionIsCompatible(output, tool.minimumVersion),
+                )
             }
         } catch (e: Exception) {
             ToolHealth(tool, false, path, error = e.message ?: "version check failed")
@@ -225,6 +260,20 @@ object ExternalTools {
 
     /** Clears the `PATH` lookup cache, for when a tool is installed mid-session. */
     fun rescan() = pathCache.clear()
+
+    /** Renders a safe, reproducible command before the user runs an external executable. */
+    fun commandPreview(
+        tool: ExternalTool,
+        placeholders: Map<String, String> = emptyMap(),
+        extraArgs: List<String> = emptyList(),
+    ): ToolCommandPreview {
+        val defaults = mapOf("in" to "<input.fasta>", "out" to "<output.txt>") + placeholders
+        val args = tool.argsTemplate.map { template ->
+            defaults.entries.fold(template) { value, (key, replacement) -> value.replace("{$key}", replacement) }
+        } + extraArgs
+        val missing = args.flatMap { Regex("\\{([a-z]+)}").findAll(it).map { match -> match.groupValues[1] } }.distinct()
+        return ToolCommandPreview(tool, listOf(locate(tool.executable) ?: tool.executable) + args, missing)
+    }
 
     /**
      * Runs [tool] over [seq].
@@ -327,6 +376,62 @@ object ExternalTools {
         }
     }
 
+    /**
+     * Runs an optional tool whose native protocol is text on standard input.
+     *
+     * This is deliberately separate from [run]: its caller owns the input
+     * format (for example Primer3 Boulder-IO), while [run] always supplies
+     * FASTA. Like [run], it never throws for a process failure.
+     */
+    fun runText(
+        tool: ExternalTool,
+        input: String,
+        timeoutSeconds: Long = 60,
+        cancellationRequested: () -> Boolean = { false },
+    ): ToolResult {
+        val exe = locate(tool.executable)
+            ?: return ToolResult(
+                tool, tool.executable, 127, "",
+                "'${tool.executable}' is not on PATH. Install it with: ${tool.installHint}\n" +
+                    "Or use the built-in equivalent: ${tool.builtinEquivalent}",
+            )
+        val unresolved = tool.argsTemplate.filter { it.contains(Regex("\\{[a-z]+}")) }
+        if (unresolved.isNotEmpty()) {
+            return ToolResult(tool, "$exe ${tool.argsTemplate.joinToString(" ")}", 2, "", "Missing value for ${unresolved.joinToString(", ")}")
+        }
+        val command = listOf(exe) + tool.argsTemplate
+        return try {
+            val process = ProcessBuilder(command).start()
+            fun drain(stream: java.io.InputStream): String = stream.bufferedReader().readText()
+            val stdoutFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.inputStream) }
+            val stderrFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.errorStream) }
+            try {
+                process.outputStream.bufferedWriter().use { it.write(input) }
+            } catch (_: java.io.IOException) {
+                // A tool may reject input and close stdin before all data arrives.
+            }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+            var finished = false
+            while (!finished && System.nanoTime() < deadline && !cancellationRequested()) {
+                finished = process.waitFor(200, TimeUnit.MILLISECONDS)
+            }
+            val cancelled = cancellationRequested()
+            if (!finished) {
+                process.destroyForcibly()
+                process.waitFor(5, TimeUnit.SECONDS)
+            }
+            val stdout = stdoutFuture.get(5, TimeUnit.SECONDS)
+            val stderr = stderrFuture.get(5, TimeUnit.SECONDS)
+            when {
+                cancelled -> ToolResult(tool, command.joinToString(" "), 130, stdout, "Cancelled")
+                !finished -> ToolResult(tool, command.joinToString(" "), 124, stdout, "Timed out after ${timeoutSeconds}s")
+                else -> ToolResult(tool, command.joinToString(" "), process.exitValue(), stdout, stderr)
+            }
+        } catch (e: Exception) {
+            ToolResult(tool, command.joinToString(" "), 1, "", "Failed to run: ${e.message}")
+        }
+    }
+
     /** One-line availability report, as used by `instagene tools`. */
     fun report(): String = buildString {
         appendLine("External CLI tools (optional — InstaGene works without them):")
@@ -336,10 +441,22 @@ object ExternalTools {
             val status = if (path != null) "FOUND    $path" else "missing  install: ${tool.installHint}"
             appendLine("  %-18s %s".format(tool.displayName, status))
             appendLine("  %-18s %s".format("", tool.description))
+            appendLine("  %-18s capabilities: %s".format("", tool.capabilities.joinToString().ifBlank { "unspecified" }))
             if (path == null) appendLine("  %-18s built-in: %s".format("", tool.builtinEquivalent))
             appendLine()
         }
         val found = available().size
         appendLine("$found of ${CATALOG.size} tools available.")
+    }
+
+    private fun versionIsCompatible(versionOutput: String, minimumVersion: String?): Boolean {
+        if (minimumVersion == null) return true
+        val actual = Regex("\\d+(?:\\.\\d+)+").find(versionOutput)?.value ?: return false
+        fun pieces(value: String) = value.split('.').map { it.toIntOrNull() ?: 0 }
+        val found = pieces(actual)
+        val required = pieces(minimumVersion)
+        return (0 until maxOf(found.size, required.size)).firstOrNull { index ->
+            (found.getOrElse(index) { 0 }) != (required.getOrElse(index) { 0 })
+        }?.let { index -> found.getOrElse(index) { 0 } > required.getOrElse(index) { 0 } } ?: true
     }
 }

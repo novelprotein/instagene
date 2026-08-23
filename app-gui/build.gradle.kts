@@ -212,6 +212,13 @@ tasks.jpackage {
     val useMacOpts = providers.zip(jpackageType, osIs("mac")) { t, isMac ->
         t in setOf("DMG", "PKG") || (t == "DEFAULT" && isMac)
     }
+    // jpackage requires an absolute Linux installation path, while Windows
+    // expects a directory name relative to Program Files. Do not send this
+    // installer-only option to DMG or portable app-image builds.
+    when {
+        useWindowsOpts.get() -> installDir.set("InstaGene")
+        useLinuxCommonOpts.get() -> installDir.set("/opt")
+    }
     appVersion = providers.zip(instaGeneVersion, useMacOpts) { version, useMac ->
         if (useMac) macCompatibleJpackageVersion(version) else version
     }.get()
@@ -234,6 +241,7 @@ tasks.jpackage {
     windows {
         icon = windowsIcon
         winMenuGroup = useWindowsOpts.map { if (it) "InstaGene" else null }
+        winUpgradeUuid = "8c8afbbc-9814-4d4c-bc9b-214f56c9d21a"
     }
     linux {
         icon = linuxIcon

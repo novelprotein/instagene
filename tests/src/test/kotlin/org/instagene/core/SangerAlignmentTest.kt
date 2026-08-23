@@ -45,4 +45,16 @@ class SangerAlignmentTest {
         assertEquals(MismatchKind.LOW_QUALITY, aligned.mismatches.single().kind)
         assertEquals(0, aligned.readStart)
     }
+
+    @Test
+    fun reportsInsertionAndDeletionWithReferenceCoverage() {
+        val ref = Seq(name = "ref", bases = "AACCGGTT", kind = SeqKind.DNA)
+        val insertion = SangerAlignment.align(ref, listOf(SangerRead("ins", "AACCTGGTT"))).reads.single()
+        val deletion = SangerAlignment.align(ref, listOf(SangerRead("del", "AACCGTT"))).reads.single()
+
+        assertTrue(insertion.mismatches.any { it.kind == MismatchKind.INSERTION })
+        assertTrue(deletion.mismatches.any { it.kind == MismatchKind.DELETION })
+        assertEquals(1, insertion.insertionCount)
+        assertEquals(1, deletion.deletionCount)
+    }
 }

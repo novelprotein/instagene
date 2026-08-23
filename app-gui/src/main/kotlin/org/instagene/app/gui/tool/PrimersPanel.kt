@@ -8,6 +8,7 @@ import org.instagene.app.gui.installRowContextMenu
 import org.instagene.core.Feature
 import org.instagene.core.Alphabet
 import org.instagene.core.PrimerDesign
+import org.instagene.core.PrimerDesignBackend
 import org.instagene.core.PrimerDesignParameters
 import org.instagene.core.PrimerAnnotation
 import org.instagene.core.SeqKind
@@ -23,6 +24,7 @@ import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JPopupMenu
 import javax.swing.JOptionPane
@@ -197,7 +199,8 @@ class PrimersPanel(
         val maxTm = JTextField("70", 6)
         val minGc = JTextField("30", 6)
         val maxGc = JTextField("70", 6)
-        val form = JPanel(GridLayout(4, 4, 6, 6)).apply {
+        val backend = JComboBox(PrimerDesignBackend.entries.toTypedArray())
+        val form = JPanel(GridLayout(5, 4, 6, 6)).apply {
             add(JLabel("Min length")); add(minLength)
             add(JLabel("Max length")); add(maxLength)
             add(JLabel("Min Tm")); add(minTm)
@@ -206,21 +209,29 @@ class PrimersPanel(
             add(JLabel("Max GC %")); add(maxGc)
             add(JLabel("Target Tm")); add(tmSpinner)
             add(JLabel("Target")); add(JLabel("Amplicon ${start + 1}..$end"))
+            add(JLabel("Backend")); add(backend)
+            add(JLabel("Primer3")); add(JLabel("Optional; falls back to built-in if unavailable"))
         }
         val ok = JOptionPane.showConfirmDialog(null, form, "Advanced Primer Candidates", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
         if (ok != JOptionPane.OK_OPTION) return
         runCatching {
-            PrimerDesign.candidates(doc.seq, start, end, PrimerDesignParameters(
+            PrimerDesign.design(doc.seq, start, end, PrimerDesignParameters(
                 minLength = (minLength.value as Number).toInt(),
                 maxLength = (maxLength.value as Number).toInt(),
                 targetTm = (tmSpinner.value as Number).toDouble(),
                 minTm = minTm.text.toDouble(), maxTm = maxTm.text.toDouble(),
                 minGc = minGc.text.toDouble(), maxGc = maxGc.text.toDouble(),
-            ))
-        }.onSuccess { candidates ->
-            val text = candidates.take(100).joinToString("\n") {
+            ), backend.selectedItem as PrimerDesignBackend)
+        }.onSuccess { design ->
+            val text = buildString {
+                append("Backend: ${design.backend}")
+                if (design.warnings.isNotEmpty()) append("\n${design.warnings.joinToString("\n")}")
+                if (design.command != null) append("\nCommand: ${design.command}")
+                if (design.candidates.isNotEmpty()) append("\n\n")
+                append(design.candidates.take(100).joinToString("\n") {
                 "${it.primer.name}\t${it.start + 1}..${it.end}\t${it.primer.bases}\tTm=${"%.1f".format(it.primer.tm)}\tGC=${"%.1f".format(it.primer.gc)}\tscore=${"%.2f".format(it.score)}\tself=${it.selfComplementarity}"
-            }.ifBlank { "No candidates passed the filters." }
+                }.ifBlank { "No candidates passed the filters." })
+            }
             val area = org.instagene.app.gui.monospacedTextArea(24, 110, text)
             JOptionPane.showMessageDialog(null, JScrollPane(area), "Advanced Primer Candidates", JOptionPane.INFORMATION_MESSAGE)
         }.onFailure { JOptionPane.showMessageDialog(null, it.message ?: "Primer search failed", "Advanced Primer Candidates", JOptionPane.ERROR_MESSAGE) }

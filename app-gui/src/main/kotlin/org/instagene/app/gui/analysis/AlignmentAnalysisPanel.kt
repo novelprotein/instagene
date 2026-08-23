@@ -14,8 +14,10 @@ internal class AlignmentAnalysisPanel : BoundAnalysisPanel() {
     private val extension = JTextField("0.5", 5)
     private val text = output()
     private val run = JButton("Align")
+    private val export = JButton("Export aligned FASTA").apply { isEnabled = false }
     private var queryFiles: List<File> = emptyList()
     private var worker: SwingWorker<MultipleAlignmentResult, Unit>? = null
+    private var displayedResult: MultipleAlignmentResult? = null
 
     init {
         val choose = JButton("Choose query files...")
@@ -28,8 +30,9 @@ internal class AlignmentAnalysisPanel : BoundAnalysisPanel() {
         }
         run.toolTipText = "Run the selected aligner; click again to cancel a running alignment."
         run.addActionListener { if (worker == null) execute() else cancel() }
+        export.addActionListener { exportAlignment() }
         algorithm.renderer = DefaultListCellRenderer().apply { horizontalAlignment = SwingConstants.LEFT }
-        add(row(choose, queryNames, JLabel("Algorithm"), algorithm, JLabel("Mismatch"), mismatch, JLabel("Gap"), gap, JLabel("Extension"), extension, run), BorderLayout.NORTH)
+        add(row(choose, queryNames, JLabel("Algorithm"), algorithm, JLabel("Mismatch"), mismatch, JLabel("Gap"), gap, JLabel("Extension"), extension, run, export), BorderLayout.NORTH)
         add(JScrollPane(text), BorderLayout.CENTER)
     }
 
@@ -61,13 +64,9 @@ internal class AlignmentAnalysisPanel : BoundAnalysisPanel() {
                     return
                 }
                 runCatching { get() }.onSuccess { result ->
-                    text.text = buildString {
-                        append("Algorithm: ${result.algorithm}\n\n")
-                        result.sequences.forEach { sequence ->
-                            append(">${sequence.name}\n")
-                            append(sequence.bases.chunked(80).joinToString("\n")).append("\n\n")
-                        }
-                    }
+                    displayedResult = result
+                    export.isEnabled = true
+                    text.text = render(result)
                 }.onFailure { text.text = it.message ?: "Alignment failed" }
             }
         }
@@ -80,5 +79,49 @@ internal class AlignmentAnalysisPanel : BoundAnalysisPanel() {
         worker = null
         run.text = "Align"
         text.text = "Alignment cancelled."
+    }
+
+    private fun exportAlignment() {
+        val result = displayedResult ?: return
+        val chooser = JFileChooser().apply { dialogTitle = "Export aligned FASTA" }
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            runCatching { chooser.selectedFile.writeText(result.toFasta()) }
+                .onFailure { JOptionPane.showMessageDialog(this, it.message ?: "Could not export alignment", "Export alignment", JOptionPane.ERROR_MESSAGE) }
+        }
+    }
+
+    /** Fixed-width blocks make gaps, consensus calls, and weak columns easy to scan. */
+    private fun render(result: MultipleAlignmentResult): String {
+        val view = result.view()
+        val labelWidth = maxOf(9, result.sequences.maxOf { it.name.length })
+        fun row(label: String, bases: String): String = label.padEnd(labelWidth) + "  " + bases
+        fun conservationGlyph(value: Double): Char = when {
+            value >= 0.999 -> '*'
+            value >= 0.80 -> '+'
+            value >= 0.60 -> ':'
+            value > 0.0 -> '.'
+            else -> ' '
+        }
+        return buildString {
+            append("Algorithm: ${result.algorithm}\n")
+            if (result.command != null) append("Command: ${result.command}\n")
+            result.warnings.forEach { append("Warning: $it\n") }
+            append("Consensus uses N/X for ties; conservation: * identical, + >=80%, : >=60%.\n\n")
+            for (offset in view.consensus.indices step 80) {
+                val until = minOf(offset + 80, view.consensus.length)
+                val coordinates = view.referencePositions.subList(offset, until).joinToString("") { position ->
+                    when {
+                        position == null -> ' '
+                        position % 10 == 0 -> '|'
+                        else -> ' '
+                    }.toString()
+                }
+                append(row("reference", coordinates)).append('\n')
+                append(row("consensus", view.consensus.substring(offset, until))).append('\n')
+                append(row("conservation", view.conservation.subList(offset, until).joinToString("") { conservationGlyph(it).toString() })).append('\n')
+                result.sequences.forEach { sequence -> append(row(sequence.name, sequence.bases.substring(offset, until))).append('\n') }
+                append('\n')
+            }
+        }
     }
 }

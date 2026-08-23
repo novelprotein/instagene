@@ -42,6 +42,8 @@ object Reports {
         val confidence: String,
         val lowQualityBases: Int = 0,
         val trimmedBases: Int = 0,
+        val insertions: Int = 0,
+        val deletions: Int = 0,
         val mismatches: List<String> = emptyList(),
     )
 
@@ -193,7 +195,7 @@ object Reports {
     /** Builds a verification report from the existing alignment result. */
     fun verificationReport(reference: Seq, result: SangerAlignmentResult): VerificationReport {
         val covered = result.reads.flatMap { read ->
-            read.referenceStart until (read.referenceStart + read.alignedLength)
+            read.referenceStart until (read.referenceStart + read.referenceLength)
         }.toSet()
         val reads = result.reads.map { read ->
             ReadVerification(
@@ -204,7 +206,9 @@ object Reports {
                 confidence = read.confidence().name,
                 lowQualityBases = read.lowQualityBases,
                 trimmedBases = read.trimmedBases,
-                mismatches = read.mismatches.map { "${it.refPos + 1}: ${it.refBase} -> ${it.readBase}" },
+                insertions = read.insertionCount,
+                deletions = read.deletionCount,
+                mismatches = read.mismatches.map { "${it.refPos + 1}: ${it.refBase} -> ${it.readBase} (${it.kind})" },
             )
         }
         return VerificationReport(
@@ -219,6 +223,15 @@ object Reports {
     }
 
     fun workflowJson(report: WorkflowReport): String = reportJson.encodeToString(report)
+
+    /** Captures the same operation as a portable, machine-readable recipe. */
+    fun workflowRecipe(
+        operation: String,
+        product: Seq,
+        inputs: List<Seq> = emptyList(),
+        parameters: Map<String, String> = emptyMap(),
+        externalTools: Map<String, String> = emptyMap(),
+    ): WorkflowRecipe = WorkflowRecipes.capture(operation, product, inputs, parameters, externalTools)
 
     fun verificationJson(report: VerificationReport): String = reportJson.encodeToString(report)
 
@@ -260,10 +273,10 @@ object Reports {
         appendLine("- Average identity: **${round1(report.averageIdentity * 100)}%**")
         appendLine()
         appendLine("## Reads")
-        appendLine("| Read | Identity | Aligned bases | Mismatches | Confidence |")
-        appendLine("|---|---:|---:|---:|---|")
+        appendLine("| Read | Identity | Aligned bases | Mismatches | Indels | Confidence |")
+        appendLine("|---|---:|---:|---:|---:|---|")
         report.reads.forEach { read ->
-            appendLine("| ${read.name} | ${round1(read.identity * 100)}% | ${read.alignedLength} | ${read.mismatchCount} | ${read.confidence} |")
+            appendLine("| ${read.name} | ${round1(read.identity * 100)}% | ${read.alignedLength} | ${read.mismatchCount} | ${read.insertions + read.deletions} | ${read.confidence} |")
         }
         if (report.uncoveredPositions.isNotEmpty()) {
             appendLine()
