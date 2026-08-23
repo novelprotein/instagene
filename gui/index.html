@@ -500,6 +500,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#annotating-a-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotating a record
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -901,6 +918,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#annotating-a-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotating a record
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1135,8 +1169,24 @@ Markdown or JSON.</p>
 <p>Features is the annotation table. It shows name, type, start, end, strand,
 length, and description. Add a feature from a selection, create one manually,
 edit its qualifiers, display properties, delete it, or save it to the feature
-library. Auto-annotation can scan the sequence in order to annotated based on the bundled feature
-presets or any user defined annotation profiles; review matches before saving them to the record.</p>
+library.</p>
+<h4 id="annotating-a-record">Annotating a record<a class="headerlink" href="#annotating-a-record" title="Permanent link">&para;</a></h4>
+<ol>
+<li>Select bases in <strong>Sequence</strong> and choose <strong>Tools → Features → Add Feature
+   from Selection</strong>, or use <strong>Add Feature Manually</strong> when coordinates are
+   already known.</li>
+<li>Set a clear name, a suitable feature type, the strand, and notes or
+   qualifiers needed by the next tool in the workflow. Coordinates shown in the
+   editor are one-based and inclusive.</li>
+<li>Use <strong>Edit Element</strong> to change color, visibility, display order, translation
+   settings, and annotations. Save recurring annotations to the Feature Library
+   for reuse.</li>
+<li><strong>Auto-annotate</strong> scans using bundled presets and saved definitions. Search
+   both strands when appropriate, then review each match before saving.</li>
+</ol>
+<p>Use GenBank for annotated or circular records. FASTA cannot retain features,
+qualifiers, colors, or circular topology. The same short guide is available in
+<strong>Help → Feature annotation guide</strong>.</p>
 <h3 id="primers">Primers<a class="headerlink" href="#primers" title="Permanent link">&para;</a></h3>
 <p><img alt="Primers tab showing an amplicon and designed primer pair" src="../screenshots/primers.png" /></p>
 <p>Primers designs candidates for a selected or explicitly entered amplicon. Set
