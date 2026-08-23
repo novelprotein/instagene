@@ -10,11 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://novelprotein.github.io/instagene/contributing/">
+        <link rel="canonical" href="https://novelprotein.github.io/instagene/workflows/">
       
       
-        <link rel="prev" href="../benchmarks/info/">
+        <link rel="prev" href="../gui/">
       
+      
+        <link rel="next" href="../engine-api/">
       
       
         
@@ -25,7 +27,7 @@
     
     
       
-        <title>Contributing - InstaGene</title>
+        <title>Reproducible Workflows - InstaGene</title>
       
     
     
@@ -76,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contributing" class="md-skip">
+        <a href="#reproducible-workflows" class="md-skip">
           Skip to content
         </a>
       
@@ -112,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contributing
+              Reproducible Workflows
             
           </span>
         </div>
@@ -365,10 +367,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../workflows/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reproducible Workflows
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -384,6 +413,48 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#external-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alignment-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alignment export
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -473,37 +544,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contributing
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -519,92 +563,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Development setup
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#module-boundaries" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Module boundaries
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tests-and-regression-coverage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tests and regression coverage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Documentation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-style-and-pull-requests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Code style and pull requests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmarks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmarks
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -636,10 +594,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
+  <a href="#external-tools" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development setup
+        External tools
       
     </span>
   </a>
@@ -647,54 +605,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#module-boundaries" class="md-nav__link">
+  <a href="#alignment-export" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Module boundaries
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tests-and-regression-coverage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tests and regression coverage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Documentation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-style-and-pull-requests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Code style and pull requests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmarks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmarks
+        Alignment export
       
     </span>
   </a>
@@ -721,79 +635,34 @@
   
 
 
-<h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
-<p>InstaGene is a Kotlin/Gradle project with a reusable engine and separate
-front ends. Contributions should keep scientific behavior explicit, testable,
-and honest about what the application supports.</p>
-<h2 id="development-setup">Development setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
-<p>Requirements:</p>
+<h1 id="reproducible-workflows">Reproducible workflows<a class="headerlink" href="#reproducible-workflows" title="Permanent link">&para;</a></h1>
+<p>InstaGene records the history embedded in a sequence and can export reports for
+assembly and Sanger verification. The engine also exposes a small JSON workflow
+recipe format for local pipelines, ELN attachments, and project review.</p>
+<p>A recipe records:</p>
 <ul>
-<li>Java 21 or newer;</li>
+<li>operation name and schema version;</li>
+<li>each input's display name and CD-SEGUID identity;</li>
+<li>sorted user parameters;</li>
+<li>the product identity and embedded procedure history; and</li>
+<li>optional external-tool versions.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/novelprotein/instagene.git
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>instagene
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>./gradlew<span class="w"> </span>build
-</code></pre></div>
-<p>On Windows, use <code>gradlew.bat</code>.</p>
-<p>Install the repository hooks if you want the local commit checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/install-hooks.sh
-</code></pre></div>
-<p>The pre-commit hook runs the full Gradle build, strict documentation validation,
-and distribution checks for the current operating system. On Linux, this
-includes the DEB and app-image archive; Windows MSI and macOS DMG checks remain
-in their native CI jobs because <code>jpackage</code> cannot cross-compile installers.</p>
-<h2 id="module-boundaries">Module boundaries<a class="headerlink" href="#module-boundaries" title="Permanent link">&para;</a></h2>
-<ul>
-<li>engine/ contains front-end-free sequence and workflow logic.</li>
-<li>app-cli/ contains the scriptable command line.</li>
-<li>app-gui/ contains the Swing desktop application.</li>
-<li>app-web/ contains the embedded web front end.</li>
-<li>tests/ contains cross-module and integration coverage.</li>
-</ul>
-<p>The engine must not reference org.instagene.app, and front ends must not
-depend on one another. Check the rule with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./gradlew<span class="w"> </span>verifySeparation
-</code></pre></div>
-<h2 id="tests-and-regression-coverage">Tests and regression coverage<a class="headerlink" href="#tests-and-regression-coverage" title="Permanent link">&para;</a></h2>
-<p>Run the complete gate before opening a pull request:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./gradlew<span class="w"> </span>build
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>./gradlew<span class="w"> </span>:tests:test
-</code></pre></div>
-<p>Every bug fix should include a focused regression test. Headless Swing tests
-construct and exercise GUI panels without requiring a display. Long-running
-large-sequence tests may have explicit timeouts; do not make the event
-dispatch thread wait for background analysis.</p>
-<h2 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h2>
-<p>Documentation should explain the application primarily from a researcher's
-perspective while remaining accurate for contributors. Avoid claims such as
-“all formats,” “publication quality,” or “validated experimentally” unless the
-implementation and tests explicitly support them.</p>
-<p>Build the documentation with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w"> </span>--site-dir<span class="w"> </span>site
-</code></pre></div>
-<p>The screenshots in <code>docs/screenshots/</code> are documentation assets. Use
-descriptive alt text and keep image references relative to the page.</p>
-<h2 id="code-style-and-pull-requests">Code style and pull requests<a class="headerlink" href="#code-style-and-pull-requests" title="Permanent link">&para;</a></h2>
-<p>Prefer clear Kotlin and small, testable functions. Keep imports focused and
-avoid moving heavy computation onto Swing’s event dispatch thread.</p>
-<p>Before opening a pull request:</p>
-<ol>
-<li>run the relevant tests;</li>
-<li>run <code>./gradlew build</code>;</li>
-<li>run the strict MkDocs build;</li>
-<li>run <code>./scripts/check-distributions.sh</code> on the development host;</li>
-<li>describe user-visible behavior and limitations in the pull request.</li>
-</ol>
-<h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
-<p>Run the CLI benchmark task locally:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./gradlew<span class="w"> </span>:app-cli:bench
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>-Pinput<span class="o">=</span>sequence.fa
-</code></pre></div>
-<p>The CI workflow records benchmark output. Benchmark numbers depend on hardware,
-input size, JVM, and the current commit. Compare trends rather than treating a
-single run as an absolute performance claim. GitHub Actions runners are broadly
-similar, but relative performance should be compared only across similar
-hardware.</p>
+<p>Recipes deliberately do not embed sequence contents or execute arbitrary
+commands. To replay a recipe, a caller supplies the input sequences and first
+checks that their CD-SEGUID identities match the recorded inputs. This keeps a
+recipe portable and reviewable while avoiding a hidden copy of potentially large
+or sensitive samples.</p>
+<h2 id="external-tools">External tools<a class="headerlink" href="#external-tools" title="Permanent link">&para;</a></h2>
+<p>External tools, including Primer3 and multiple-sequence aligners, remain
+optional. A report or recipe should record the command/version when an external
+backend was selected. The GUI and CLI preserve a built-in fallback for Primer3,
+and surface that fallback as a warning rather than silently claiming an external
+result.</p>
+<h2 id="alignment-export">Alignment export<a class="headerlink" href="#alignment-export" title="Permanent link">&para;</a></h2>
+<p>The Alignment tool computes a consensus and conservation guide after an
+alignment. It renders ties as <code>N</code> for nucleotides or <code>X</code> for proteins, instead
+of arbitrarily choosing a residue. Use <strong>Export aligned FASTA</strong> to save the
+gapped alignment while retaining row names.</p>
 
 
 

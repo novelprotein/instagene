@@ -16,7 +16,7 @@
         <link rel="prev" href="../cli/">
       
       
-        <link rel="next" href="../engine-api/">
+        <link rel="next" href="../workflows/">
       
       
         
@@ -649,6 +649,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reproducible Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../engine-api/" class="md-nav__link">
         
   
@@ -657,6 +684,33 @@
     
   
     Engine API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release and Packaging
   
 
     
@@ -1068,6 +1122,14 @@ profiles, ORFs, alignments, Sanger reads, NCBI/BLAST queries, virtual gels,
 assembly, recombination, CRISPR guides, site domestication, and calculators.
 Read the inputs and warnings shown by each workflow before treating a result as
 an experimental decision.</p>
+<p>The Sanger Alignment workflow accepts multiple ABI/AB1 or SCF files, and can
+also scan a selected folder recursively. Set the minimum quality threshold,
+align the reads, then select a result row to inspect mismatch coordinates,
+nearby called bases/quality values, and raw A/C/G/T signal traces when the file
+contains them. The report distinguishes substitutions, low-quality calls,
+insertions, deletions, and uncovered reference bases. Unreadable files are
+summarized without discarding valid reads; export the completed verification as
+Markdown or JSON.</p>
 <h3 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h3>
 <p><img alt="Features tab showing annotated regions" src="../screenshots/features.png" /></p>
 <p>Features is the annotation table. It shows name, type, start, end, strand,
