@@ -1,12 +1,10 @@
 package org.instagene.app.gui
 
-import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.menu.ViewMenu
 import org.instagene.core.Seq
 import org.instagene.core.project.ProjectLayout
 import org.instagene.core.project.SeqProject
 import java.awt.BorderLayout
-import java.awt.FlowLayout
 import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
@@ -294,7 +292,7 @@ class DocumentTabsTest {
             // The empty-state menu bar still shows the full set of top-level
             // options; the sequence-only ones are merely disabled.
             val menus = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text }
-            assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools", "Preferences", "Help"), menus, "all top-level menus must be present")
+            assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools", "Help"), menus, "all top-level menus must be present")
             val edit = content.menuBar.getMenu(1)!!
             val view = content.menuBar.getMenu(2)!!
             val project = content.menuBar.getMenu(3)!!
@@ -306,9 +304,9 @@ class DocumentTabsTest {
             assertFalse(actions.isEnabled, "Actions must be disabled with no document open")
             assertFalse(tools.isEnabled, "Tools must be disabled with no document open")
             assertEquals(
-                listOf("Theme", "Show File Browser"),
+                listOf("Show File Browser"),
                 view.menuComponents.filterIsInstance<JMenuItem>().map { it.text },
-                "welcome View menu must expose theme and browser controls without sequence-only actions",
+                "welcome View menu must expose the browser control without sequence-only actions",
             )
 
             // "New Document" moves the window into the working view.
@@ -335,7 +333,7 @@ class DocumentTabsTest {
                 content.projectSplit.dividerLocation,
                 "a minimized browser must collapse to the toggle width",
             )
-            assertEquals(0, (content.fileBrowserHeader.layout as FlowLayout).hgap, "no horizontal margin when minimized")
+            assertTrue(content.fileBrowserHeader.layout is BorderLayout, "the search header must use a non-wrapping layout")
             assertTrue(content.fileBrowserToggle.isShowing || content.fileBrowserToggle.isVisible, "the restore toggle must stay")
 
             content.fileBrowserToggle.doClick()
@@ -346,14 +344,14 @@ class DocumentTabsTest {
             assertTrue(content.projectSplit.dividerSize > 0, "expanding must bring the divider back")
             assertEquals(0.0, content.projectSplit.resizeWeight, "the expanded browser must keep a fixed width")
             assertEquals(180, content.projectSplit.dividerLocation, "expanding must restore the saved tree width")
-            assertEquals(4, (content.fileBrowserHeader.layout as FlowLayout).hgap)
+            assertTrue(content.fileBrowserHeader.isAncestorOf(content.projectSearchField))
 
             content.fileBrowserToggle.doClick()
             assertFalse(content.fileBrowserVisible)
             assertFalse(content.fileBrowserTreeVisible)
             assertEquals(0, content.projectSplit.dividerSize, "minimizing must hide the divider again")
             assertEquals(0.0, content.projectSplit.resizeWeight, "minimizing must drop the resize weight again")
-            assertEquals(0, (content.fileBrowserHeader.layout as FlowLayout).hgap, "margins must stay gone")
+            assertTrue(content.fileBrowserHeader.layout is BorderLayout, "the compact header must keep its non-wrapping layout")
         }
     }
 
@@ -487,7 +485,7 @@ class DocumentTabsTest {
             // at the top of the file browser side panel.
             assertSame(content.fileBrowserToggle, content.fileBrowserHeader.components.first())
             assertSame(content.fileBrowserHeader, content.fileBrowserToggle.parent)
-            assertSame(content.fileBrowserHeader, content.projectSearchField.parent)
+            assertTrue(content.fileBrowserHeader.isAncestorOf(content.projectSearchField))
             assertSame(content.fileBrowserPanel, content.fileBrowserHeader.parent)
 
             // The top toolbar is gone: the working view's top strip is the tab
@@ -521,7 +519,6 @@ class DocumentTabsTest {
             val menu = ViewMenu(
                 doc,
                 content.sequenceView,
-                Prefs(),
                 isFileBrowserVisible = { content.fileBrowserVisible },
                 onFileBrowserVisible = { content.setFileBrowserVisible(it) },
             ).create()

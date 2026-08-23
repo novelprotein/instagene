@@ -3,6 +3,7 @@ package org.instagene.app.gui.tool
 import org.instagene.app.gui.analysis.AnalysisWorkspace
 import org.instagene.app.gui.analysis.DetachedToolWindow
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.NcbiClient
 import org.instagene.core.Seq
 import java.awt.BorderLayout
@@ -15,6 +16,7 @@ class AnalysisPanel(
     onReveal: (Int, Int) -> Unit,
     ncbiClient: NcbiClient = NcbiClient(),
     ncbiPollIntervalMillis: Long = 2_000L,
+    prefs: Prefs = Prefs(),
 ) : JPanel(BorderLayout()) {
     private var doc = initial
     private var listener: SeqDocument.Listener? = null
@@ -28,7 +30,14 @@ class AnalysisPanel(
             onReveal = onReveal,
             ncbiClient = ncbiClient,
             ncbiPollIntervalMillis = ncbiPollIntervalMillis,
-            onDetached = { detachedWindows.add(it) },
+            prefs = prefs,
+                onDetached = { panel, name, onClosed ->
+                val window = DetachedToolWindow(panel, name) {
+                    detachedWindows.remove(it)
+                    onClosed()
+                }
+                detachedWindows += window
+            },
         )
         add(workspace, BorderLayout.CENTER)
         bindDocument(initial)

@@ -1,5 +1,6 @@
 package org.instagene.app.gui.menu
 
+import org.instagene.app.gui.dialog.SettingsDialog
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.Doc
 import org.instagene.app.gui.document.SeqDocument
@@ -62,6 +63,9 @@ class FileMenu(
             addSeparator()
             add(createSaveItem())
             add(createSaveAsItem())
+            addSeparator()
+            add(createPreferencesItem())
+            add(createSystemSettingsItem())
             addSeparator()
             add(createExitItem())
         }
@@ -132,6 +136,15 @@ class FileMenu(
         return JMenuItem("Exit", KeyEvent.VK_X).apply {
             addActionListener { onExit() }
         }
+    }
+
+    /** User options open in the same direct-dialog style as system Settings. */
+    private fun createPreferencesItem(): JMenuItem = JMenuItem("Preferences...").apply {
+        addActionListener { SettingsDialog.showPreferences(frame, prefs) }
+    }
+
+    private fun createSystemSettingsItem(): JMenuItem = JMenuItem("Settings...").apply {
+        addActionListener { SettingsDialog.showSystemSettings(frame) }
     }
 
     /**

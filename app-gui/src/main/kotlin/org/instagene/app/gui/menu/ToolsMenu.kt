@@ -1,7 +1,6 @@
 package org.instagene.app.gui.menu
 
 import org.instagene.app.gui.enzyme.EnzymeManagerDialog
-import org.instagene.app.gui.enzyme.enzymePool
 import org.instagene.app.gui.enzyme.findEnzyme
 import org.instagene.app.gui.dialog.AnalysisDialogs
 import org.instagene.app.gui.prefs.Prefs
@@ -10,7 +9,6 @@ import org.instagene.app.gui.tool.DigestPanel
 import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.app.gui.tool.LibraryPanel
 import org.instagene.app.gui.tool.PrimersPanel
-import org.instagene.core.Enzyme
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import java.awt.event.InputEvent
@@ -63,7 +61,6 @@ class ToolsMenu(
     private val editLibraryItem = JMenuItem("Edit Element...")
     private val deleteLibraryItem = JMenuItem("Delete")
 
-    private val commonEnzymesMenu = createCommonEnzymesMenu()
     private val featuresMenu = createFeaturesMenu()
     private val primersMenu = createPrimersMenu()
     private val libraryMenu = createLibraryMenu()
@@ -71,7 +68,6 @@ class ToolsMenu(
     init {
         doc.addListener { _, _ -> syncEnabled() }
         prefs.addListener {
-            rebuildCommonEnzymes()
             syncEnabled()
         }
         libraryPanel?.onStateChanged = { syncEnabled() }
@@ -86,7 +82,6 @@ class ToolsMenu(
         addEnzymeItem.isEnabled = dna
         clearEnzymesItem.isEnabled = dna
         manageEnzymesItem.isEnabled = dna
-        commonEnzymesMenu.isEnabled = dna
         gelItem.isEnabled = dna
         topologyItem.isEnabled = nucleotide
         topologyItem.text = if (seq.isCircular) "Make Linear" else "Make Circular"
@@ -144,7 +139,6 @@ class ToolsMenu(
                 addActionListener { digestPanel.selectEnzymes(emptyList()) }
             })
             addSeparator()
-            add(commonEnzymesMenu)
             add(diagnosticItem.apply {
                 addActionListener { AnalysisDialogs.showDiagnostic(null, doc, digestPanel.selectedEnzymes()) }
             })
@@ -330,34 +324,4 @@ class ToolsMenu(
         }
     }
 
-    private fun createCommonEnzymesMenu(): JMenu {
-        return JMenu("Common Enzymes").apply {
-            rebuildCommonEnzymes(this)
-        }
-    }
-
-    private fun rebuildCommonEnzymes(menu: JMenu = commonEnzymesMenu) {
-        val pool = prefs.value.enzymePool()
-        menu.removeAll()
-        val categories = pool.groupBy { it.name.first() }.toSortedMap()
-        for ((letter, enzymes) in categories) {
-            menu.add(JMenu("$letter").apply {
-                for (enzyme in enzymes.take(10)) {
-                    add(JMenuItem(enzyme.name).apply {
-                        addActionListener { add(enzyme) }
-                    })
-                }
-                if (enzymes.size > 10) {
-                    add(JMenuItem("... and ${enzymes.size - 10} more").apply {
-                        isEnabled = false
-                        toolTipText = "Use Manage Enzymes to browse all ${enzymes.size} enzymes in this category."
-                    })
-                }
-            })
-        }
-    }
-
-    private fun add(enzyme: Enzyme) {
-        digestPanel.selectEnzymes(digestPanel.selectedEnzymes() + enzyme)
-    }
 }

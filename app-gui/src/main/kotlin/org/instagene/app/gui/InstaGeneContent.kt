@@ -6,6 +6,7 @@ import org.instagene.app.gui.document.DocumentHub
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.document.TextDocument
 import org.instagene.app.gui.document.TextEditorView
+import org.instagene.app.gui.dialog.SettingsDialog
 import org.instagene.app.gui.edit.EditHistoryPanel
 import org.instagene.app.gui.edit.EditMenu
 import org.instagene.app.gui.edit.EditRecorder
@@ -15,11 +16,9 @@ import org.instagene.app.gui.file.FileType
 import org.instagene.app.gui.file.FileTypes
 import org.instagene.app.gui.menu.FileMenu
 import org.instagene.app.gui.menu.HelpMenu
-import org.instagene.app.gui.menu.PreferencesMenu
 import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
 import org.instagene.app.gui.menu.confirmDiscardChanges
-import org.instagene.app.gui.menu.createThemeMenu
 import org.instagene.app.gui.menu.menuShortcut
 import org.instagene.app.gui.project.BatchOperation
 import org.instagene.app.gui.project.ProjectDialogs
@@ -191,11 +190,18 @@ class InstaGeneContent(
         addActionListener { showProjectSearch() }
     }
 
+    /** Keeps the search controls on one responsive row beside the browser toggle. */
+    private val projectSearchControls = JPanel(BorderLayout(4, 0)).apply {
+        minimumSize = Dimension(0, projectSearchButton.preferredSize.height)
+        add(projectSearchField, BorderLayout.CENTER)
+        add(projectSearchButton, BorderLayout.EAST)
+    }
+
     /** The header strip of the file browser; its toggle alone remains when the browser is minimized. */
-    val fileBrowserHeader = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
-        add(fileBrowserToggle)
-        add(projectSearchField)
-        add(projectSearchButton)
+    val fileBrowserHeader = JPanel(BorderLayout(4, 0)).apply {
+        border = BorderFactory.createEmptyBorder(4, 4, 4, 4)
+        add(fileBrowserToggle, BorderLayout.WEST)
+        add(projectSearchControls, BorderLayout.CENTER)
     }
 
     /**
@@ -316,6 +322,7 @@ class InstaGeneContent(
             },
             { start, end -> sequenceView.revealRange(start, end) },
             ncbiClient,
+            prefs = prefs,
         )
         plasmidMapPanel = PlasmidMapPanel(initial).apply {
             onSelect = { start, end -> sequenceView.revealRange(start, end) }
@@ -871,7 +878,6 @@ class InstaGeneContent(
             view = ViewMenu(
                 menusDoc,
                 sequenceView,
-                prefs,
                 isFileBrowserVisible = { fileBrowserVisible },
                 onFileBrowserVisible = { visible -> setFileBrowserVisible(visible) },
                 onSelectToolTab = { name -> toolTabs.selectedIndex = toolTabs.indexOfTab(name) },
@@ -906,7 +912,6 @@ class InstaGeneContent(
             menuBar.add(createProjectMenu())
             menuBar.add(set.tools.createActions().apply { isEnabled = sequence })
             menuBar.add(set.tools.create().apply { isEnabled = sequence })
-            menuBar.add(PreferencesMenu(prefs).create())
             menuBar.add(HelpMenu().create())
         }
         menuBar.revalidate()
@@ -930,20 +935,20 @@ class InstaGeneContent(
             add(menuItem("Save", KeyEvent.VK_S, menuShortcut(KeyEvent.VK_S)) { activeFileMenu().saveFile() })
             add(menuItem("Save As...", KeyEvent.VK_A, KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK)) { activeFileMenu().saveFileAs() })
             addSeparator()
+            add(menuItem("Preferences...") { SettingsDialog.showPreferences(null, prefs) })
+            add(menuItem("Settings...") { SettingsDialog.showSystemSettings(null) })
+            addSeparator()
             add(menuItem("Exit", action = onRequestClose))
         })
         menuBar.add(emptyStateMenuSet.edit.create().apply { isEnabled = false })
         menuBar.add(JMenu("View").apply {
             mnemonic = KeyEvent.VK_V
             emptyViewBrowserItem.isSelected = fileBrowserVisible
-            add(createThemeMenu(prefs))
-            addSeparator()
             add(emptyViewBrowserItem)
         })
         menuBar.add(createProjectMenu())
         menuBar.add(JMenu("Actions").apply { isEnabled = false })
         menuBar.add(emptyStateMenuSet.tools.create().apply { isEnabled = false })
-        menuBar.add(PreferencesMenu(prefs).create())
         menuBar.add(HelpMenu().create())
     }
 
@@ -1051,7 +1056,13 @@ class InstaGeneContent(
         treeScroll.isVisible = visible
         projectSearchField.isVisible = visible
         projectSearchButton.isVisible = visible
-        fileBrowserHeader.layout = FlowLayout(FlowLayout.LEFT, if (visible) 4 else 0, if (visible) 4 else 0)
+        projectSearchControls.isVisible = visible
+        fileBrowserHeader.border = BorderFactory.createEmptyBorder(
+            if (visible) 4 else 0,
+            if (visible) 4 else 0,
+            if (visible) 4 else 0,
+            if (visible) 4 else 0,
+        )
         applyingFileBrowserLayout = true
         try {
             if (visible) {

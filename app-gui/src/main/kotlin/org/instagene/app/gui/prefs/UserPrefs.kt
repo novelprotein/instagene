@@ -93,7 +93,7 @@ data class UserPrefs(
     val activeTab: Int = 0,
     val library: List<SavedItem> = emptyList(),
     val featureLibrary: List<SavedFeatureDefinition> = emptyList(),
-    val theme: String = "FlatDraculaIJTheme",
+    val theme: String = "FlatDarculaLaf",
     val fileBrowserVisible: Boolean = true,
     /** ApE-compatible display and analysis defaults. */
     val inlineFeatureMode: Boolean = true,
@@ -102,6 +102,11 @@ data class UserPrefs(
     val defaultSequenceWidth: Int = 60,
     val geneticCode: Int = 1,
     val damMethylationDefault: Boolean = false,
+    /** Default controls for the Statistics / Graphs analysis workspace. */
+    val graphWindowSize: Int = 100,
+    val graphStepSize: Int = 50,
+    val graphOrfMinAa: Int = 30,
+    val graphOrfWindowSize: Int = 200,
     val autosaveEnabled: Boolean = true,
     val autosaveFrequencyMinutes: Int = 5,
     val autosaveMaxVersions: Int = 10,

@@ -1,6 +1,7 @@
 package org.instagene.app.gui.dialog
 
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.theme.ThemeManager
 import org.instagene.core.ExternalTools
 import org.instagene.core.io.FormatSupport
 import org.instagene.core.io.SequenceFormatCatalog
@@ -13,8 +14,13 @@ import javax.swing.table.DefaultTableModel
 
 /** Persisted general/analysis/file settings corresponding to ApE's Settings dialog. */
 object SettingsDialog {
-    fun show(frame: JFrame?, prefs: Prefs) {
+    /** Opens user-controlled defaults, grouped separately from system diagnostics. */
+    fun showPreferences(frame: JFrame?, prefs: Prefs, initialTab: Int = 0) {
         val current = prefs.value
+        val themes = ThemeManager.themes
+        val theme = JComboBox(themes.map { it.displayName }.toTypedArray()).apply {
+            selectedIndex = themes.indexOfFirst { it.id == current.theme }.coerceAtLeast(0)
+        }
         val inline = JCheckBox("Inline feature mode", current.inlineFeatureMode)
         val second = JCheckBox("Show second strand", current.showSecondStrand)
         val transparency = JSpinner(SpinnerNumberModel(current.featureTransparency, 0, 100, 5))
@@ -22,6 +28,10 @@ object SettingsDialog {
         val code = JComboBox(arrayOf("1 - Standard", "11 - Bacterial / Plasmid"))
         code.selectedIndex = if (current.geneticCode == 11) 1 else 0
         val dam = JCheckBox("Assume Dam/Dcm methylation", current.damMethylationDefault)
+        val graphWindow = JSpinner(SpinnerNumberModel(current.graphWindowSize, 10, 10000, 10))
+        val graphStep = JSpinner(SpinnerNumberModel(current.graphStepSize, 1, 5000, 5))
+        val graphOrfMinAa = JSpinner(SpinnerNumberModel(current.graphOrfMinAa, 10, 500, 5))
+        val graphOrfWindow = JSpinner(SpinnerNumberModel(current.graphOrfWindowSize, 50, 5000, 50))
         val autosave = JCheckBox("Enable autosave", current.autosaveEnabled)
         val frequency = JSpinner(SpinnerNumberModel(current.autosaveFrequencyMinutes, 1, 120, 1))
         val versions = JSpinner(SpinnerNumberModel(current.autosaveMaxVersions, 1, 100, 1))
@@ -29,6 +39,7 @@ object SettingsDialog {
         val tabs = JTabbedPane().apply {
             addTab("General", JPanel(GridLayout(0, 2, 8, 8)).apply {
                 border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
+                add(JLabel("Theme")); add(theme)
                 add(inline); add(JLabel(""))
                 add(second); add(JLabel(""))
                 add(JLabel("Feature transparency (%)")); add(transparency)
@@ -38,6 +49,10 @@ object SettingsDialog {
                 border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
                 add(JLabel("Genetic code")); add(code)
                 add(dam); add(JLabel(""))
+                add(JLabel("Graph window (bases)")); add(graphWindow)
+                add(JLabel("Graph step (bases)")); add(graphStep)
+                add(JLabel("Graph ORF minimum (aa)")); add(graphOrfMinAa)
+                add(JLabel("Graph ORF window (bases)")); add(graphOrfWindow)
             })
             addTab("Files", JPanel(GridLayout(0, 2, 8, 8)).apply {
                 border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
@@ -45,24 +60,39 @@ object SettingsDialog {
                 add(JLabel("Autosave frequency (minutes)")); add(frequency)
                 add(JLabel("Autosave versions")); add(versions)
             })
-            addTab("External Tools", externalToolsPanel())
         }
-        val result = JOptionPane.showConfirmDialog(frame, tabs, "Settings", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
+        tabs.selectedIndex = initialTab.coerceIn(0, tabs.tabCount - 1)
+        val result = JOptionPane.showConfirmDialog(frame, tabs, "Preferences", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
         if (result != JOptionPane.OK_OPTION) return
+        val selectedTheme = themes[theme.selectedIndex]
+        val themeId = if (ThemeManager.apply(selectedTheme.id)) selectedTheme.id else current.theme
         prefs.update {
             it.copy(
+                theme = themeId,
                 inlineFeatureMode = inline.isSelected,
                 showSecondStrand = second.isSelected,
                 featureTransparency = (transparency.value as Number).toInt(),
                 defaultSequenceWidth = (width.value as Number).toInt(),
                 geneticCode = if (code.selectedIndex == 1) 11 else 1,
                 damMethylationDefault = dam.isSelected,
+                graphWindowSize = graphWindow.value as Int,
+                graphStepSize = graphStep.value as Int,
+                graphOrfMinAa = graphOrfMinAa.value as Int,
+                graphOrfWindowSize = graphOrfWindow.value as Int,
                 autosaveEnabled = autosave.isSelected,
                 autosaveFrequencyMinutes = (frequency.value as Number).toInt(),
                 autosaveMaxVersions = (versions.value as Number).toInt(),
             )
         }
     }
+
+    /** System-level availability and converter diagnostics; no user defaults live here. */
+    fun showSystemSettings(frame: JFrame?) {
+        JOptionPane.showMessageDialog(frame, externalToolsPanel(), "Settings", JOptionPane.PLAIN_MESSAGE)
+    }
+
+    /** Backward-compatible entry point for extensions that still open user preferences. */
+    fun show(frame: JFrame?, prefs: Prefs) = showPreferences(frame, prefs)
 
     fun externalToolsPanel(): JPanel {
         val toolModel = object : DefaultTableModel(arrayOf("Tool", "Status", "Install / Built-in"), 0) {

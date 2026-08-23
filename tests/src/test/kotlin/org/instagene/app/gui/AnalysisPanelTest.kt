@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JMenuItem
+import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
@@ -41,6 +42,14 @@ class AnalysisPanelTest {
         )
         panel.selectTool("Virtual Gel")
         assertEquals("Virtual Gel", panel.selectedTool())
+        val tabGroups = descendants(panel, JTabbedPane::class.java)
+        assertTrue(
+            tabGroups.any { tabs ->
+                (0 until tabs.tabCount).map(tabs::getTitleAt) ==
+                    listOf("Search & Find", "Sequence Analysis", "Cloning & Design", "PCR & Sequencing", "Utilities")
+            },
+            "analysis navigation must be represented by standard grouped tabs",
+        )
     }
 
     @Test

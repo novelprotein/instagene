@@ -59,7 +59,7 @@ class ProjectFeatureGuiTest {
         onEdt { content.openProjectAt(root) }
 
         val menus = onEdt { (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text } }
-        assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools", "Preferences", "Help"), menus)
+        assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools", "Help"), menus)
         val projectMenu = onEdt { content.menuBar.getMenu(3)!! }
         assertTrue(projectMenu.isEnabled, "Project menu must be enabled for project-only features without document tabs.")
         assertFalse(onEdt { content.menuBar.getMenu(4)!!.isEnabled }, "Sequence Actions stay disabled without a sequence tab.")

@@ -1,6 +1,7 @@
 package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.ContextMenus
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.*
 import org.jfree.chart.ChartFactory
 import org.jfree.chart.ChartPanel
@@ -20,13 +21,13 @@ import java.awt.*
 import java.text.DecimalFormat
 import javax.swing.*
 
-internal class GraphAnalysisPanel : BoundAnalysisPanel() {
+internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel() {
     private val chartTabs = JTabbedPane()
     private val infoArea = output()
-    private val windowSize = JSpinner(SpinnerNumberModel(100, 10, 10000, 10))
-    private val stepSize = JSpinner(SpinnerNumberModel(50, 1, 5000, 5))
-    private val orfMinAa = JSpinner(SpinnerNumberModel(30, 10, 500, 5))
-    private val orfWindowSize = JSpinner(SpinnerNumberModel(200, 50, 5000, 50))
+    private val windowSize = JSpinner(SpinnerNumberModel(prefs.value.graphWindowSize, 10, 10000, 10))
+    private val stepSize = JSpinner(SpinnerNumberModel(prefs.value.graphStepSize, 1, 5000, 5))
+    private val orfMinAa = JSpinner(SpinnerNumberModel(prefs.value.graphOrfMinAa, 10, 500, 5))
+    private val orfWindowSize = JSpinner(SpinnerNumberModel(prefs.value.graphOrfWindowSize, 50, 5000, 50))
 
     private var cachedSeqIdentity: Any? = null
     private var cachedStats: SequenceStats? = null
@@ -34,6 +35,7 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
     private var cachedDinuc: List<Bar>? = null
     private var cachedRepeats: List<RepeatMatch>? = null
     private var cachedCpGIslands: List<CpGIsland>? = null
+    private var loadingGraphPreferences = false
 
     private var statsWorker: SwingWorker<SequenceStats, Nothing>? = null
     private val tabWorkers = mutableMapOf<Int, SwingWorker<JComponent, Nothing>>()
@@ -80,6 +82,35 @@ internal class GraphAnalysisPanel : BoundAnalysisPanel() {
         add(split, BorderLayout.CENTER)
 
         chartTabs.addChangeListener { buildSelectedTab() }
+        listOf(windowSize, stepSize, orfMinAa, orfWindowSize).forEach { spinner ->
+            spinner.addChangeListener { saveGraphPreferences() }
+        }
+        prefs.addListener { loadGraphPreferences() }
+    }
+
+    private fun saveGraphPreferences() {
+        if (loadingGraphPreferences) return
+        prefs.update {
+            it.copy(
+                graphWindowSize = windowSize.value as Int,
+                graphStepSize = stepSize.value as Int,
+                graphOrfMinAa = orfMinAa.value as Int,
+                graphOrfWindowSize = orfWindowSize.value as Int,
+            )
+        }
+    }
+
+    private fun loadGraphPreferences() {
+        loadingGraphPreferences = true
+        try {
+            val current = prefs.value
+            if (windowSize.value != current.graphWindowSize) windowSize.value = current.graphWindowSize
+            if (stepSize.value != current.graphStepSize) stepSize.value = current.graphStepSize
+            if (orfMinAa.value != current.graphOrfMinAa) orfMinAa.value = current.graphOrfMinAa
+            if (orfWindowSize.value != current.graphOrfWindowSize) orfWindowSize.value = current.graphOrfWindowSize
+        } finally {
+            loadingGraphPreferences = false
+        }
     }
 
     override fun refreshDocument() {

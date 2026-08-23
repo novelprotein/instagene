@@ -105,8 +105,25 @@ Markdown or JSON.
 Features is the annotation table. It shows name, type, start, end, strand,
 length, and description. Add a feature from a selection, create one manually,
 edit its qualifiers, display properties, delete it, or save it to the feature
-library. Auto-annotation can scan the sequence in order to annotated based on the bundled feature
-presets or any user defined annotation profiles; review matches before saving them to the record.
+library.
+
+#### Annotating a record
+
+1. Select bases in **Sequence** and choose **Tools → Features → Add Feature
+   from Selection**, or use **Add Feature Manually** when coordinates are
+   already known.
+2. Set a clear name, a suitable feature type, the strand, and notes or
+   qualifiers needed by the next tool in the workflow. Coordinates shown in the
+   editor are one-based and inclusive.
+3. Use **Edit Element** to change color, visibility, display order, translation
+   settings, and annotations. Save recurring annotations to the Feature Library
+   for reuse.
+4. **Auto-annotate** scans using bundled presets and saved definitions. Search
+   both strands when appropriate, then review each match before saving.
+
+Use GenBank for annotated or circular records. FASTA cannot retain features,
+qualifiers, colors, or circular topology. The same short guide is available in
+**Help → Feature annotation guide**.
 
 ### Primers
 

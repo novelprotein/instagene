@@ -1,46 +1,34 @@
 package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.NcbiClient
 import org.instagene.core.Seq
 import java.awt.BorderLayout
-import java.awt.Dimension
-import javax.swing.BorderFactory
-import javax.swing.BoxLayout
 import javax.swing.JLabel
 import javax.swing.JPanel
-import javax.swing.JScrollPane
+import javax.swing.JTabbedPane
 
+/**
+ * Analysis tools arranged as ordinary grouped tabs. Keeping the navigation in
+ * standard tab controls makes the available workflows visible without the
+ * bespoke category/sidebar-card interaction that previously duplicated tabs.
+ */
 internal class AnalysisWorkspace(
     private val onOpenSequence: (Seq) -> Unit,
     private val onReveal: (Int, Int) -> Unit,
     private val ncbiClient: NcbiClient,
     private val ncbiPollIntervalMillis: Long,
-    private val onDetached: (DetachedToolWindow) -> Unit,
+    private val prefs: Prefs,
+    private val onDetached: (BoundAnalysisPanel, String, () -> Unit) -> Unit,
 ) : JPanel(BorderLayout()) {
 
-    private var doc: SeqDocument
-
-    private val categoryBar = JPanel().apply {
-        layout = BoxLayout(this, BoxLayout.X_AXIS)
-        border = BorderFactory.createEmptyBorder(4, 4, 4, 4)
-    }
-    private val toolListPanel = JPanel().apply {
-        layout = BoxLayout(this, BoxLayout.Y_AXIS)
-    }
-    private val toolListScroll = JScrollPane(toolListPanel).apply {
-        preferredSize = Dimension(180, 0)
-        horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
-    }
-    private val contentArea = JPanel(BorderLayout())
-    private val placeholderLabel = JLabel("Select a tool from the sidebar").apply {
-        horizontalAlignment = JLabel.CENTER
-    }
-
-    private var selectedCard: ToolCard? = null
-    private var activePanel: BoundAnalysisPanel? = null
+    private var doc = SeqDocument(Seq(""))
+    internal val categoryTabs = JTabbedPane()
+    private val toolTabs = mutableMapOf<ToolCategory, JTabbedPane>()
+    private val toolHosts = mutableMapOf<String, JPanel>()
     private var activeToolName: String? = null
-    private val detachedWindows = mutableListOf<DetachedToolWindow>()
+    private val detachedPanels = mutableListOf<BoundAnalysisPanel>()
 
     private val panelFactories: Map<String, () -> BoundAnalysisPanel>
     private val activePanels = mutableMapOf<String, BoundAnalysisPanel>()
@@ -54,8 +42,6 @@ internal class AnalysisWorkspace(
     )
 
     init {
-        doc = SeqDocument(Seq(""))
-
         panelFactories = mapOf(
             "Search" to { SearchAnalysisPanel(onReveal) },
             "Alignment" to { AlignmentAnalysisPanel() },
@@ -73,93 +59,82 @@ internal class AnalysisWorkspace(
             "Primer Thermo" to { PrimerThermodynamicsAnalysisPanel() },
             "Plasmid DB" to { PlasmidDatabaseAnalysisPanel(onOpenSequence) },
             "Site Domestication" to { SiteDomesticationAnalysisPanel() },
-            "Statistics / Graphs" to { GraphAnalysisPanel() },
+            "Statistics / Graphs" to { GraphAnalysisPanel(prefs) },
         )
 
-        ToolCategory.entries.forEach { cat ->
-            val button = javax.swing.JButton("${iconLabel(cat)} ${cat.displayName}").apply {
-                isFocusable = false
-                addActionListener { selectCategory(cat) }
+        categories.forEach { (category, names) ->
+            val tabs = JTabbedPane().apply {
+                names.forEach { name ->
+                    val host = JPanel(BorderLayout()).apply {
+                        add(JLabel("Select $name", JLabel.CENTER), BorderLayout.CENTER)
+                    }
+                    toolHosts[name] = host
+                    addTab(name, host)
+                }
+                addChangeListener { activateSelectedTool(category) }
             }
-            categoryBar.add(button)
+            toolTabs[category] = tabs
+            categoryTabs.addTab(category.displayName, tabs)
         }
+        categoryTabs.addChangeListener { activeCategory()?.let(::activateSelectedTool) }
+        add(categoryTabs, BorderLayout.CENTER)
 
-        contentArea.add(placeholderLabel, BorderLayout.CENTER)
-
-        add(categoryBar, BorderLayout.NORTH)
-        add(toolListScroll, BorderLayout.WEST)
-        add(contentArea, BorderLayout.CENTER)
-
-        selectCategory(ToolCategory.SEARCH)
+        selectTool("Search")
     }
 
     fun bindDocument(newDoc: SeqDocument) {
         doc = newDoc
-        activePanel?.bindDocument(newDoc)
-        detachedWindows.forEach { it.bindDocument(newDoc) }
+        activePanels.values.forEach { it.bindDocument(newDoc) }
+        detachedPanels.forEach { it.bindDocument(newDoc) }
     }
 
     fun selectCategory(category: ToolCategory) {
-        toolListPanel.removeAll()
-        categories[category]?.forEach { name ->
-            val card = ToolCard(name) { selectTool(name) }
-            toolListPanel.add(card)
-            if (name == activeToolName) {
-                selectedCard?.setSelected(false)
-                selectedCard = card
-                card.setSelected(true)
-            }
-        }
-        toolListPanel.revalidate()
-        toolListPanel.repaint()
+        val index = categories.keys.indexOf(category)
+        if (index >= 0) categoryTabs.selectedIndex = index
+        activateSelectedTool(category)
     }
 
     fun selectTool(name: String) {
-        val factory = panelFactories[name] ?: return
-        val livePanel = activePanels.getOrPut(name) { factory().also { it.bindDocument(doc) } }
-
-        activePanel?.let { contentArea.remove(it) }
-
-        val header = ToolHeader(name) { popOut(name) }
-        contentArea.removeAll()
-        contentArea.add(header, BorderLayout.NORTH)
-        contentArea.add(livePanel, BorderLayout.CENTER)
-        contentArea.revalidate()
-        contentArea.repaint()
-
-        activePanel = livePanel
-        activeToolName = name
-
-        val category = categories.entries.find { name in it.value }?.key
-        if (category != null) {
-            selectedCard?.setSelected(false)
-            toolListPanel.components.filterIsInstance<ToolCard>()
-                .firstOrNull { it.toolName == name }
-                ?.let {
-                    it.setSelected(true)
-                    selectedCard = it
-                }
-        }
+        val category = categories.entries.firstOrNull { name in it.value }?.key ?: return
+        val categoryIndex = categories.keys.indexOf(category)
+        if (categoryIndex >= 0) categoryTabs.selectedIndex = categoryIndex
+        val tabs = toolTabs.getValue(category)
+        val toolIndex = tabs.indexOfTab(name)
+        if (toolIndex >= 0) tabs.selectedIndex = toolIndex
+        activateTool(name)
     }
 
-    private fun popOut(name: String) {
-        val panel = activePanels.remove(name) ?: return
+    private fun activeCategory(): ToolCategory? = categories.keys.elementAtOrNull(categoryTabs.selectedIndex)
 
-        contentArea.removeAll()
-        contentArea.add(placeholderLabel, BorderLayout.CENTER)
-        activePanel = null
-        activeToolName = null
-        selectedCard?.setSelected(false)
-        selectedCard = null
-        contentArea.revalidate()
-        contentArea.repaint()
+    private fun activateSelectedTool(category: ToolCategory) {
+        val tabs = toolTabs.getValue(category)
+        val name = categories.getValue(category).getOrNull(tabs.selectedIndex) ?: return
+        activateTool(name)
+    }
 
-        val window = DetachedToolWindow(panel, name) { w ->
-            detachedWindows.remove(w)
+    private fun activateTool(name: String) {
+        val factory = panelFactories[name] ?: return
+        val panel = activePanels.getOrPut(name) { factory().also { it.bindDocument(doc) } }
+        val host = toolHosts.getValue(name)
+        if (host.getComponent(0) !== panel) {
+            host.removeAll()
+            host.add(ToolHeader(name) { openExternalTool(name) }, BorderLayout.NORTH)
+            host.add(panel, BorderLayout.CENTER)
+            host.revalidate()
+            host.repaint()
         }
-        detachedWindows.add(window)
-        window.bindDocument(doc)
-        onDetached(window)
+        activeToolName = name
+    }
+
+    /**
+     * Opens a separate analysis instance instead of moving the selected tab's
+     * component. The main tab therefore remains selected and menu actions keep
+     * targeting the workflow the user chose.
+     */
+    internal fun openExternalTool(name: String) {
+        val panel = panelFactories[name]?.invoke()?.also { it.bindDocument(doc) } ?: return
+        detachedPanels += panel
+        onDetached(panel, name) { detachedPanels.remove(panel) }
     }
 
     fun toolNames(): List<String> = listOf(
