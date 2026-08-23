@@ -4,10 +4,6 @@ import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.PrefsStore
 import org.instagene.app.gui.prefs.UserPrefs
 import org.instagene.app.gui.theme.ThemeManager
-import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.tool.SequenceView
-import org.instagene.app.gui.menu.ViewMenu
-import org.instagene.core.Seq
 import java.io.File
 import java.nio.file.Files
 import javax.swing.SwingUtilities
@@ -48,8 +44,15 @@ class ThemeManagerTest {
     }
 
     @Test
+    fun legacyDraculaDefaultMigratesToDarculaWithoutChangingOtherThemes() {
+        assertEquals(ThemeManager.DEFAULT_THEME, ThemeManager.migrateLegacyDefault(ThemeManager.LEGACY_DEFAULT_THEME))
+        assertEquals("FlatOneDarkIJTheme", ThemeManager.migrateLegacyDefault("FlatOneDarkIJTheme"))
+    }
+
+    @Test
     fun themeIsPersistedInPrefs() {
-        assertEquals("FlatDraculaIJTheme", UserPrefs().theme)
+        assertEquals("FlatDarculaLaf", UserPrefs().theme)
+        assertEquals("FlatDarculaLaf", ThemeManager.DEFAULT_THEME)
         val prefs = UserPrefs(theme = "FlatOneDarkIJTheme")
         assertEquals("FlatOneDarkIJTheme", prefs.theme)
         assertEquals("One Dark", ThemeManager.displayName(prefs.theme))
@@ -61,16 +64,10 @@ class ThemeManagerTest {
         dir.deleteOnExit()
         val file = File(dir, "prefs.json")
 
-        // Selecting a theme via the View menu persists it to disk.
+        // Selecting a theme in Preferences persists it to disk.
         onEdt {
             val prefs = Prefs(PrefsStore(file))
-            val doc = SeqDocument(Seq(bases = "ACGT"))
-            val view = SequenceView(doc)
-            val themes = ViewMenu(doc, view, prefs).create()
-            val themeMenu = themes.menuComponents.filterIsInstance<javax.swing.JMenu>().first { it.text == "Theme" }
-            val oneDark = themeMenu.menuComponents.filterIsInstance<javax.swing.JRadioButtonMenuItem>()
-                .first { it.text == "One Dark" }
-            oneDark.doClick()
+            prefs.update { it.copy(theme = "FlatOneDarkIJTheme") }
             assertEquals("FlatOneDarkIJTheme", prefs.value.theme)
         }
 
@@ -82,7 +79,7 @@ class ThemeManagerTest {
     }
 
     @Test
-    fun themeCanBeSelectedFromWelcomeViewMenu() {
+    fun themeBelongsToPreferencesRatherThanTheViewMenu() {
         val dir = Files.createTempDirectory("instagene-welcome-theme").toFile()
         dir.deleteOnExit()
         val file = File(dir, "prefs.json")
@@ -93,15 +90,9 @@ class ThemeManagerTest {
                 val prefs = Prefs(PrefsStore(file))
                 val content = InstaGeneContent(prefs = prefs)
                 val viewMenu = content.menuBar.getMenu(2)
-                val themeMenu = viewMenu.menuComponents.filterIsInstance<javax.swing.JMenu>()
-                    .single { it.text == "Theme" }
-                val oneDark = themeMenu.menuComponents.filterIsInstance<javax.swing.JRadioButtonMenuItem>()
-                    .first { it.text == "One Dark" }
-
-                oneDark.doClick()
-
-                assertEquals("FlatOneDarkIJTheme", prefs.value.theme)
-                assertEquals("FlatOneDarkIJTheme", ThemeManager.current())
+                assertFalse(viewMenu.menuComponents.any { it is javax.swing.JMenu && it.text == "Theme" })
+                val fileMenu = content.menuBar.getMenu(0)
+                assertTrue(fileMenu.menuComponents.filterIsInstance<javax.swing.JMenuItem>().any { it.text == "Preferences..." })
             }
         } finally {
             ThemeManager.apply(ThemeManager.DEFAULT_THEME)

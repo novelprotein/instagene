@@ -1,6 +1,5 @@
 package org.instagene.app.gui.menu
 
-import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.tool.SequenceView
 import org.instagene.core.SeqKind
@@ -14,7 +13,6 @@ import javax.swing.KeyStroke
 class ViewMenu(
     private val doc: SeqDocument,
     private val sequenceView: SequenceView,
-    private val prefs: Prefs = Prefs(),
     private val isFileBrowserVisible: () -> Boolean = { true },
     private val onFileBrowserVisible: (Boolean) -> Unit = {},
     private val onSelectToolTab: ((String) -> Unit)? = null,
@@ -62,8 +60,6 @@ class ViewMenu(
             add(createResetZoomItem())
             addSeparator()
             add(createPanelsMenu())
-            addSeparator()
-            add(createThemeMenu(prefs))
             addSeparator()
             syncFileBrowser()
             add(fileBrowserItem)

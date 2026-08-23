@@ -18,7 +18,10 @@ import javax.swing.UIManager
 object ThemeManager {
 
     /** Default theme id, used until the user selects another. */
-    const val DEFAULT_THEME = "FlatDraculaIJTheme"
+    const val DEFAULT_THEME = "FlatDarculaLaf"
+
+    /** Previous app default, migrated so a fresh install does not stay on Dracula. */
+    const val LEGACY_DEFAULT_THEME = "FlatDraculaIJTheme"
 
     /** A selectable theme and the factory for its look and feel. */
     data class Theme(
@@ -142,6 +145,10 @@ object ThemeManager {
 
     /** The id of the last successfully applied theme. */
     fun current(): String = applied ?: DEFAULT_THEME
+
+    /** Maps the retired Dracula default to Darcula without changing any other user choice. */
+    fun migrateLegacyDefault(id: String): String =
+        if (id == LEGACY_DEFAULT_THEME) DEFAULT_THEME else id
 
     /** The theme with [id], or null when unknown. */
     fun theme(id: String): Theme? = themes.firstOrNull { it.id == id }

@@ -40,7 +40,9 @@ fun launch(openPaths: List<String>) {
 }
 
 private fun applySavedTheme(prefs: Prefs) {
-    val saved = prefs.value.theme
+    val previous = prefs.value.theme
+    val saved = ThemeManager.migrateLegacyDefault(previous)
+    if (saved != previous) prefs.update { it.copy(theme = saved) }
     if (!ThemeManager.apply(saved)) {
         // Corrupt or outdated theme id: fall back to the default and repair prefs.
         ThemeManager.apply(ThemeManager.DEFAULT_THEME)
