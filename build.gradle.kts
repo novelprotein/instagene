@@ -44,17 +44,20 @@ private val userFacingConfigNames = setOf(
 gradle.projectsEvaluated {
     appModules.forEach { app ->
         val badDeps = project(app).configurations
+            .asSequence()
             .filter { it.name in userFacingConfigNames }
             .flatMap { it.dependencies }
             .filterIsInstance<ProjectDependency>()
             .map { it.path }
             .filter { it != ":engine" }
+            .toList()
         check(badDeps.isEmpty()) {
             "Separation violation: $app depends on ${badDeps}; front-ends may depend only on :engine"
         }
     }
 
     val testsProjectDeps = project(":tests").configurations
+        .asSequence()
         .filter { it.name in userFacingConfigNames }
         .flatMap { it.dependencies }
         .filterIsInstance<ProjectDependency>()

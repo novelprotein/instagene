@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.app.gui.document
 
 import org.instagene.core.CutSite

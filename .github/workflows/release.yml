@@ -184,6 +184,10 @@ jobs:
           java-version: '21'
           distribution: graalvm
 
+      - name: Install Linux native-image prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:

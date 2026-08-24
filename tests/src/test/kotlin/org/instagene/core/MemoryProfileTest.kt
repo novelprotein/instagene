@@ -16,6 +16,14 @@ import kotlin.test.assertEquals
  * `./gradlew :tests:test --tests '*MemoryProfileTest' -Dinstagene.memoryProfile=true -Dinstagene.heap=2g`
  */
 class MemoryProfileTest {
+    private companion object {
+        const val TRACE_BASES = 8_000
+    }
+
+    private fun out(value: Any? = "") {
+        print(value)
+        print('\n')
+    }
 
     @Test
     fun profilesLargeFastaGenBankAndAbiScfTraceBatches() {
@@ -29,7 +37,6 @@ class MemoryProfileTest {
         val traceCount = System.getProperty("instagene.memoryProfileTraceCount")?.toIntOrNull()
             ?.coerceIn(1, 500)
             ?: 64
-        val traceBases = 8_000
         val root = Files.createTempDirectory("instagene-memory-profile").toFile()
         try {
             val sequence = syntheticBases(bases)
@@ -44,21 +51,21 @@ class MemoryProfileTest {
             assertEquals(bases, genBankRead.length)
 
             val scfFiles = (0 until traceCount).map { index ->
-                File(root, "read-$index.scf").apply { writeBytes(minimalScf(traceBases)) }
+                File(root, "read-$index.scf").apply { writeBytes(minimalScf()) }
             }
             val abiFiles = (0 until traceCount).map { index ->
-                File(root, "read-$index.ab1").apply { writeBytes(minimalAbi(traceBases)) }
+                File(root, "read-$index.ab1").apply { writeBytes(minimalAbi()) }
             }
-            val scfReads = profile("SCF batch ($traceCount × $traceBases called bases)") {
+            val scfReads = profile("SCF batch ($traceCount × $TRACE_BASES called bases)") {
                 scfFiles.map(SeqIO::read)
             }
-            val abiReads = profile("ABI batch ($traceCount × $traceBases called bases)") {
+            val abiReads = profile("ABI batch ($traceCount × $TRACE_BASES called bases)") {
                 abiFiles.map(SeqIO::read)
             }
             assertEquals(traceCount, scfReads.size)
             assertEquals(traceCount, abiReads.size)
-            assertEquals(traceBases, scfReads.first().length)
-            assertEquals(traceBases, abiReads.first().length)
+            assertEquals(TRACE_BASES, scfReads.first().length)
+            assertEquals(TRACE_BASES, abiReads.first().length)
         } finally {
             root.deleteRecursively()
         }
@@ -69,7 +76,7 @@ class MemoryProfileTest {
         val result = block()
         val after = usedHeap()
         val deltaMiB = (after - before) / (1024.0 * 1024.0)
-        println("[memory] $label: retained heap ${"%.1f".format(deltaMiB)} MiB (now ${"%.1f".format(after / (1024.0 * 1024.0))} MiB)")
+        out("[memory] $label: retained heap ${"%.1f".format(deltaMiB)} MiB (now ${"%.1f".format(after / (1024.0 * 1024.0))} MiB)")
         return result
     }
 
@@ -90,7 +97,8 @@ class MemoryProfileTest {
     }
 
     /** Minimal SCF v2 data with calls, quality scores, and four short trace channels. */
-    private fun minimalScf(baseCount: Int): ByteArray {
+    private fun minimalScf(): ByteArray {
+        val baseCount = TRACE_BASES
         val sampleCount = 4
         val sampleOffset = 128
         val baseOffset = sampleOffset + sampleCount * 4
@@ -119,7 +127,8 @@ class MemoryProfileTest {
     }
 
     /** Minimal ABI directory containing called bases (PBAS) and confidence values (PCON). */
-    private fun minimalAbi(baseCount: Int): ByteArray {
+    private fun minimalAbi(): ByteArray {
+        val baseCount = TRACE_BASES
         val root = 128
         val entries = root + 28
         val basesOffset = entries + 56

@@ -163,11 +163,11 @@ internal class RepeatAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPane
         }.onFailure { showExportError(it.message ?: "Unable to export repeats") }
     }
 
-    private fun showExportError(message: String) = javax.swing.JOptionPane.showMessageDialog(
+    private fun showExportError(message: String) = JOptionPane.showMessageDialog(
         this,
         message,
         "Repeat analysis export",
-        javax.swing.JOptionPane.ERROR_MESSAGE,
+        JOptionPane.ERROR_MESSAGE,
     )
 
     private fun render(result: AnalysisRun): String = buildString {

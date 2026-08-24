@@ -33,7 +33,7 @@ internal class NcbiAnalysisPanel(
     private val resultTabs = JTabbedPane()
     private val output = output()
     private val queryStatus = JLabel().apply { name = "ncbiQueryStatus" }
-    private val cacheMode = JComboBox(enumValues<CacheSelection>()).apply {
+    private val cacheMode = JComboBox(CacheSelection.entries.toTypedArray()).apply {
         name = "ncbiCacheMode"
         selectedItem = CacheSelection.fromPreference(prefs.value.onlineCacheMode)
         toolTipText = "Network only does not retain responses. Other modes use the local NCBI response cache explicitly."

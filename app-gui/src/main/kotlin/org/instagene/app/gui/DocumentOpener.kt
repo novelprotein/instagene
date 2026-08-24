@@ -23,9 +23,6 @@ object Openers {
     /** The default dispatch list. */
     val all: List<DocumentOpener> = listOf(SequenceOpener, TextOpener, SystemAppOpener)
 
-    /** Picks the first opener that claims [file]; always matches via [SystemAppOpener]. */
-    fun forFile(file: File): DocumentOpener = all.first { it.canOpen(file) }
-
     /** FASTA, GenBank and bare-bases molecules. */
     object SequenceOpener : DocumentOpener {
         override fun canOpen(file: File): Boolean = FileTypes.classify(file) == FileType.SEQUENCE

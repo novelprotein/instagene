@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.core
 
 data class MethylationProfile(val dam: Boolean = false, val dcm: Boolean = false)

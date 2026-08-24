@@ -1,12 +1,18 @@
 package org.instagene.core.io
 
 import org.instagene.core.Alphabet
+import org.instagene.core.ChromatogramRecord
 import org.instagene.core.ChromatogramReader
+import org.instagene.core.ChromatogramTrace
+import org.instagene.core.Feature
+import org.instagene.core.MoleculeProperties
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
+import org.instagene.core.Strandedness
 import org.instagene.core.Topology
 import java.io.File
 import java.io.IOException
+import kotlin.math.abs
 
 /** The sequence file formats InstaGene reads and writes. */
 enum class SeqFormat(val displayName: String, val extensions: List<String>) {
@@ -49,8 +55,8 @@ object SeqIO {
     fun preferredSaveFormat(seq: Seq): SeqFormat =
         if (
             seq.isCircular || seq.features.isNotEmpty() || seq.primers.isNotEmpty() || seq.provenance.isNotEmpty() ||
-            seq.molecule != org.instagene.core.MoleculeProperties(
-                strandedness = if (seq.kind == SeqKind.PROTEIN) org.instagene.core.Strandedness.SINGLE else org.instagene.core.Strandedness.DOUBLE,
+            seq.molecule != MoleculeProperties(
+                strandedness = if (seq.kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
             )
         ) SeqFormat.GENBANK else SeqFormat.FASTA
 
@@ -321,7 +327,7 @@ object SeqIO {
             """.trimIndent()
         ).copy(name = "GFP_CDS", description = GFP_CDS_SOURCE).withSampleSource(GFP_CDS_SOURCE)
 
-        val PBR322_NCBI: Seq = parseResource(PBR322_RESOURCE, "pBR322_J01749.1.gb").let { record ->
+        val PBR322_NCBI: Seq = parsePbr322Resource().let { record ->
             record.copy(
                 name = "pBR322_NCBI",
                 metadata = record.metadata + mapOf(
@@ -344,10 +350,10 @@ object SeqIO {
             topology = Topology.CIRCULAR,
             description = PLASMID_DEMO_SOURCE,
             features = listOf(
-                org.instagene.core.Feature("lac promoter", "promoter", 0, 20, color = "#1E88E5"),
-                org.instagene.core.Feature("MCS", "misc_feature", 20, PUC19_MCS.length, color = "#F9A825"),
-                org.instagene.core.Feature("demo insert", "CDS", PUC19_MCS.length, PUC19_MCS.length + 120, color = "#43A047"),
-                org.instagene.core.Feature("origin", "rep_origin", PUC19_MCS.length + 120, PUC19_MCS.length + 200, color = "#8E24AA"),
+                Feature("lac promoter", "promoter", 0, 20, color = "#1E88E5"),
+                Feature("MCS", "misc_feature", 20, PUC19_MCS.length, color = "#F9A825"),
+                Feature("demo insert", "CDS", PUC19_MCS.length, PUC19_MCS.length + 120, color = "#43A047"),
+                Feature("origin", "rep_origin", PUC19_MCS.length + 120, PUC19_MCS.length + 200, color = "#8E24AA"),
             ),
         ).withSampleSource(PLASMID_DEMO_SOURCE)
 
@@ -362,28 +368,28 @@ object SeqIO {
         )
 
         /** Synthetic trace data so the chroma/quality UI can be explored without a lab file. */
-        val CHROMATOGRAM_DEMO: org.instagene.core.ChromatogramRecord = syntheticChromatogram()
+        val CHROMATOGRAM_DEMO: ChromatogramRecord = syntheticChromatogram()
 
         val ALL: List<Seq> = listOf(PUC19_MCS, GFP_CDS, PLASMID_DEMO, PBR322_NCBI)
 
-        private fun syntheticChromatogram(): org.instagene.core.ChromatogramRecord {
+        private fun syntheticChromatogram(): ChromatogramRecord {
             val bases = "ACGTACGTACGT"
             val peaks = bases.indices.map { 20 + it * 24 }
             val channels = "ACGT".associateWith { channel ->
                 List(peaks.last() + 24) { sample ->
                     peaks.mapIndexed { index, peak ->
-                        val distance = kotlin.math.abs(sample - peak)
+                        val distance = abs(sample - peak)
                         val height = if (bases[index] == channel) 850 else 110
                         (height - distance * 45).coerceAtLeast(0)
                     }.maxOrNull() ?: 0
                 }
             }
-            return org.instagene.core.ChromatogramRecord(
+            return ChromatogramRecord(
                 name = "synthetic_chromatogram",
                 bases = bases,
                 qualities = listOf(42, 41, 39, 40, 38, 18, 35, 40, 42, 41, 39, 42),
                 source = CHROMATOGRAM_DEMO_SOURCE,
-                trace = org.instagene.core.ChromatogramTrace(peaks, channels),
+                trace = ChromatogramTrace(peaks, channels),
             )
         }
 
@@ -400,12 +406,12 @@ object SeqIO {
             )
         )
 
-        private fun parseResource(path: String, defaultName: String): Seq {
-            val text = SeqIO::class.java.getResourceAsStream(path)
+        private fun parsePbr322Resource(): Seq {
+            val text = SeqIO::class.java.getResourceAsStream(PBR322_RESOURCE)
                 ?.bufferedReader()
                 ?.use { it.readText() }
-                ?: error("Missing bundled sample resource: $path")
-            return parse(text, defaultName)
+                ?: error("Missing bundled sample resource: $PBR322_RESOURCE")
+            return parse(text, "pBR322_J01749.1.gb")
         }
     }
 }

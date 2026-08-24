@@ -96,7 +96,6 @@ class SeqOpsTest {
 
     @Test
     fun findCircularWrap() {
-        val seq = Seq(bases = "TTCAAAG", topology = Topology.CIRCULAR)
         // The EcoRI site spans the origin: ...G | AATTC...
         val wrap = Seq(bases = "AATTCXXXG", topology = Topology.CIRCULAR)
         val hits = SeqOps.find(wrap, "GAATTC")

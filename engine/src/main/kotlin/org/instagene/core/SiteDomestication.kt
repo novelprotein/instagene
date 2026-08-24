@@ -20,8 +20,8 @@ object SiteDomestication {
     fun findInternalSites(seq: Seq, enzymes: List<Enzyme> = GOLDEN_GATE_ENZYMES): List<InternalSite> {
         val sites = mutableListOf<InternalSite>()
         for (enzyme in enzymes) {
-            for (cutSite in Digest.cutSites(seq, listOf(enzyme))) {
-                sites.add(InternalSite(enzyme, cutSite.recognitionStart))
+            for ((_, recognitionStart) in Digest.cutSites(seq, listOf(enzyme))) {
+                sites.add(InternalSite(enzyme, recognitionStart))
             }
         }
         return sites.sortedBy { it.position }
@@ -44,14 +44,14 @@ object SiteDomestication {
         val bases = seq.bases.uppercase().toCharArray()
         var mutations = 0
 
-        for (enzyme in enzymes) {
+        for ((_, site) in enzymes) {
             var changed = true
             while (changed) {
                 changed = false
-                val sites = findPositions(bases, enzyme.site.uppercase())
+                val sites = findPositions(bases, site.uppercase())
                 if (sites.isEmpty()) break
                 for (sitePos in sites) {
-                    if (trySilentMutate(bases, sitePos, enzyme.site)) {
+                    if (trySilentMutate(bases, sitePos, site)) {
                         mutations++
                         changed = true
                         break

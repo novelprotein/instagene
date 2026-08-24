@@ -102,7 +102,7 @@ class ProjectFeatureGuiTest {
         assertEquals(listOf(sequenceFile.canonicalFile), onEdt { batch.selectedFiles().map { it.canonicalFile } })
         val result = onEdt { batch.runBatch() }
         assertEquals(1, result.processed)
-        assertTrue(output.listFiles()?.singleOrNull()?.isFile == true)
+        assertEquals(true, output.listFiles()?.singleOrNull()?.isFile)
     }
 
     @Test

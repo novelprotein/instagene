@@ -19,6 +19,7 @@ fun main(argv: Array<String>) {
         WebServer.start(host, port)
         Runtime.getRuntime().addShutdownHook(Thread { WebServer.stop() })
         val shownHost = if (share) lanAddress() ?: "0.0.0.0" else host
+        @Suppress("HttpUrlsUsage")
         println("InstaGene ${Version.VERSION} web front-end running at http://$shownHost:$port (Ctrl+C to stop)")
     } catch (e: Exception) {
         System.err.println("instagene-web: ${e.message}")

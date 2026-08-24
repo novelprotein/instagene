@@ -9,7 +9,6 @@ import org.instagene.core.WorkflowRecipes
 import org.instagene.core.WorkflowReplays
 import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
-import java.awt.Dialog
 import java.awt.Window
 import java.io.File
 import javax.swing.BorderFactory

@@ -24,6 +24,10 @@ import org.junit.jupiter.api.TestMethodOrder
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class FileMenuTest {
+    private companion object {
+        const val CROWDED_DIGEST_BASES = 1_200_000
+    }
+
 
     /** Writes a FASTA containing [bases] of deterministic pseudorandom nucleotide data. */
     private fun largeFasta(name: String, bases: Int): File {
@@ -48,7 +52,9 @@ class FileMenuTest {
     }
 
     /** Writes a large FASTA with a known dense EcoRI pattern. */
-    private fun crowdedDigestFasta(name: String, bases: Int): File {
+    private fun crowdedDigestFasta(): File {
+        val name = "digest"
+        val bases = CROWDED_DIGEST_BASES
         val motif = "GAATTC"
         val body = motif.repeat((bases + motif.length - 1) / motif.length).take(bases)
             .chunked(60)
@@ -171,8 +177,8 @@ class FileMenuTest {
     @Test
     @Order(3)
     fun digestCutCountsArriveAsynchronouslyForACrowdedGenome() {
-        val expected = 1_200_000
-        val file = crowdedDigestFasta("digest", expected)
+        val expected = CROWDED_DIGEST_BASES
+        val file = crowdedDigestFasta()
         val ecoRi = Enzymes.require("EcoRI")
         val content = onEdt { InstaGeneContent(null) }
 

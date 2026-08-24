@@ -170,7 +170,7 @@ object RepeatAnalysis {
             sequence.name,
             bases.length,
             minimumLength,
-            calls.sortedWith(compareBy<SequenceRepeat>({ it.orientation.ordinal }, { it.firstStart }, { it.secondStart }, { -it.length })),
+            calls.sortedWith(compareBy({ it.orientation.ordinal }, { it.firstStart }, { it.secondStart }, { -it.length })),
             truncated,
         )
     }

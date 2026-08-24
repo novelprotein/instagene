@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.core
 
 import kotlinx.serialization.Serializable
@@ -9,7 +11,7 @@ import java.util.concurrent.TimeUnit
 /**
  * A command-line bioinformatics program InstaGene knows how to drive.
  *
- * [argsTemplate] may contain the placeholders `{in}` (path to a temporary FASTA
+ * [ExternalTool.argsTemplate] may contain the placeholders `{in}` (path to a temporary FASTA
  * holding the current sequence) and `{out}` (path the tool should write to).
  * When neither appears, the FASTA is piped to standard input instead.
  */
@@ -580,13 +582,13 @@ object ExternalTools {
         appendLine("External CLI tools (optional — InstaGene works without them):")
         appendLine("Run `instagene tools --health` to probe installed versions and see recovery actions.")
         appendLine()
-        for (tool in CATALOG) {
-            val path = locate(tool.executable)
-            val status = if (path != null) "FOUND    $path" else "missing  install: ${tool.installHint}"
-            appendLine("  %-18s %s".format(tool.displayName, status))
-            appendLine("  %-18s %s".format("", tool.description))
-            appendLine("  %-18s capabilities: %s".format("", tool.capabilities.joinToString().ifBlank { "unspecified" }))
-            if (path == null) appendLine("  %-18s built-in: %s".format("", tool.builtinEquivalent))
+        for ((_, displayName, executable, _, description, installHint, builtinEquivalent, capabilities) in CATALOG) {
+            val path = locate(executable)
+            val status = if (path != null) "FOUND    $path" else "missing  install: $installHint"
+            appendLine("  %-18s %s".format(displayName, status))
+            appendLine("  %-18s %s".format("", description))
+            appendLine("  %-18s capabilities: %s".format("", capabilities.joinToString().ifBlank { "unspecified" }))
+            if (path == null) appendLine("  %-18s built-in: %s".format("", builtinEquivalent))
             appendLine()
         }
         val found = available().size

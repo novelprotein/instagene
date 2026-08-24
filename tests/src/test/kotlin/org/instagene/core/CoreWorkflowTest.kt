@@ -97,7 +97,7 @@ class CoreWorkflowTest {
         val seq = Seq(name = "x", bases = "AAAGGATCCAAAA")
         val def = FeatureDefinition("tag", "GGATCC", "misc_feature")
         val both = FeatureLibrary.previewMatches(seq, listOf(def), searchBothStrands = true)
-        assertTrue(both.size >= 1)
+        assertTrue(both.isNotEmpty())
     }
 
     @Test

@@ -104,8 +104,9 @@ internal object Parallel {
 
     /**
      * Java-Stream parallel fallback for simple streaming pipelines.
-     * Uses [ForkJoinPool.commonPool] directly — no coroutines overhead.
+     * Uses the shared fork-join pool directly with no coroutines overhead.
      */
+    @Suppress("unused")
     fun <T, R> streamMap(items: List<T>, transform: (T) -> R): List<R> {
         if (items.size <= 1) return items.map(transform)
         return items.parallelStream().map { transform(it) }.toList()

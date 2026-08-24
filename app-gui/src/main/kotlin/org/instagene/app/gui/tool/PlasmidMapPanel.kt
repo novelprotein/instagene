@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.document.SeqDocument
@@ -45,6 +47,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 enum class MapPreset(val width: Int, val height: Int) {
+    @Suppress("unused")
     PRESENTATION(1600, 1200),
     PAPER(1200, 900),
     NOTEBOOK(900, 700),
@@ -185,6 +188,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     }
 
     /** Renders a PNG using a named researcher-facing preset. */
+    @Suppress("unused")
     fun exportPng(file: File, options: MapExportOptions) {
         require(options.featureLaneSpacing > 0) { "Feature lane spacing must be positive" }
         val previousLabels = showFeatureLabels.isSelected
@@ -229,12 +233,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             "<path d=\"${svgArc(cx, cy, radius + lane * options.featureLaneSpacing, start, end)}\" fill=\"none\" stroke=\"$color\" stroke-width=\"10\"/>"
         }.joinToString("\n")
         val labelSvg = if (options.showFeatureLabels) svgFeatureLabels(features, laneOf, cx, cy, radius, width, height, options.featureLaneSpacing) else ""
-        val siteSvg = if (options.showRestrictionSites) doc.cutSites.map { site ->
-            val angle = Math.toRadians(site.recognitionStart.toDouble() / seq.length * 360.0 - 90.0)
+        val siteSvg = if (options.showRestrictionSites) doc.cutSites.joinToString("\n") { (enzyme, recognitionStart) ->
+            val angle = Math.toRadians(recognitionStart.toDouble() / seq.length * 360.0 - 90.0)
             val x = cx + cos(angle) * (radius + 22)
             val y = cy + sin(angle) * (radius + 22)
-            "<circle cx=\"$x\" cy=\"$y\" r=\"3\" fill=\"#8a4baf\"/><text x=\"${x + 5}\" y=\"$y\" font-size=\"10\">${escapeSvg(site.enzyme.name)}</text>"
-        }.joinToString("\n") else ""
+            "<circle cx=\"$x\" cy=\"$y\" r=\"3\" fill=\"#8a4baf\"/><text x=\"${x + 5}\" y=\"$y\" font-size=\"10\">${escapeSvg(enzyme.name)}</text>"
+        } else ""
         val title = options.title?.takeIf { it.isNotBlank() } ?: "${seq.name} (${seq.length} bp)"
         file.writeText("""
             <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">
@@ -519,15 +523,15 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             // Restriction sites outside the backbone.
             val sites = if (showRestrictionSites.isSelected) doc.cutSites else emptyList()
             g2.font = labelFont
-            for (site in sites) {
-                val a = angleOf(site.topCut)
+            for ((enzyme, _, topCut) in sites) {
+                val a = angleOf(topCut)
                 g2.color = Palette.CUT_MARK
                 g2.stroke = BasicStroke(1.5f)
                 g2.drawLine(
                     pointX(a, r + 4), pointY(a, r + 4),
                     pointX(a, r + 16), pointY(a, r + 16),
                 )
-                drawRadialLabel(g2, "${site.enzyme.name} ${site.topCut + 1}", a, r + 20)
+                drawRadialLabel(g2, "${enzyme.name} ${topCut + 1}", a, r + 20)
             }
 
             // Centre caption.
@@ -579,13 +583,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val sides = callouts.groupBy { cos(it.angle) < 0 }
             for ((onLeft, sideLabels) in sides) {
                 val x = if (onLeft) margin else centerX + centreGap
-                for (label in sideLabels.sortedBy { pointY(it.angle, it.ring) }) {
-                    val text = fitText(fm, label.text, columnWidth)
-                    val desiredBaseline = pointY(label.angle, label.ring) + fm.ascent / 2
+                for ((textValue, angle, ring) in sideLabels.sortedBy { pointY(it.angle, it.ring) }) {
+                    val text = fitText(fm, textValue, columnWidth)
+                    val desiredBaseline = pointY(angle, ring) + fm.ascent / 2
                     val baseline = findFreeBaseline(fm, text, x, desiredBaseline, occupied)
                     val bounds = textBounds(fm, text, x, baseline)
-                    val anchorX = pointX(label.angle, label.ring)
-                    val anchorY = pointY(label.angle, label.ring)
+                    val anchorX = pointX(angle, ring)
+                    val anchorY = pointY(angle, ring)
                     val labelEdgeX = if (onLeft) bounds.x + bounds.width else bounds.x
 
                     g2.color = Palette.MUTED
@@ -695,14 +699,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             if (showRestrictionSites.isSelected && doc.cutSites.isNotEmpty()) {
                 g2.font = labelFont
                 val fm = g2.fontMetrics
-                val occupiedX = mutableListOf<IntRange>()
-                var lastLane = 0
                 val laneOccupied = mutableListOf(mutableListOf<IntRange>())
-                for (site in doc.cutSites) {
-                    val x = left + (site.topCut.toDouble() / seq.length * span).roundToInt()
+                for ((enzyme, _, topCut) in doc.cutSites) {
+                    val x = left + (topCut.toDouble() / seq.length * span).roundToInt()
                     g2.color = Palette.CUT_MARK
                     g2.drawLine(x, axisY - 8, x, axisY + 8)
-                    val label = site.enzyme.name
+                    val label = enzyme.name
                     val labelWidth = fm.stringWidth(label)
                     val interval = (x - 2)..(x + labelWidth + 2)
                     var lane = 0
@@ -748,6 +750,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             feature.name.trim().ifEmpty { feature.type.trim().ifEmpty { "feature" } }
 
         /** Packs narrow-feature callouts into rows whose text bounds do not overlap. */
+        @Suppress("SameParameterValue")
         private fun placeLinearLabels(
             fm: java.awt.FontMetrics,
             labels: List<LinearLabel>,
@@ -774,6 +777,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             return placed
         }
 
+        @Suppress("SameParameterValue")
         private fun drawLinearFeatureLabels(
             g2: Graphics2D,
             labels: List<PlacedLinearLabel>,
@@ -783,15 +787,14 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         ) {
             g2.font = labelFont
             val fm = g2.fontMetrics
-            for (placed in labels) {
-                val label = placed.label
-                val baseline = 62 + placed.row * rowHeight
-                val bounds = textBounds(fm, label.text, placed.x, baseline)
+            for ((label, x, row) in labels) {
+                val baseline = 62 + row * rowHeight
+                val bounds = textBounds(fm, label.text, x, baseline)
                 val featureY = axisY - 18 - label.lane * laneHeight
                 g2.color = Palette.featureColor(label.colorIndex)
                 g2.stroke = BasicStroke(1f)
                 g2.drawLine(label.anchorX, bounds.y + bounds.height, label.anchorX, featureY)
-                drawLabelBox(g2, label.text, placed.x, baseline, bounds)
+                drawLabelBox(g2, label.text, x, baseline, bounds)
             }
         }
 

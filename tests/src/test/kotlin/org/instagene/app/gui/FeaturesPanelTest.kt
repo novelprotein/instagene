@@ -242,6 +242,6 @@ class FeaturesPanelTest {
 
         assertEquals("MK*", result?.protein)
         assertEquals(listOf(4, 5, 6), result?.codons?.first()?.sourcePositions)
-        assertTrue(result?.isInFrame == true)
+        assertEquals(true, result?.isInFrame)
     }
 }

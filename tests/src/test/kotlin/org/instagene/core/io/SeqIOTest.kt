@@ -50,7 +50,7 @@ class SeqIOTest {
         assertTrue(samples.GFP_CDS.length > 100)
         assertEquals(3, samples.ALIGNMENT_DEMO.size)
         assertEquals(1, samples.ALIGNMENT_DEMO.map { it.length }.toSet().size)
-        assertTrue(samples.CHROMATOGRAM_DEMO.trace?.hasSignal() == true)
+        assertEquals(true, samples.CHROMATOGRAM_DEMO.trace?.hasSignal())
         assertTrue("pInstaGene_demo" in samples.ALL.map { it.name })
     }
 

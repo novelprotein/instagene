@@ -1,3 +1,5 @@
+@file:Suppress("PackageDirectoryMismatch")
+
 // Shared Kotlin/JVM configuration for every subproject.
 package buildsrc.convention
 

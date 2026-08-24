@@ -4,7 +4,7 @@ import org.instagene.app.gui.row
 import org.instagene.core.*
 import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
-import java.awt.Dialog
+import java.awt.Dialog.ModalityType as DialogModalityType
 import java.awt.Window
 import javax.swing.*
 
@@ -17,7 +17,7 @@ internal class PcrCloningWizardDialog(
     owner: Window?,
     private val backbone: Seq,
     private val onOpenSequence: (Seq) -> Unit,
-) : JDialog(owner, "PCR-cloning wizard", Dialog.ModalityType.APPLICATION_MODAL) {
+) : JDialog(owner, "PCR-cloning wizard", DialogModalityType.APPLICATION_MODAL) {
     private val templatePath = JTextField(34)
     private val targetStart = JSpinner(SpinnerNumberModel(1, 1, 1, 1))
     private val targetEnd = JSpinner(SpinnerNumberModel(1, 1, 1, 1))
@@ -133,7 +133,7 @@ internal class PcrCloningWizardDialog(
         val completed = result ?: return
         val chooser = JFileChooser().apply { dialogTitle = "Save PCR-cloning recipe" }
         if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return
-        runCatching { chooser.selectedFile.writeText(org.instagene.core.WorkflowRecipes.encode(completed.recipe)) }
+        runCatching { chooser.selectedFile.writeText(WorkflowRecipes.encode(completed.recipe)) }
             .onFailure { error -> showError(error.message ?: "Unable to save recipe") }
     }
 

@@ -125,7 +125,7 @@ class OnlineCache(
 
     /**
      * Returns a response under [mode].  [network] is invoked only when that
-     * policy permits it; [CACHE_ONLY] is consequently safe for offline use.
+     * policy permits it; [OnlineCacheMode.CACHE_ONLY] is consequently safe for offline use.
      */
     fun fetch(
         source: String,
@@ -148,20 +148,16 @@ class OnlineCache(
                 fromNetwork(source, request, key, persist = true, network)
             } catch (error: Exception) {
                 val cached = read(source, request, key)
-                if (cached != null) {
-                    cached.copy(
-                        provenance = cached.provenance.copy(
-                            origin = OnlineFetchOrigin.CACHE_FALLBACK,
-                            fallbackReason = error.message ?: error::class.simpleName.orEmpty(),
-                        )
+                cached?.copy(
+                    provenance = cached.provenance.copy(
+                        origin = OnlineFetchOrigin.CACHE_FALLBACK,
+                        fallbackReason = error.message ?: error::class.simpleName.orEmpty(),
                     )
-                } else {
-                    throw OnlineFetchException(
-                        "Online request to $source failed and no verified cached response is available: " +
-                            (error.message ?: error::class.simpleName.orEmpty()),
-                        error,
-                    )
-                }
+                ) ?: throw OnlineFetchException(
+                    "Online request to $source failed and no verified cached response is available: " +
+                        (error.message ?: error::class.simpleName.orEmpty()),
+                    error,
+                )
             }
         }
     }

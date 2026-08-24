@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.ContextMenus
@@ -378,9 +380,9 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         plot.renderer = renderer
         (plot.rangeAxis as NumberAxis).setRange(0.0, 2.5)
 
-        for (island in islands) {
+        for ((start, end) in islands) {
             val islandAnnotation = org.jfree.chart.annotations.XYBoxAnnotation(
-                island.start.toDouble(), 0.6, island.end.toDouble(), 2.5,
+                start.toDouble(), 0.6, end.toDouble(), 2.5,
                 BasicStroke(1.0f), Color(0, 105, 92), Color(0, 105, 92, 40)
             )
             plot.addAnnotation(islandAnnotation)

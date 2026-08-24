@@ -66,7 +66,7 @@ object Embl {
                 line.startsWith("DE   ") -> description = listOf(description, line.drop(5).trim()).filter(String::isNotBlank).joinToString(" ")
                 line.startsWith("AC   ") -> metadata["ACCESSION"] = line.drop(5).trim().trimEnd(';')
                 line.startsWith("OS   ") -> metadata["ORGANISM"] = line.drop(5).trim()
-                line.startsWith("CC   ") -> metadata["COMMENT"] = listOf(metadata["COMMENT"], line.drop(5).trim()).filterNotNull().filter(String::isNotBlank).joinToString(" ")
+                line.startsWith("CC   ") -> metadata["COMMENT"] = sequenceOf(metadata["COMMENT"], line.drop(5).trim()).filterNotNull().filter(String::isNotBlank).joinToString(" ")
                 line.startsWith("FT   ") -> {
                     val body = line.drop(5)
                     val trimmed = body.trim()
@@ -101,12 +101,12 @@ object Embl {
         seq.metadata["COMMENT"]?.let { append("CC   ${it.replace('\n', ' ')}\n") }
         append("FH   Key             Location/Qualifiers\n")
         append("FH\n")
-        for (feature in seq.features) {
-            val span = "${feature.start + 1}..${feature.end}"
-            val location = if (feature.strand == Strand.REVERSE) "complement($span)" else span
-            append("FT   ${feature.type.take(15).padEnd(15)}$location\n")
-            append("FT                   /label=\"${feature.name.replace('"', '\'')}\"\n")
-            if (feature.notes.isNotBlank()) append("FT                   /note=\"${feature.notes.replace('\n', ' ').replace('"', '\'')}\"\n")
+        for ((name, type, start, end, strand, notes) in seq.features) {
+            val span = "${start + 1}..$end"
+            val location = if (strand == Strand.REVERSE) "complement($span)" else span
+            append("FT   ${type.take(15).padEnd(15)}$location\n")
+            append("FT                   /label=\"${name.replace('"', '\'')}\"\n")
+            if (notes.isNotBlank()) append("FT                   /note=\"${notes.replace('\n', ' ').replace('"', '\'')}\"\n")
         }
         append("SQ   Sequence ${seq.length} $unit;\n")
         seq.bases.lowercase().chunked(60).forEachIndexed { index, line ->

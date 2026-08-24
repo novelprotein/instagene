@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.TableLabels
@@ -706,7 +708,7 @@ class FeaturesPanel(
                     } catch (error: ExecutionException) {
                         matchCountLabel.text = "Feature scan failed: ${error.cause?.message ?: "unknown error"}"
                         return
-                    } catch (error: InterruptedException) {
+                    } catch (_: InterruptedException) {
                         Thread.currentThread().interrupt()
                         matchCountLabel.text = "Feature scan interrupted."
                         return
@@ -813,7 +815,7 @@ class FeaturesPanel(
                     summary.text = "Auto-annotation failed: ${error.cause?.message ?: "unknown error"}"
                     refreshSelectionState()
                     return
-                } catch (error: InterruptedException) {
+                } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                     summary.text = "Auto-annotation interrupted."
                     refreshSelectionState()

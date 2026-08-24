@@ -17,11 +17,11 @@ class CrisprDesignTest {
     fun scoresGuidesSimple() {
         val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
         val result = CrisprDesign.design(seq, scoringMode = ScoringMode.RULESET3_SIMPLE)
-        for (guide in result.guides) {
-            assertTrue(guide.onTargetScore in 0.0..1.0, "On-target score should be 0-1")
-            assertTrue(guide.offTargetScore in 0.0..1.0, "Off-target score should be 0-1")
-            assertTrue(guide.gcContent in 0.0..1.0, "GC content should be 0-1")
-            assertEquals(ScoringMode.RULESET3_SIMPLE, guide.scoringMode)
+        for ((_, _, onTargetScore, offTargetScore, gcContent, scoringMode) in result.guides) {
+            assertTrue(onTargetScore in 0.0..1.0, "On-target score should be 0-1")
+            assertTrue(offTargetScore in 0.0..1.0, "Off-target score should be 0-1")
+            assertTrue(gcContent in 0.0..1.0, "GC content should be 0-1")
+            assertEquals(ScoringMode.RULESET3_SIMPLE, scoringMode)
         }
     }
 
@@ -29,10 +29,10 @@ class CrisprDesignTest {
     fun scoresGuidesFull() {
         val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
         val result = CrisprDesign.design(seq, scoringMode = ScoringMode.RULESET3_FULL)
-        for (guide in result.guides) {
-            assertTrue(guide.onTargetScore in 0.0..1.0, "On-target score should be 0-1")
-            assertTrue(guide.offTargetScore in 0.0..1.0, "Off-target score should be 0-1")
-            assertEquals(ScoringMode.RULESET3_FULL, guide.scoringMode)
+        for ((_, _, onTargetScore, offTargetScore, _, scoringMode) in result.guides) {
+            assertTrue(onTargetScore in 0.0..1.0, "On-target score should be 0-1")
+            assertTrue(offTargetScore in 0.0..1.0, "Off-target score should be 0-1")
+            assertEquals(ScoringMode.RULESET3_FULL, scoringMode)
         }
     }
 
@@ -58,8 +58,8 @@ class CrisprDesignTest {
     fun defaultModeIsSimple() {
         val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
         val result = CrisprDesign.design(seq)
-        for (guide in result.guides) {
-            assertEquals(ScoringMode.RULESET3_SIMPLE, guide.scoringMode)
+        for ((_, _, _, _, _, scoringMode) in result.guides) {
+            assertEquals(ScoringMode.RULESET3_SIMPLE, scoringMode)
         }
     }
 }

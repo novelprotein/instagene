@@ -257,8 +257,6 @@ object WebServer {
         return Reports.digestReport(seq, enzymes)
     }
 
-    private fun round1(v: Double): Double = Reports.round1(v)
-
     // --------------------------------------------------------------- HTTP plumbing
 
     private fun handleStatic(exchange: HttpExchange) {

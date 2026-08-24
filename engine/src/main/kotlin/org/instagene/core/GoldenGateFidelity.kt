@@ -8,7 +8,7 @@ package org.instagene.core
  * Fidelity by High-Throughput Sequencing." ACS Synth Biol.
  * doi:10.1021/acssynbio.8b00333
  *
-     * Each entry {@code matrix[left][right]} gives the log10 count of overhang A ligating to
+     * Each `matrix[left][right]` entry gives the log10 count of overhang A ligating to
  * the Watson-Crick complement of overhang B. Normalized counts are used for
  * fidelity scoring.
  */

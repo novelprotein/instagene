@@ -90,31 +90,29 @@ class SequenceEditActions(
                     return true
                 }
                 return false
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 return false
             }
         } else {
             pattern.uppercase()
         }
 
-        if (!useRegex) {
-            val from = doc.caret.coerceIn(0, bases.length)
-            val forward = wrapFind(bases, needle, from)
-            if (forward != null) {
-                view.revealRange(forward, forward + needle.length)
-                return true
+        val from = doc.caret.coerceIn(0, bases.length)
+        val forward = wrapFind(bases, needle, from)
+        if (forward != null) {
+            view.revealRange(forward, forward + needle.length)
+            return true
+        }
+        if (doc.seq.kind != SeqKind.PROTEIN) {
+            val rc = buildString(needle.length) {
+                for (i in needle.indices.reversed()) {
+                    append(Alphabet.complement(needle[i], doc.seq.kind))
+                }
             }
-            if (doc.seq.kind != SeqKind.PROTEIN) {
-                val rc = buildString(needle.length) {
-                    for (i in needle.indices.reversed()) {
-                        append(Alphabet.complement(needle[i], doc.seq.kind))
-                    }
-                }
-                val reverse = wrapFind(bases, rc, from)
-                if (reverse != null) {
-                    view.revealRange(reverse, reverse + rc.length)
-                    return true
-                }
+            val reverse = wrapFind(bases, rc, from)
+            if (reverse != null) {
+                view.revealRange(reverse, reverse + rc.length)
+                return true
             }
         }
         return false
@@ -184,7 +182,7 @@ class TextEditActions(private val view: TextEditorView) : EditActions {
                     return true
                 }
                 return false
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 return false
             }
         }

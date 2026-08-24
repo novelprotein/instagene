@@ -158,7 +158,7 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
                 result,
                 inputs = lastInputs,
                 parameters = mapOf(
-                    "workflow" to mode.selectedItem.toString(),
+                    "workflow" to (mode.selectedItem as? String).orEmpty(),
                     "circular" to circular.isSelected.toString(),
                     "minimum overlap" to arm.value.toString(),
                 ),

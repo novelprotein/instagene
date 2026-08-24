@@ -45,8 +45,6 @@ object SequenceFormatCatalog {
         SequenceFormatDescriptor("visualcloning", "Visual Cloning", setOf("vct", "visualcloning"), FormatSupport.CONVERTER),
     )
 
-    val allExtensions: Set<String> = FORMATS.flatMap { it.extensions }.toSet()
-
     fun forFile(file: File): SequenceFormatDescriptor? =
         FORMATS.firstOrNull { file.extension.lowercase() in it.extensions }
 }

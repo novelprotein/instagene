@@ -156,8 +156,9 @@ class ContextMenuTest {
         val items = popup.components.filterIsInstance<JMenuItem>()
         assertTrue(items.isNotEmpty(), "context menu should contain at least one item")
         items.forEach { item ->
-            assertTrue(
-                item.toolTipText?.isNotBlank() == true,
+            assertEquals(
+                true,
+                item.toolTipText?.isNotBlank(),
                 "menu item '${item.text}' should have a tooltip",
             )
         }

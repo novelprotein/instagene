@@ -1,12 +1,27 @@
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JvmVendorSpec
+
 plugins {
     id("buildsrc.convention.kotlin-jvm")
     application
     alias(libs.plugins.graalvmNative)
 }
 
+val nativeImageJavaLauncher = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+    vendor.set(JvmVendorSpec.GRAAL_VM)
+}
+val graalVmHome = providers.environmentVariable("GRAALVM_HOME")
+
 graalvmNative {
+    metadataRepository {
+        enabled.set(false)
+    }
     binaries {
         named("main") {
+            if (!graalVmHome.isPresent) {
+                javaLauncher.set(nativeImageJavaLauncher)
+            }
             mainClass.set("org.instagene.app.cli.CliMainKt")
             imageName.set("instagene")
             buildArgs.addAll(

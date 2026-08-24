@@ -1,3 +1,5 @@
+@file:Suppress("UnstableApiUsage")
+
 // buildSrc is a nested build: with an explicit settings file it no longer
 // inherits anything from the parent build, so the three things it needs are
 // declared here:

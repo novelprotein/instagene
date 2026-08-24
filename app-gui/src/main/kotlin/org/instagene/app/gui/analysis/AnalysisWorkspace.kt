@@ -32,7 +32,26 @@ internal class AnalysisWorkspace(
     private var activeToolName: String? = null
     private val detachedPanels = mutableListOf<BoundAnalysisPanel>()
 
-    private val panelFactories: Map<String, () -> BoundAnalysisPanel>
+    private val panelFactories: Map<String, () -> BoundAnalysisPanel> = mapOf(
+        "Search" to { SearchAnalysisPanel(onReveal) },
+        "Alignment" to { AlignmentAnalysisPanel(prefs) },
+        "Repeats / Dot Plot" to { RepeatAnalysisPanel(prefs) },
+        "Enzymes" to { EnzymeAnalysisPanel() },
+        "CpG Methylation" to { CpGAnalysisPanel() },
+        "Assembly" to { AssemblyAnalysisPanel(onOpenSequence) },
+        "PCR / Mutagenesis" to { PcrAnalysisPanel(onOpenSequence) },
+        "Translation / Structure" to { TranslationAnalysisPanel(onOpenSequence) },
+        "Virtual Gel" to { GelAnalysisPanel() },
+        "Calculators" to { CalculatorAnalysisPanel() },
+        "NCBI / BLAST" to { NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis, prefs) },
+        "Chromatogram" to { ChromatogramAnalysisPanel() },
+        "CRISPR / gRNA" to { CrisprDesignAnalysisPanel() },
+        "Sanger Alignment" to { SangerAlignmentAnalysisPanel(prefs) },
+        "Primer Thermo" to { PrimerThermodynamicsAnalysisPanel() },
+        "Plasmid DB" to { PlasmidDatabaseAnalysisPanel(onOpenSequence) },
+        "Site Domestication" to { SiteDomesticationAnalysisPanel() },
+        "Statistics / Graphs" to { GraphAnalysisPanel(prefs) },
+    )
     private val activePanels = mutableMapOf<String, BoundAnalysisPanel>()
 
     private val categories: LinkedHashMap<ToolCategory, List<String>> = linkedMapOf(
@@ -44,27 +63,6 @@ internal class AnalysisWorkspace(
     )
 
     init {
-        panelFactories = mapOf(
-            "Search" to { SearchAnalysisPanel(onReveal) },
-            "Alignment" to { AlignmentAnalysisPanel(prefs) },
-            "Repeats / Dot Plot" to { RepeatAnalysisPanel(prefs) },
-            "Enzymes" to { EnzymeAnalysisPanel() },
-            "CpG Methylation" to { CpGAnalysisPanel() },
-            "Assembly" to { AssemblyAnalysisPanel(onOpenSequence) },
-            "PCR / Mutagenesis" to { PcrAnalysisPanel(onOpenSequence) },
-            "Translation / Structure" to { TranslationAnalysisPanel(onOpenSequence) },
-            "Virtual Gel" to { GelAnalysisPanel() },
-            "Calculators" to { CalculatorAnalysisPanel() },
-            "NCBI / BLAST" to { NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis, prefs) },
-            "Chromatogram" to { ChromatogramAnalysisPanel() },
-            "CRISPR / gRNA" to { CrisprDesignAnalysisPanel() },
-            "Sanger Alignment" to { SangerAlignmentAnalysisPanel(prefs) },
-            "Primer Thermo" to { PrimerThermodynamicsAnalysisPanel() },
-            "Plasmid DB" to { PlasmidDatabaseAnalysisPanel(onOpenSequence) },
-            "Site Domestication" to { SiteDomesticationAnalysisPanel() },
-            "Statistics / Graphs" to { GraphAnalysisPanel(prefs) },
-        )
-
         categories.forEach { (category, names) ->
             val tabs = JTabbedPane().apply {
                 names.forEach { name ->
@@ -89,12 +87,6 @@ internal class AnalysisWorkspace(
         doc = newDoc
         activePanels.values.forEach { it.bindDocument(newDoc) }
         detachedPanels.forEach { it.bindDocument(newDoc) }
-    }
-
-    fun selectCategory(category: ToolCategory) {
-        val index = categories.keys.indexOf(category)
-        if (index >= 0) categoryTabs.selectedIndex = index
-        activateSelectedTool(category)
     }
 
     fun selectTool(name: String) {

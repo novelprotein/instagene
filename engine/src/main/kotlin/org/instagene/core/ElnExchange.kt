@@ -187,6 +187,7 @@ object GenericZipElnAdapter : ElnAdapter {
     }
 
     /** Reads the versioned manifest without extracting any attachment. */
+    @Suppress("unused")
     fun readManifest(bundle: File): ElnBundleManifest = ZipFile(bundle).use(::readManifest)
 
     private fun readManifest(zip: ZipFile): ElnBundleManifest {
@@ -363,6 +364,7 @@ object GenericZipElnAdapter : ElnAdapter {
 /** The currently supported, intentionally offline ELN adapter catalog. */
 object ElnAdapters {
     val GENERIC_ZIP: ElnAdapter = GenericZipElnAdapter
+    @Suppress("unused")
     val AVAILABLE: List<ElnAdapter> = listOf(GENERIC_ZIP)
 }
 

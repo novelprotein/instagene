@@ -40,8 +40,8 @@ internal class CpGAnalysisPanel : BoundAnalysisPanel() {
                 appendLine("Shore:     $shore")
                 appendLine("Open sea:  $open")
                 appendLine()
-                for (entry in catalog) {
-                    appendLine("pos ${entry.position}\t${entry.context}")
+                for ((position, context) in catalog) {
+                    appendLine("pos $position\t$context")
                 }
             }
         }.onFailure { output.text = it.message ?: "CpG catalog failed" }
@@ -57,12 +57,12 @@ internal class CpGAnalysisPanel : BoundAnalysisPanel() {
             output.text = buildString {
                 appendLine("Methylation-Sensitive Isoschizomer Comparison")
                 appendLine("=".repeat(44))
-                for (r in reports) {
+                for ((pairLabel, _, _, totalSites, methylBlockedSites) in reports) {
                     appendLine()
-                    appendLine("${r.pairLabel}:")
-                    appendLine("  Total sites:      ${r.totalSites}")
-                    appendLine("  CpG-overlapping:  ${r.methylBlockedSites}")
-                    appendLine("  Methyl-blocked:   ${r.methylBlockedSites} of ${r.totalSites}")
+                    appendLine("$pairLabel:")
+                    appendLine("  Total sites:      $totalSites")
+                    appendLine("  CpG-overlapping:  $methylBlockedSites")
+                    appendLine("  Methyl-blocked:   $methylBlockedSites of $totalSites")
                 }
             }
         }.onFailure { output.text = it.message ?: "Comparison failed" }

@@ -114,7 +114,7 @@ object WorkflowReplays {
 
     private fun execute(operation: RecipeOperation, inputs: List<Seq>): Seq = when (operation) {
         is RecipeOperation.RestrictionCloning -> {
-            requireInputCount(inputs, 2, operation)
+            requireTwoInputs(inputs, operation)
             CloningWorkflows.restriction(inputs[0], inputs[1], enzymes(operation.enzymeNames), operation.productName).product
         }
         is RecipeOperation.OverlapAssembly -> {
@@ -132,15 +132,15 @@ object WorkflowReplays {
             CloningWorkflows.goldenGate(inputs, operation.overhangs, operation.productName, operation.circular).product
         }
         is RecipeOperation.Gateway -> {
-            requireInputCount(inputs, 2, operation)
+            requireTwoInputs(inputs, operation)
             CloningWorkflows.gateway(inputs[0], inputs[1], operation.leftSite, operation.rightSite, operation.productName).product
         }
         is RecipeOperation.TerminalCloning -> {
-            requireInputCount(inputs, 2, operation)
+            requireTwoInputs(inputs, operation)
             CloningWorkflows.terminalClone(operation.method, inputs[0], inputs[1], operation.productName).product
         }
         is RecipeOperation.PcrRestrictionCloning -> {
-            requireInputCount(inputs, 2, operation)
+            requireTwoInputs(inputs, operation)
             val (start, end) = parseOneBasedInclusiveRange(operation.insertTarget, inputs[1].length)
             PcrCloningWorkflows.designAndClone(
                 PcrCloningRequest(
@@ -157,7 +157,7 @@ object WorkflowReplays {
             ).product
         }
         is RecipeOperation.HomologyRecombination -> {
-            requireInputCount(inputs, 2, operation)
+            requireTwoInputs(inputs, operation)
             CloningWorkflows.homologyRecombination(
                 inputs[0],
                 inputs[1],
@@ -169,8 +169,8 @@ object WorkflowReplays {
         is RecipeOperation.Generic -> error("Generic recipes cannot be replayed")
     }
 
-    private fun requireInputCount(inputs: List<Seq>, expected: Int, operation: RecipeOperation) {
-        require(inputs.size == expected) { "${operation.operationType} requires exactly $expected inputs, found ${inputs.size}" }
+    private fun requireTwoInputs(inputs: List<Seq>, operation: RecipeOperation) {
+        require(inputs.size == 2) { "${operation.operationType} requires exactly 2 inputs, found ${inputs.size}" }
     }
 
     private fun enzymes(names: List<String>): List<Enzyme> {

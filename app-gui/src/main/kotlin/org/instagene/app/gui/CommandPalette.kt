@@ -2,7 +2,7 @@ package org.instagene.app.gui
 
 import java.awt.BorderLayout
 import java.awt.Component
-import java.awt.Dialog
+import java.awt.Dialog.ModalityType as DialogModalityType
 import java.awt.Dimension
 import javax.swing.AbstractAction
 import javax.swing.BorderFactory
@@ -63,7 +63,7 @@ object CommandPalette {
     fun show(parent: Component?, commands: List<CommandPaletteCommand>) {
         if (commands.isEmpty()) return
         val owner = parent?.let(SwingUtilities::getWindowAncestor)
-        val dialog = JDialog(owner, "Command Palette", Dialog.ModalityType.MODELESS).apply {
+        val dialog = JDialog(owner, "Command Palette", DialogModalityType.MODELESS).apply {
             defaultCloseOperation = JDialog.DISPOSE_ON_CLOSE
         }
         val query = JTextField()

@@ -64,13 +64,13 @@ object FileTypes {
     fun classify(file: File): FileType {
         if (file.isDirectory) return if (SeqProject.isProjectRoot(file)) FileType.PROJECT else FileType.UNKNOWN
         val ext = file.extension.lowercase()
-        when {
-            ext in alignmentExtensions -> return FileType.ALIGNMENT
-            ext in sequenceExtensions -> return FileType.SEQUENCE
-            ext in textExtensions -> return FileType.TEXT
-            ext in imageExtensions -> return FileType.IMAGE
-            ext in pdfExtensions -> return FileType.PDF
-            ext in chromatogramExtensions -> return FileType.CHROMATOGRAM
+        when (ext) {
+            in alignmentExtensions -> return FileType.ALIGNMENT
+            in sequenceExtensions -> return FileType.SEQUENCE
+            in textExtensions -> return FileType.TEXT
+            in imageExtensions -> return FileType.IMAGE
+            in pdfExtensions -> return FileType.PDF
+            in chromatogramExtensions -> return FileType.CHROMATOGRAM
         }
         // `.txt` (and anything else unknown) is decided by content: DNA stays a
         // sequence, prose and notes become text, binary goes to the system app.

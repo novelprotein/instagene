@@ -48,8 +48,8 @@ class EnzymeAnalysisTest {
     fun methylationSensitiveComparisonEmptySeq() {
         val seq = Seq(name = "empty", bases = "A".repeat(20), kind = SeqKind.DNA)
         val reports = EnzymeAnalysis.methylationSensitiveComparison(seq)
-        for (r in reports) {
-            assertEquals(0, r.totalSites, "No sites in poly-A sequence")
+        for ((_, _, _, totalSites) in reports) {
+            assertEquals(0, totalSites, "No sites in poly-A sequence")
         }
     }
 }

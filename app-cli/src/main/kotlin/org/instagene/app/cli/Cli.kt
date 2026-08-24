@@ -11,6 +11,11 @@ import kotlin.system.measureNanoTime
  * The command-line half of InstaGene. Every operation the GUI offers is also
  * reachable here, so sequences can be piped through shell pipelines.
  */
+private fun out(value: Any? = "") {
+    print(value)
+    print('\n')
+}
+
 object Cli {
 
     fun run(argv: List<String>): Int {
@@ -30,7 +35,7 @@ object Cli {
         } catch (e: AssemblyException) {
             System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
-        } catch (e: org.instagene.core.io.SeqIOException) {
+        } catch (e: SeqIOException) {
             System.err.println(Colors.red("instagene: ${e.message}", colors))
             1
         } catch (e: IOException) {
@@ -44,8 +49,8 @@ object Cli {
 
     private fun dispatch(command: String, args: Args) {
         when (command) {
-            "help", "--help", "-h" -> println(usage(args.colors))
-            "version", "--version" -> println(Colors.bold("InstaGene ${Version.VERSION}", args.colors))
+            "help", "--help", "-h" -> out(usage(args.colors))
+            "version", "--version" -> out(Colors.bold("InstaGene ${Version.VERSION}", args.colors))
             "enzymes" -> listEnzymes(args)
             "tools" -> externalTools(args)
             "sample" -> sample(args)
@@ -178,7 +183,7 @@ object Cli {
     // ---------------------------------------------------------------- commands
 
     private fun info(seq: Seq, args: Args) {
-        if (args.flag("json")) println(Reports.sequenceSummaryJson(seq))
+        if (args.flag("json")) out(Reports.sequenceSummaryJson(seq))
         else print(Reports.seqSummary(seq))
     }
 
@@ -186,27 +191,27 @@ object Cli {
         val seq = try {
             load(args)
         } catch (_: CliException) {
-            println("No input file. Fetching U03453 from NCBI...")
-            println()
+            out("No input file. Fetching U03453 from NCBI...")
+            out()
             NcbiClient().fetchGenBank("U03453")
         }
         val len = seq.length
-        val unit = if (seq.kind == org.instagene.core.SeqKind.PROTEIN) "aa" else "bp"
-        println("== Benchmark: ${seq.name} ($len $unit) ==")
-        println()
+        val unit = if (seq.kind == SeqKind.PROTEIN) "aa" else "bp"
+        out("== Benchmark: ${seq.name} ($len $unit) ==")
+        out()
 
         val repeats = 3
         fun bench(label: String, block: () -> Unit): Double {
             var total = 0L
             repeat(repeats) { total += measureNanoTime { block() } }
             val ms = (total / repeats) / 1_000_000.0
-            println("  %-40s %8.1f ms".format(label, ms))
+            out("  %-40s %8.1f ms".format(label, ms))
             return ms
         }
 
-        if (seq.kind != org.instagene.core.SeqKind.PROTEIN) {
+        if (seq.kind != SeqKind.PROTEIN) {
             // --- SequenceStatistics ---
-            println("--- SequenceStatistics ---")
+            out("--- SequenceStatistics ---")
             bench("computeStats") { SequenceStatistics.computeStats(seq) }
             if (len >= 200) {
                 bench("gcContentProfile(100, 50)") { SequenceStatistics.gcContentProfile(seq, 100, 50) }
@@ -222,30 +227,30 @@ object Cli {
             bench("tandemRepeats(1..10, minRepeats=3)") {
                 SequenceStatistics.tandemRepeats(seq, 1, 10, 3)
             }
-            println()
+            out()
 
             // --- SeqOps ---
-            println("--- SeqOps ---")
+            out("--- SeqOps ---")
             bench("transcribe") { SeqOps.transcribe(seq) }
             bench("backTranscribe") { SeqOps.backTranscribe(seq) }
             bench("translateBases(frame=0)") { SeqOps.translateBases(seq.bases, 0) }
             bench("baseCounts") { SeqOps.baseCounts(seq.bases) }
             bench("find(ATGCATGC)") { SeqOps.find(seq, "ATGCATGC") }
-            println()
+            out()
 
             // --- Digest ---
-            println("--- Digest ---")
+            out("--- Digest ---")
             val eco = Enzymes.require("EcoRI")
             bench("cutSites(EcoRI)") { Digest.cutSites(seq, eco) }
             bench("cutCounts(ALL ${Enzymes.ALL.size} enzymes)") { Digest.cutCounts(seq, Enzymes.ALL) }
             bench("digest(EcoRI + HindIII)") {
                 Digest.digest(seq, listOf(eco, Enzymes.require("HindIII")))
             }
-            println()
+            out()
 
             // --- Enzyme Analysis ---
             if (len >= 10_000) {
-                println("--- Enzyme Analysis ---")
+                out("--- Enzyme Analysis ---")
                 bench("reports(ALL)") { EnzymeAnalysis.reports(seq, Enzymes.ALL) }
                 bench("unique(ALL)") { EnzymeAnalysis.unique(seq, Enzymes.ALL) }
                 bench("absent(ALL)") { EnzymeAnalysis.absent(seq, Enzymes.ALL) }
@@ -256,11 +261,11 @@ object Cli {
                 bench("silentSites(0..$regionEnd)") {
                     EnzymeAnalysis.silentSites(seq, 0..regionEnd, Enzymes.ALL)
                 }
-                println()
+                out()
             }
 
             // --- ORFs and Search ---
-            println("--- ORFs and Search ---")
+            out("--- ORFs and Search ---")
             bench("findOrfs(30aa)") { SeqOps.findOrfs(seq, 30) }
             bench("orfDensity(200, 100)") { SequenceStatistics.orfDensity(seq, 200, 100) }
             bench("AdvancedSearch.find(ATGC, DNA, 2strands)") {
@@ -269,49 +274,49 @@ object Cli {
             bench("AdvancedSearch.find(MVSK, AA, 2strands)") {
                 AdvancedSearch.find(seq, SearchRequest("MVSK", SearchMode.AMINO_ACID, bothStrands = true))
             }
-            println()
+            out()
 
             // --- Primer Thermodynamics (on a 30-nt primer extracted from the sequence) ---
             if (len >= 30) {
-                println("--- Primer Thermodynamics (30 nt) ---")
+                out("--- Primer Thermodynamics (30 nt) ---")
                 val primer = seq.bases.substring(0, 30)
-                val rc = org.instagene.core.Alphabet.reverseComplement(primer)
+                val rc = Alphabet.reverseComplement(primer)
                 bench("thermodynamicResult") { PrimerThermodynamics.thermodynamicResult(primer) }
                 bench("selfDimer") { PrimerThermodynamics.selfDimer(primer) }
                 bench("heteroDimer(primer, rc)") { PrimerThermodynamics.heteroDimer(primer, rc) }
                 bench("assessHairpin") { PrimerThermodynamics.assessHairpin(primer) }
                 bench("fullScreen") { PrimerThermodynamics.fullScreen(primer) }
-                println()
+                out()
             }
 
             // --- Site Domestication ---
             if (len >= 100) {
-                println("--- Site Domestication ---")
+                out("--- Site Domestication ---")
                 bench("findInternalSites(8 enzymes)") { SiteDomestication.findInternalSites(seq) }
                 bench("suggestEnzyme(8 enzymes)") { SiteDomestication.suggestEnzyme(seq) }
                 bench("domesticate(8 enzymes)") {
                     SiteDomestication.domesticate(seq, SiteDomestication.GOLDEN_GATE_ENZYMES)
                 }
-                println()
+                out()
             }
 
             // --- Codon Optimization ---
-            println("--- Codon Optimization ---")
+            out("--- Codon Optimization ---")
             bench("reverseTranslate(1000 aa)") {
                 val aaBases = seq.bases.take(3000).chunked(3).joinToString("") {
                     SeqOps.translateBases(it, 0).first().toString()
                 }
-                CodonDesign.reverseTranslate(Seq(bases = aaBases, name = "protein", kind = org.instagene.core.SeqKind.PROTEIN))
+                CodonDesign.reverseTranslate(Seq(bases = aaBases, name = "protein", kind = SeqKind.PROTEIN))
             }
             bench("optimize(codon usage)") { CodonDesign.optimize(seq) }
-            println()
+            out()
         } else {
-            println("--- Amino Acid Composition ---")
+            out("--- Amino Acid Composition ---")
             bench("aminoAcidComposition") { SequenceStatistics.aminoAcidComposition(seq) }
-            println()
+            out()
         }
 
-        println("Done. (${repeats} repeats, averaged)")
+        out("Done. (${repeats} repeats, averaged)")
     }
 
     /** Writes an offline, vendor-neutral ELN/LIMS ZIP handoff for a sequence and optional attachments. */
@@ -351,9 +356,9 @@ object Cli {
             ),
         )
         if (args.flag("json")) {
-            println(Json { prettyPrint = true; encodeDefaults = true }.encodeToString(manifest))
+            out(Json { prettyPrint = true; encodeDefaults = true }.encodeToString(manifest))
         } else {
-            println("Wrote generic ELN/LIMS bundle: ${destination.path} (${manifest.artifacts.size} attachment(s))")
+            out("Wrote generic ELN/LIMS bundle: ${destination.path} (${manifest.artifacts.size} attachment(s))")
         }
     }
 
@@ -364,27 +369,27 @@ object Cli {
             val stopAtStop = args.flag("stop-at-stop")
             for (f in 0..2) {
                 val p = SeqOps.translate(seq, f, table, stopAtStop)
-                println(">${seq.name}_frame${f + 1}")
-                println(p.bases.chunked(60).joinToString("\n"))
+                out(">${seq.name}_frame${f + 1}")
+                out(p.bases.chunked(60).joinToString("\n"))
             }
             return
         }
         emit(SeqOps.translate(seq, frame, table, args.flag("stop-at-stop")), args)
     }
 
-    private fun gc(seq: Seq) = println("${round(SeqOps.gcContent(seq))} %")
+    private fun gc(seq: Seq) = out("${round(SeqOps.gcContent(seq))} %")
 
-    private fun tm(seq: Seq) = println("${round(SeqOps.meltingTemp(seq.bases))} C")
+    private fun tm(seq: Seq) = out("${round(SeqOps.meltingTemp(seq.bases))} C")
 
     private fun orfs(seq: Seq, args: Args) {
         val table = CodonTable.byId(args.int("table", 1))
         val minAa = args.int("min-aa", 30)
         val orfs = SeqOps.findOrfs(seq, minAa, table, !args.flag("forward-only"))
         if (orfs.isEmpty()) {
-            println("No ORFs of at least $minAa aa found.")
+            out("No ORFs of at least $minAa aa found.")
             return
         }
-        println(Reports.orfReport(seq, table, minAa, !args.flag("forward-only")))
+        out(Reports.orfReport(seq, table, minAa, !args.flag("forward-only")))
     }
 
     private fun find(seq: Seq, args: Args) {
@@ -395,7 +400,7 @@ object Cli {
             "aa", "amino", "protein" -> SearchMode.AMINO_ACID
             else -> throw CliException("--mode expects dna, literal, or amino")
         }
-        println(Reports.searchReport(seq, pattern, mode, !args.flag("forward-only"), args.int("mismatches", 0)))
+        out(Reports.searchReport(seq, pattern, mode, !args.flag("forward-only"), args.int("mismatches", 0)))
     }
 
     private fun align(reference: Seq, args: Args) {
@@ -421,11 +426,11 @@ object Cli {
             emitAlignment(alignment, args)
             return
         }
-        println(">reference ${reference.name}")
-        println(result.reference.sequence)
+        out(">reference ${reference.name}")
+        out(result.reference.sequence)
         result.queries.forEach {
-            println(">${it.name}\tscore=${round(it.score)}\tmatches=${it.matches}\tmismatches=${it.mismatches}\tgaps=${it.gaps}")
-            println(it.sequence)
+            out(">${it.name}\tscore=${round(it.score)}\tmatches=${it.matches}\tmismatches=${it.mismatches}\tgaps=${it.gaps}")
+            out(it.sequence)
         }
     }
 
@@ -516,21 +521,21 @@ object Cli {
         val enzymes = Enzymes.parseList(args.require("enzymes"))
         val result = VirtualGel.run(listOf(GelLane.Dna(seq.name, seq, enzymes, args.int("completion", 100))))
         val lane = result.lanes.single()
-        println("${lane.name} virtual digest")
-        lane.bands.forEach { println("${it.sizeBp}\tintensity=${round(it.relativeIntensity)}\tmigration=${round(result.migration(it.sizeBp))}") }
+        out("${lane.name} virtual digest")
+        lane.bands.forEach { out("${it.sizeBp}\tintensity=${round(it.relativeIntensity)}\tmigration=${round(result.migration(it.sizeBp))}") }
     }
 
     private fun identity(seq: Seq, args: Args) {
         if (args.flag("json")) {
-            println("{\"identity\":\"${SequenceIdentity.cdseguid(seq)}\",\"verified\":${SequenceIdentity.verify(seq)}}")
+            out("{\"identity\":\"${SequenceIdentity.cdseguid(seq)}\",\"verified\":${SequenceIdentity.verify(seq)}}")
         } else {
-            println("${SequenceIdentity.cdseguid(seq)}\tverified=${SequenceIdentity.verify(seq)}")
+            out("${SequenceIdentity.cdseguid(seq)}\tverified=${SequenceIdentity.verify(seq)}")
         }
     }
 
     private fun dilute(args: Args) {
         val result = MolecularCalculators.dilution(args.double("stock", 0.0), args.double("final", 0.0), args.double("volume", 0.0))
-        println("stock=${round(result.stockVolumeUl)} ul\tdiluent=${round(result.diluentVolumeUl)} ul\ttotal=${round(result.finalVolumeUl)} ul")
+        out("stock=${round(result.stockVolumeUl)} ul\tdiluent=${round(result.diluentVolumeUl)} ul\ttotal=${round(result.finalVolumeUl)} ul")
     }
 
     private fun mix(args: Args) {
@@ -539,18 +544,18 @@ object Cli {
             if (parts.size != 2) null else MasterMixComponent(parts[0].trim(), parts[1].trim().toDoubleOrNull() ?: 0.0)
         }
         val result = MolecularCalculators.masterMix(components, args.int("reactions", 1), args.double("overhead", 0.0))
-        result.components.forEach { println("${it.name}\t${round(it.volumeUl)} ul") }
-        println("total\t${round(result.totalVolumeUl)} ul")
+        result.components.forEach { out("${it.name}\t${round(it.volumeUl)} ul") }
+        out("total\t${round(result.totalVolumeUl)} ul")
     }
 
     private fun blastUrl(seq: Seq, args: Args) {
-        println(NcbiClient().blastUrl(seq, args.opt("program", "blastn"), args.double("expect", 100.0)))
+        out(NcbiClient().blastUrl(seq, args.opt("program", "blastn"), args.double("expect", 100.0)))
     }
 
     private fun ncbiSearch(args: Args) {
         val result = ncbiClient(args).searchNucleotide(args.require("term"), args.int("max-hits", 20))
-        result.hits.forEach { println("${it.accession}\t${it.title}") }
-        println("${result.hits.size} hit(s)")
+        result.hits.forEach { out("${it.accession}\t${it.title}") }
+        out("${result.hits.size} hit(s)")
         result.provenance.takeIf { it.isNotEmpty() }?.let { responses ->
             System.err.println("NCBI provenance: ${responses.joinToString(",") { it.origin.name.lowercase().replace('_', '-') }}")
         }
@@ -597,9 +602,9 @@ object Cli {
             args.flag("all") -> Enzymes.ALL
             else -> throw CliException("Specify --enzymes EcoRI,BamHI (or --all)")
         }
-        println(Reports.digestReport(seq, enzymes))
+        out(Reports.digestReport(seq, enzymes))
         if (args.flag("fasta")) {
-            println()
+            out()
             val fragments = Digest.digest(seq, enzymes)
             fragments.forEachIndexed { i, f -> print(SeqIO.write(f.toSeq("${seq.name}_frag${i + 1}"), SeqFormat.FASTA)) }
         }
@@ -609,12 +614,12 @@ object Cli {
         val counts = Digest.cutCounts(seq)
         val unique = counts.filterValues { it == 1 }.keys.sortedBy { it.name }
         val absent = counts.filterValues { it == 0 }.keys.sortedBy { it.name }
-        println("Unique cutters (${unique.size}):")
+        out("Unique cutters (${unique.size}):")
         unique.forEach { e ->
-            println("  %-10s %-12s at %d".format(e.name, e.notation(), Digest.cutSites(seq, e).first().topCut + 1))
+            out("  %-10s %-12s at %d".format(e.name, e.notation(), Digest.cutSites(seq, e).first().topCut + 1))
         }
-        println()
-        println("Non-cutters (${absent.size}): ${absent.joinToString(", ") { it.name }}")
+        out()
+        out("Non-cutters (${absent.size}): ${absent.joinToString(", ") { it.name }}")
     }
 
     private fun edit(seq: Seq, args: Args): Seq = when {
@@ -715,31 +720,31 @@ object Cli {
                 System.err.println("Wrote primer design report to ${file.absolutePath}")
             }
             if (args.flag("json")) {
-                println(Reports.primerDesignJson(report))
+                out(Reports.primerDesignJson(report))
                 return
             }
-            println("Amplicon ${from + 1}..$to (${to - from} bp) from ${seq.name}")
-            println("Mode: ${parameters.mode}")
-            println("Backend: ${result.backend}")
+            out("Amplicon ${from + 1}..$to (${to - from} bp) from ${seq.name}")
+            out("Mode: ${parameters.mode}")
+            out("Backend: ${result.backend}")
             result.warnings.forEach { System.err.println("warning: $it") }
             result.command?.let { System.err.println("command: $it") }
             result.qualitySummary?.let { summary ->
-                println(
+                out(
                     "Quality: Q${summary.minimumPhred}; observed ${summary.observedPositions.size}/${seq.length}; " +
                         "low-quality ${QualityRegions.oneBased(summary.lowQualityRegions).ifBlank { "none" }}; " +
                         "uncovered ${QualityRegions.oneBased(summary.uncoveredRegions).ifBlank { "none" }}",
                 )
             }
-            if (result.candidates.isEmpty()) println("No candidates passed the filters.")
+            if (result.candidates.isEmpty()) out("No candidates passed the filters.")
             result.candidates.take(100).forEach { candidate ->
-                println("${candidate.primer.name}\t${candidate.start + 1}..${candidate.end}\t${candidate.primer.bases}\tTm=${"%.1f".format(candidate.primer.tm)}\tGC=${"%.1f".format(candidate.primer.gc)}\tscore=${"%.2f".format(candidate.score)}")
+                out("${candidate.primer.name}\t${candidate.start + 1}..${candidate.end}\t${candidate.primer.bases}\tTm=${"%.1f".format(candidate.primer.tm)}\tGC=${"%.1f".format(candidate.primer.gc)}\tscore=${"%.2f".format(candidate.score)}")
             }
             return
         }
         val (fwd, rev) = SeqOps.designPrimers(seq, from, to, targetTm)
-        println("Amplicon ${from + 1}..$to (${to - from} bp) from ${seq.name}")
-        println("  $fwd")
-        println("  $rev")
+        out("Amplicon ${from + 1}..$to (${to - from} bp) from ${seq.name}")
+        out("  $fwd")
+        out("  $rev")
     }
 
     /** Builds the optional quality context used by `primers --advanced`. */
@@ -908,7 +913,7 @@ object Cli {
         if (args.flag("json")) {
             // A named output may still be written; stdout remains a JSON contract for automation.
             if (args.opt("out") != null) emit(product, args)
-            println(Reports.workflowReplayJson(result))
+            out(Reports.workflowReplayJson(result))
         } else {
             result.messages.forEach { System.err.println(it) }
             emit(product, args)
@@ -918,11 +923,11 @@ object Cli {
     private fun listEnzymes(args: Args) {
         val filter = args.opt("filter")?.lowercase()
         val shown = Enzymes.ALL.filter { filter == null || it.name.lowercase().contains(filter) }
-        println("%-12s %-12s %-14s %s".format("name", "site", "cut", "ends"))
+        out("%-12s %-12s %-14s %s".format("name", "site", "cut", "ends"))
         shown.forEach {
-            println("%-12s %-12s %-14s %s".format(it.name, it.site, it.notation(), it.endType.label))
+            out("%-12s %-12s %-14s %s".format(it.name, it.site, it.notation(), it.endType.label))
         }
-        println("${shown.size} enzyme(s).")
+        out("${shown.size} enzyme(s).")
     }
 
     private fun externalTools(args: Args) {
@@ -938,7 +943,7 @@ object Cli {
                 )
             } ?: ExternalTools.CATALOG
             val health = ExternalTools.healthChecks(selected, timeout.toLong())
-            if (args.flag("json")) println(ExternalTools.healthJson(health)) else print(ExternalTools.healthReport(health))
+            if (args.flag("json")) out(ExternalTools.healthJson(health)) else print(ExternalTools.healthReport(health))
             return
         }
         if (toolId == null) {
@@ -956,9 +961,9 @@ object Cli {
         val extra = args.opt("args")?.split(' ')?.filter { it.isNotBlank() } ?: emptyList()
         if (args.flag("preview")) {
             val preview = ExternalTools.commandPreview(tool, placeholders, extra)
-            println("$ ${preview.render()}")
+            out("$ ${preview.render()}")
             if (preview.missingPlaceholders.isNotEmpty()) {
-                println("Missing required values: ${preview.missingPlaceholders.joinToString(", ")}")
+                out("Missing required values: ${preview.missingPlaceholders.joinToString(", ")}")
             }
             return
         }
@@ -973,12 +978,12 @@ object Cli {
     private fun sample(args: Args) {
         val requested = args.positional(0) ?: args.opt("name")
         if (requested == null) {
-            println("Bundled samples:")
+            out("Bundled samples:")
             SeqIO.Samples.ALL.forEach { seq ->
-                println("- ${seq.name}: ${seq.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()}")
+                out("- ${seq.name}: ${seq.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()}")
             }
-            println("- ${SeqIO.Samples.CHROMATOGRAM_DEMO.name}: ${SeqIO.Samples.CHROMATOGRAM_DEMO.source}")
-            println("- alignment_demo: ${SeqIO.Samples.ALIGNMENT_DEMO_SOURCE}")
+            out("- ${SeqIO.Samples.CHROMATOGRAM_DEMO.name}: ${SeqIO.Samples.CHROMATOGRAM_DEMO.source}")
+            out("- alignment_demo: ${SeqIO.Samples.ALIGNMENT_DEMO_SOURCE}")
             return
         }
         val seq = SeqIO.Samples.ALL.firstOrNull { it.name.equals(requested, ignoreCase = true) }

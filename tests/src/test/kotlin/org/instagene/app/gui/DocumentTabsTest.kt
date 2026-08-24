@@ -230,7 +230,7 @@ class DocumentTabsTest {
         val active = content.activeDocument
         assertEquals("b.fasta", active.file?.name)
         val tabs = (0 until content.toolTabs.tabCount).map { "${it}:${content.toolTabs.getTitleAt(it)}" }
-        assertTrue(content.toolTabs.selectedIndex == 3, "project layout tab was not restored: selected=${content.toolTabs.selectedIndex}, tabs=$tabs")
+        assertEquals(3, content.toolTabs.selectedIndex, "project layout tab was not restored: tabs=$tabs")
         onEdt {
             content.fileBrowserToggle.doClick()
             content.projectSplit.doLayout()

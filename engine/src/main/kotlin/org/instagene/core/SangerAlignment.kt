@@ -96,7 +96,7 @@ object SangerAlignment {
         }
         val avgIdentity = if (aligned.isNotEmpty()) aligned.map { it.identity }.average() else 0.0
         val covered = aligned.flatMap { it.referenceStart until (it.referenceStart + it.referenceLength) }.toSet()
-        return SangerAlignmentResult(aligned, AlignmentSummary(aligned.size, avgIdentity, (0 until ref.length).count { it !in covered }))
+        return SangerAlignmentResult(aligned, AlignmentSummary(aligned.size, avgIdentity, ref.indices.count { it !in covered }))
     }
 
     fun alignChromatograms(reference: Seq, reads: List<ChromatogramRecord>, options: SangerOptions = SangerOptions()): SangerAlignmentResult =

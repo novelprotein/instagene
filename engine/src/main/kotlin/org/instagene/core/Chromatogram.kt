@@ -20,6 +20,7 @@ data class ChromatogramRecord(
     val trace: ChromatogramTrace? = null,
 ) {
     fun toSeq(): Seq = Seq(name, bases, SeqKind.DNA, metadata = mapOf("CHROMATOGRAM" to source))
+    @Suppress("unused")
     fun toSangerRead(): SangerRead = SangerRead(name, bases, qualities)
 }
 

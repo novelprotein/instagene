@@ -330,14 +330,14 @@ object GenBank {
                 values.forEach { value -> appendQualifier(key, value) }
             }
         }
-        for (primer in seq.primers.sortedBy { it.bindingStart }) {
-            val range = "${primer.bindingStart + 1}..${primer.bindingEnd}"
-            val location = if (primer.strand == Strand.REVERSE) "complement($range)" else range
+        for ((name, bases, bindingStart, bindingEnd, strand, extension, description) in seq.primers.sortedBy { it.bindingStart }) {
+            val range = "${bindingStart + 1}..$bindingEnd"
+            val location = if (strand == Strand.REVERSE) "complement($range)" else range
             append("     %-16s%s\n".format("primer_bind", location))
-            appendQualifier("label", primer.name)
-            appendQualifier("sequence", primer.bases)
-            if (primer.extension.isNotBlank()) appendQualifier("extension", primer.extension)
-            if (primer.description.isNotBlank()) appendQualifier("note", primer.description)
+            appendQualifier("label", name)
+            appendQualifier("sequence", bases)
+            if (extension.isNotBlank()) appendQualifier("extension", extension)
+            if (description.isNotBlank()) appendQualifier("note", description)
         }
         append("ORIGIN\n")
         append(origin(seq.bases))

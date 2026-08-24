@@ -43,6 +43,7 @@ data class FeatureTranslationResult(
     val isInFrame: Boolean get() = trailingPositions.isEmpty()
     val hasErrors: Boolean get() = issues.any { it.severity == TranslationValidationSeverity.ERROR }
     val hasWarnings: Boolean get() = issues.any { it.severity == TranslationValidationSeverity.WARNING }
+    @Suppress("unused")
     val validationStatus: TranslationValidationSeverity
         get() = when {
             hasErrors -> TranslationValidationSeverity.ERROR

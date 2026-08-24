@@ -93,6 +93,7 @@ object LabLibraryFiles {
         LibraryImportMode.MERGE -> normalizeDefinitions(existing + imported)
     }
 
+    @Suppress("unused")
     fun mergeEnzymes(
         existing: Collection<Enzyme>,
         imported: Collection<Enzyme>,

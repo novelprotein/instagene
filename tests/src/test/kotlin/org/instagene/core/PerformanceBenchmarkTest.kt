@@ -20,6 +20,15 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
  * run instead of going unnoticed.
  */
 class PerformanceBenchmarkTest {
+    private companion object {
+        const val GENOME_LENGTH = 20_000_000
+        const val MEAN_REPEATS = 3
+    }
+
+    private fun out(value: Any? = "") {
+        print(value)
+        print('\n')
+    }
 
     @Test
     fun digestHotPathsOverSyntheticGenome() {
@@ -28,42 +37,41 @@ class PerformanceBenchmarkTest {
             "performance benchmark skipped (set -Dinstagene.perf=true to run)",
         )
 
-        val length = 20_000_000
-        val genome = Seq(bases = randomDna(length))
+        val genome = Seq(bases = randomDna())
         val pool = Enzymes.ALL
         val eco = Enzymes.require("EcoRI")
 
-        println("== Digest performance over a $length bp synthetic genome ==")
-        println("Enzyme catalog: ${pool.size} enzymes")
+        out("== Digest performance over a $GENOME_LENGTH bp synthetic genome ==")
+        out("Enzyme catalog: ${pool.size} enzymes")
 
         // Per-enzyme site scan (cutSites builds the site list).
-        val single = meanNanos(3) { Digest.cutSites(genome, eco) }
-        println("cutSites(genome, EcoRI):           ${single / 1_000_000.0} ms / run")
+        val single = meanNanos { Digest.cutSites(genome, eco) }
+        out("cutSites(genome, EcoRI):           ${single / 1_000_000.0} ms / run")
         assertTrue(single < 2_000_000_000L, "cutSites took ${single / 1_000_000.0} ms, expected < 2 s")
 
         // Allocation-free count over the whole catalog (what the Digest panel's
         // Cuts column computes on a background thread).
-        val counts = meanNanos(3) { Digest.cutCounts(genome, pool) }
-        println("cutCounts(genome, ${pool.size} enzymes): ${counts / 1_000_000.0} ms / run")
+        val counts = meanNanos { Digest.cutCounts(genome, pool) }
+        out("cutCounts(genome, ${pool.size} enzymes): ${counts / 1_000_000.0} ms / run")
         assertTrue(counts < 30_000_000_000L, "cutCounts took ${counts / 1_000_000.0} ms, expected < 30 s")
 
-        val countSites = meanNanos(3) { pool.sumOf { Digest.countSites(genome, it) } }
-        println("countSites per enzyme (sum):       ${countSites / 1_000_000.0} ms / run")
+        val countSites = meanNanos { pool.sumOf { Digest.countSites(genome, it) } }
+        out("countSites per enzyme (sum):       ${countSites / 1_000_000.0} ms / run")
         assertTrue(countSites < 30_000_000_000L, "countSites took ${countSites / 1_000_000.0} ms, expected < 30 s")
     }
 
-    private fun meanNanos(repeats: Int, block: () -> Unit): Long {
+    private fun meanNanos(block: () -> Unit): Long {
         var total = 0L
-        repeat(repeats) {
+        repeat(MEAN_REPEATS) {
             total += measureNanoTime { block() }
         }
-        return total / repeats
+        return total / MEAN_REPEATS
     }
 
-    private fun randomDna(length: Int): String {
+    private fun randomDna(): String {
         val rng = Random(42)
-        val sb = StringBuilder(length)
-        repeat(length) { sb.append("ACGT"[rng.nextInt(4)]) }
+        val sb = StringBuilder(GENOME_LENGTH)
+        repeat(GENOME_LENGTH) { sb.append("ACGT"[rng.nextInt(4)]) }
         return sb.toString()
     }
 }

@@ -23,13 +23,13 @@ abstract class VerifyNativeFileAssociationsTask : DefaultTask() {
     @TaskAction
     fun verify() {
         val manifestEntries = manifestFile.get().asFile.readLines()
+            .asSequence()
             .filter { it.isNotBlank() && !it.startsWith("#") }
-            .map { line ->
+            .associate { line ->
                 val fields = line.split('\t')
                 check(fields.size == 3) { "Invalid association manifest line: $line" }
                 fields[0] to fields.drop(1)
             }
-            .toMap()
 
         val packageEntries = packageFiles.files.associate { file ->
             val properties = Properties().apply { file.inputStream().use(::load) }

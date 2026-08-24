@@ -100,10 +100,10 @@ object QualityRegions {
                 ?: throw IllegalArgumentException("Invalid quality region '$token'.")
             val last = match.groupValues[2].ifBlank { match.groupValues[1] }.toIntOrNull()
                 ?: throw IllegalArgumentException("Invalid quality region '$token'.")
-            require(first >= 1 && last >= first && last <= templateLength) {
+            require(first in 1..last && last <= templateLength) {
                 "Quality region '$token' is outside 1..$templateLength."
             }
-            ManualQualityExclusion((first - 1)..(last - 1), reason)
+            ManualQualityExclusion((first - 1)..<last, reason)
         }
     }
 
@@ -187,8 +187,10 @@ data class PrimerQualityContext(
             }
         }.distinct()
 
+    @Suppress("unused")
     fun withEvidence(additional: Iterable<QualityEvidence>): PrimerQualityContext = copy(evidence = evidence + additional)
 
+    @Suppress("unused")
     fun withManualExclusions(additional: Iterable<ManualQualityExclusion>): PrimerQualityContext =
         copy(manualExcludedRegions = manualExcludedRegions + additional)
 

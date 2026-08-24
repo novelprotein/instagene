@@ -53,7 +53,7 @@ class GenBankTest {
         assertEquals(6, tail.start)
         assertEquals(12, tail.end)
 
-        assertEquals(2, seq.features.count { it.name == "split" || it.notes.contains("split") || it.name == "split" })
+        assertEquals(2, seq.features.count { it.name == "split" || it.notes.contains("split") })
         // join produces two features sharing a label/note
         assertTrue(seq.features.size >= 4)
     }

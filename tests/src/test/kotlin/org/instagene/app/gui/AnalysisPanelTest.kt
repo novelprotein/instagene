@@ -175,7 +175,7 @@ class AnalysisPanelTest {
                 val table = nucleotideTable(panel)
                 assertEquals("J01636.1", table.getValueAt(0, 0))
                 assertEquals("Example nucleotide record", table.getValueAt(0, 1))
-                assertTrue(table.selectedRow == 0)
+                assertEquals(0, table.selectedRow)
                 val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
                 assertTrue(fetchButton.isEnabled)
                 fetchButton.doClick()
@@ -399,7 +399,7 @@ class AnalysisPanelTest {
             awaitCondition { fetched.size == 1 && fetchButton.isEnabled }
             onEdt {
                 val table = nucleotideTable(panel)
-                popupClick(table, 0)
+                popupClick(table)
                 val fetchItem = table.componentPopupMenu.components.filterIsInstance<JMenuItem>().single { it.text == "Fetch GenBank" }
                 assertTrue(fetchItem.isEnabled)
                 fetchItem.doClick()
@@ -457,7 +457,7 @@ class AnalysisPanelTest {
                 assertEquals("NC_000913.3", table.getValueAt(0, 0))
                 assertTrue(descendants(panel, JButton::class.java).none { it.text == "Open BLAST Hit" })
                 table.clearSelection()
-                popupClick(table, 0)
+                popupClick(table)
                 assertEquals(0, table.selectedRow)
                 val openItem = table.componentPopupMenu.components.filterIsInstance<JMenuItem>().single { it.text == "Open BLAST Hit" }
                 assertTrue(openItem.isEnabled)
@@ -520,7 +520,7 @@ class AnalysisPanelTest {
                 ).also { it.selectTool("NCBI / BLAST") }
             }
             val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
-            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+            val source = sharedQueryComboBox(panel)
 
             onEdt {
                 ncbiQueryField(panel).text = "J01636.1"
@@ -564,7 +564,7 @@ class AnalysisPanelTest {
                     ncbiPollIntervalMillis = 0,
                 ).also { it.selectTool("NCBI / BLAST") }
             }
-            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+            val source = sharedQueryComboBox(panel)
             val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
             val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
 
@@ -595,7 +595,7 @@ class AnalysisPanelTest {
         val fetched = ArrayList<String>()
         withApiServer(onFetch = fetched::add) { base ->
             val panel = ncbiPanel(base)
-            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+            val source = sharedQueryComboBox(panel)
             val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
             val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
 
@@ -643,7 +643,7 @@ class AnalysisPanelTest {
                 ).also { it.selectTool("NCBI / BLAST") }
             }
             val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
-            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+            val source = sharedQueryComboBox(panel)
 
             onEdt {
                 assertTrue(runButton.isEnabled)
@@ -730,7 +730,7 @@ class AnalysisPanelTest {
             }
             val searchButton = descendants(panel, JButton::class.java).single { it.text == "Search NCBI" }
             val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
-            val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+            val source = sharedQueryComboBox(panel)
 
             onEdt {
                 source.selectItem("Selected bases")
@@ -774,7 +774,7 @@ class AnalysisPanelTest {
                     it.analysisPanel.selectTool("NCBI / BLAST")
                 }
             }
-            val source = comboBox(content.analysisPanel, "Typed term", "Selected bases", "Whole sequence")
+            val source = sharedQueryComboBox(content.analysisPanel)
             val searchButton = descendants(content.analysisPanel, JButton::class.java)
                 .single { it.text == "Search NCBI" }
 
@@ -796,7 +796,7 @@ class AnalysisPanelTest {
         panel.setSize(640, 420)
         panel.doLayout()
 
-        val source = comboBox(panel, "Typed term", "Selected bases", "Whole sequence")
+        val source = sharedQueryComboBox(panel)
         val runButton = descendants(panel, JButton::class.java).single { it.text == "Run BLAST" }
         val fetchButton = descendants(panel, JButton::class.java).single { it.text == "Fetch GenBank" }
         val queryButtons = runButton.parent.components.filterIsInstance<JButton>().map { it.text }
@@ -819,7 +819,7 @@ class AnalysisPanelTest {
             .also { it.selectTool("NCBI / BLAST") }
 
         val cache = descendants(panel, JComboBox::class.java).single { it.name == "ncbiCacheMode" }
-        assertEquals("Network only", cache.selectedItem.toString())
+        assertEquals("Network only", cache.selectedLabel())
 
         cache.selectedIndex = (0 until cache.itemCount).first { cache.getItemAt(it).toString() == "Cache only (offline)" }
         assertEquals("CACHE_ONLY", prefs.value.onlineCacheMode)
@@ -827,7 +827,7 @@ class AnalysisPanelTest {
         val reopened = AnalysisPanel(SeqDocument(Seq("query", "ACGTACGT")), {}, { _, _ -> }, prefs = prefs)
             .also { it.selectTool("NCBI / BLAST") }
         val reopenedCache = descendants(reopened, JComboBox::class.java).single { it.name == "ncbiCacheMode" }
-        assertEquals("Cache only (offline)", reopenedCache.selectedItem.toString())
+        assertEquals("Cache only (offline)", reopenedCache.selectedLabel())
     }
 
     private fun nucleotideTable(panel: AnalysisPanel): JTable = descendants(panel, JTable::class.java).single {
@@ -858,10 +858,14 @@ class AnalysisPanelTest {
         selectedIndex = (0 until itemCount).first { getItemAt(it) == label }
     }
 
-    private fun comboBox(panel: AnalysisPanel, vararg labels: String): JComboBox<*> =
-        descendants(panel, JComboBox::class.java).single { combo ->
+    private fun JComboBox<*>.selectedLabel(): String = selectedItem?.toString().orEmpty()
+
+    private fun sharedQueryComboBox(panel: AnalysisPanel): JComboBox<*> {
+        val labels = listOf("Typed term", "Selected bases", "Whole sequence")
+        return descendants(panel, JComboBox::class.java).single { combo ->
             labels.all { label -> (0 until combo.itemCount).any { combo.getItemAt(it) == label } }
         }
+    }
 
     private fun ncbiQueryField(panel: AnalysisPanel): JTextField =
         descendants(panel, JTextField::class.java).single { it.name == "ncbiSharedQuery" }
@@ -896,8 +900,8 @@ class AnalysisPanelTest {
         )
     }
 
-    private fun popupClick(table: JTable, row: Int) {
-        val y = row * table.rowHeight + table.rowHeight / 2
+    private fun popupClick(table: JTable) {
+        val y = table.rowHeight / 2
         val event = MouseEvent(
             table,
             MouseEvent.MOUSE_RELEASED,

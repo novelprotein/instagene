@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.app.gui
 
 import org.instagene.app.gui.prefs.Prefs
@@ -92,6 +94,7 @@ import javax.swing.JSplitPane
 import javax.swing.JTabbedPane
 import javax.swing.JToggleButton
 import javax.swing.JTextField
+import javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT as FocusedAncestorInputMap
 import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 import javax.swing.SwingWorker
@@ -1547,7 +1550,7 @@ class InstaGeneContent(
     }
 
     private fun installCommandPaletteShortcut() {
-        getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+        getInputMap(FocusedAncestorInputMap)
             .put(commandPaletteShortcut(), "show-command-palette")
         actionMap.put("show-command-palette", object : javax.swing.AbstractAction() {
             override fun actionPerformed(event: java.awt.event.ActionEvent?) = showCommandPalette()

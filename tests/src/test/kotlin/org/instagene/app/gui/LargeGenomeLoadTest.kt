@@ -22,6 +22,15 @@ import kotlin.test.assertTrue
  * would run out of memory. Run with `-Dinstagene.heap=3g` (see build.gradle.kts).
  */
 class LargeGenomeLoadTest {
+    private companion object {
+        const val CONTIGS = 22
+        const val BASES_PER_CONTIG = 130_000_000
+    }
+
+    private fun out(value: Any? = "") {
+        print(value)
+        print('\n')
+    }
 
     private val workerErrors = ArrayList<Throwable>()
     private val edtErrors = ArrayList<Throwable>()
@@ -35,18 +44,18 @@ class LargeGenomeLoadTest {
         }
     }
 
-    /** Writes a FASTA containing [contigs] records of [basesPerContig] nucleotides each. */
-    private fun fasta(contigs: Int, basesPerContig: Int): File {
+    /** Writes a FASTA containing [CONTIGS] records of [BASES_PER_CONTIG] nucleotides each. */
+    private fun fasta(): File {
         val file = Files.createTempFile("genome", ".fna").toFile()
         file.deleteOnExit()
         val alphabet = "ACGT"
         var x = 123456789
         BufferedWriter(FileWriter(file), 1 shl 20).use { w ->
-            for (c in 0 until contigs) {
+            for (c in 0 until CONTIGS) {
                 w.write(">chr${c + 1} synthetic contig ${c + 1}\n")
                 val line = CharArray(60)
                 var col = 0
-                repeat(basesPerContig) {
+                repeat(BASES_PER_CONTIG) {
                     x = x * 1664525 + 1013904223 and 0xFFFFFFFF.toInt()
                     line[col++] = alphabet[Math.floorMod(x, 4)]
                     if (col == 60) {
@@ -67,14 +76,12 @@ class LargeGenomeLoadTest {
     @Test
     fun multiContigGenomeLargerThanHeapLoadsFirstContig() {
         installTrap()
-        val contigs = 22
-        val basesPerContig = 130_000_000
-        val totalBases = contigs.toLong() * basesPerContig
-        println("generating $contigs x $basesPerContig bp FASTA (${totalBases} bp total)...")
-        val file = fasta(contigs, basesPerContig)
+        val totalBases = CONTIGS.toLong() * BASES_PER_CONTIG
+        out("generating $CONTIGS x $BASES_PER_CONTIG bp FASTA (${totalBases} bp total)...")
+        val file = fasta()
         var content: InstaGeneContent? = null
         try {
-            println("generated ${file.length() / (1024.0 * 1024.0)} MB FASTA")
+            out("generated ${file.length() / (1024.0 * 1024.0)} MB FASTA")
             assertTrue(file.length() > 2L * 1024 * 1024 * 1024, "file should exceed 2 GB to hit the old Int-overflow path")
 
             var engineSeq: Seq? = null
@@ -82,12 +89,12 @@ class LargeGenomeLoadTest {
                 try {
                     engineSeq = SeqIO.read(file)
                 } catch (t: Throwable) {
-                    println("engine read FAILED: ${t.javaClass.simpleName}: ${t.message}")
+                    out("engine read FAILED: ${t.javaClass.simpleName}: ${t.message}")
                     t.printStackTrace()
                 }
             }
-            println("engine read: ${engineSeq?.length} bp, name=${engineSeq?.name} (${readMs}ms)")
-            assertEquals(basesPerContig, engineSeq?.length, "engine should load only the first contig")
+            out("engine read: ${engineSeq?.length} bp, name=${engineSeq?.name} (${readMs}ms)")
+            assertEquals(BASES_PER_CONTIG, engineSeq?.length, "engine should load only the first contig")
             assertEquals("chr1", engineSeq?.name)
 
             SwingUtilities.invokeAndWait { content = InstaGeneContent(null) }
@@ -100,15 +107,15 @@ class LargeGenomeLoadTest {
             while (System.currentTimeMillis() - loadStart < 120_000) {
                 SwingUtilities.invokeAndWait { }
                 Thread.sleep(50)
-                if (loadedContent.doc.seq.length == basesPerContig) {
+                if (loadedContent.doc.seq.length == BASES_PER_CONTIG) {
                     landed = true
                     break
                 }
             }
             val loadMs = System.currentTimeMillis() - loadStart
-            println("GUI load landed=$landed in ${loadMs}ms, doc.length=${loadedContent.doc.seq.length}")
+            out("GUI load landed=$landed in ${loadMs}ms, doc.length=${loadedContent.doc.seq.length}")
             assertTrue(landed, "first contig never landed in the document")
-            assertEquals(basesPerContig, loadedContent.doc.seq.length)
+            assertEquals(BASES_PER_CONTIG, loadedContent.doc.seq.length)
             assertEquals("chr1", loadedContent.doc.seq.name)
 
             synchronized(workerErrors) {

@@ -194,7 +194,7 @@ object Reports {
         appendLine("Base counts: A=${counts.getOrDefault('A', 0)} T=${counts.getOrDefault('T', 0)} G=${counts.getOrDefault('G', 0)} C=${counts.getOrDefault('C', 0)}")
         if (seq.features.isNotEmpty()) {
             appendLine("Features (${seq.features.size}):")
-            for (f in seq.features) appendLine("  ${f.type}: ${f.name} (${f.start + 1}..${f.end}, ${f.strand})")
+            for ((name, type, start, end, strand) in seq.features) appendLine("  $type: $name (${start + 1}..$end, $strand)")
         }
         val cutting = Digest.enzymesCutting(seq)
         if (cutting.isNotEmpty()) {
@@ -228,8 +228,8 @@ object Reports {
         val fragments = Digest.digestSites(seq, allSites)
         appendLine("== Cut Sites ==")
         appendLine(String.format("%-12s %-8s %-10s %-10s", "Enzyme", "Pos", "Top", "Bottom"))
-        for (site in allSites) {
-            appendLine(String.format("%-12s %-8d %-10s %-10s", site.enzyme.name, site.topCut + 1, site.topCut + 1, site.bottomCut + 1))
+        for ((enzyme, _, topCut, bottomCut) in allSites) {
+            appendLine(String.format("%-12s %-8d %-10s %-10s", enzyme.name, topCut + 1, topCut + 1, bottomCut + 1))
         }
         appendLine()
         appendLine("== Fragments ==")
@@ -259,8 +259,8 @@ object Reports {
     ): String = buildString {
         val request = SearchRequest(pattern, mode, bothStrands, maxMismatches = maxMismatches)
         val hits = AdvancedSearch.find(seq, request)
-        for (hit in hits) {
-            appendLine("${hit.start + 1}\t${hit.end}\t${hit.strand}\t${hit.mismatches}\t${hit.matched}")
+        for ((start, end, strand, mismatches, matched) in hits) {
+            appendLine("${start + 1}\t$end\t$strand\t$mismatches\t$matched")
         }
         appendLine("Found ${hits.size} matches")
     }
@@ -667,7 +667,7 @@ object Reports {
             .toList()
             .ifEmpty { listOf("") }
         val pageLines = lines.chunked(58)
-        data class PdfPage(val pageObject: Int, val contentObject: Int, val content: ByteArray)
+        class PdfPage(val pageObject: Int, val contentObject: Int, val content: ByteArray)
         var nextObject = 4
         val pages = pageLines.map { page ->
             val pageObject = nextObject++

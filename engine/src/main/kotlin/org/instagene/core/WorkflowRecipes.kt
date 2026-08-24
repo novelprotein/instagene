@@ -227,8 +227,7 @@ object WorkflowRecipes {
         fun names(key: String): List<String> = value(key).split(',').map(String::trim).filter(String::isNotEmpty)
         fun bool(key: String, default: Boolean): Boolean = value(key, default.toString()).equals("true", ignoreCase = true)
         fun integer(key: String, default: Int): Int = value(key, default.toString()).toIntOrNull() ?: default
-        val normalized = operation.trim().uppercase().replace(' ', '_').replace('-', '_')
-        return when (normalized) {
+        return when (val normalized = operation.trim().uppercase().replace(' ', '_').replace('-', '_')) {
             "RESTRICTION", "RESTRICTION_CLONING" -> RecipeOperation.RestrictionCloning(
                 enzymeNames = names("enzymeNames"),
                 productName = value("productName", outputName),

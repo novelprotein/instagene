@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.TableLabels
