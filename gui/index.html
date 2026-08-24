@@ -16,7 +16,7 @@
         <link rel="prev" href="../cli/">
       
       
-        <link rel="next" href="../workflows/">
+        <link rel="next" href="../tasks/">
       
       
         
@@ -297,6 +297,33 @@
     
   
     Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundled Examples
   
 
     
@@ -666,6 +693,87 @@
   
   
     <li class="md-nav__item">
+      <a href="../tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Researcher Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration and Exchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../workflows/" class="md-nav__link">
         
   
@@ -728,6 +836,33 @@
     
   
     Release and Packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native Installer Verification
   
 
     
@@ -1146,8 +1281,9 @@ be retained.</p>
 for the active sequence. Select an enzyme to inspect individual sites, check
 enzymes for a working digest, and review the resulting fragments. The panel
 also supports custom enzyme definitions and catalog preferences. Large-sequence
-cut counts arrive asynchronously so the editor remains usable while a scan is
-running.</p>
+cut counts arrive asynchronously; completed enzyme rows surface as the catalog
+scan progresses, with a completed-enzyme counter and <strong>Cancel scan</strong> control,
+so the editor remains usable while a scan is running.</p>
 <h3 id="analysis">Analysis<a class="headerlink" href="#analysis" title="Permanent link">&para;</a></h3>
 <p><img alt="Analysis tab showing assembly workflow controls" src="../screenshots/analysis.png" /></p>
 <p>Analysis groups workflows by task rather than by file format. Depending on the
@@ -1164,6 +1300,14 @@ contains them. The report distinguishes substitutions, low-quality calls,
 insertions, deletions, and uncovered reference bases. Unreadable files are
 summarized without discarding valid reads; export the completed verification as
 Markdown or JSON.</p>
+<p>The <strong>NCBI / BLAST</strong> workspace makes remote actions explicit. Its <strong>Result
+cache</strong> control starts at <strong>Network only</strong> and does not write responses until a
+researcher selects a cache mode. The other choices reuse a local,
+integrity-checked NCBI cache, prefer a fresh response with an offline fallback,
+or work cache-only. When a GenBank record is opened, its Info metadata records
+the request, response SHA-256, retrieval time, and whether the result came from
+the network or cache. BLAST jobs remain live, remote requests and are not
+silently replayed from a response cache.</p>
 <h3 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h3>
 <p><img alt="Features tab showing annotated regions" src="../screenshots/features.png" /></p>
 <p>Features is the annotation table. It shows name, type, start, end, strand,
@@ -1182,7 +1326,9 @@ library.</p>
    settings, and annotations. Save recurring annotations to the Feature Library
    for reuse.</li>
 <li><strong>Auto-annotate</strong> scans using bundled presets and saved definitions. Search
-   both strands when appropriate, then review each match before saving.</li>
+   both strands when appropriate, then review each match before saving. Its
+   preview reports definitions completed and can be cancelled; applying a large
+   library also continues in the background.</li>
 </ol>
 <p>Use GenBank for annotated or circular records. FASTA cannot retain features,
 qualifiers, colors, or circular topology. The same short guide is available in
@@ -1225,7 +1371,17 @@ The platform menu shortcut is Ctrl on Windows/Linux and Command on macOS.</p>
 browser can open files in tabs, search project content, manage collections, and
 run supported batch operations. Project manifests and edit history are stored
 inside the project folder; keep them with the project when moving it between
-machines.</p>
+machines. <strong>Reload Project from Disk</strong> refreshes clean externally changed tabs,
+preserves dirty buffers as local conflicts, keeps missing-file tabs available,
+and can open newly declared supported manifest files. It does not silently
+close work or overwrite an unsaved edit.</p>
+<p>With a sequence tab active, <strong>Project → ELN / Lab Notebook</strong> copies a Markdown
+summary or exports individual sequence, primer CSV, map SVG, and report
+attachments. <strong>Export Generic ELN/LIMS Bundle</strong> writes a local vendor-neutral
+ZIP containing a versioned integrity manifest, standard sequence attachments,
+primer CSV, provenance summary, and a map SVG when the sequence is non-empty.
+It never uploads data or contacts a vendor. See the
+<a href="../tasks/#hand-off-a-record-to-an-eln-or-lims">researcher handoff guide</a>.</p>
 <h3 id="tools-and-actions">Tools and Actions<a class="headerlink" href="#tools-and-actions" title="Permanent link">&para;</a></h3>
 <p>Tools exposes restriction-enzyme management, primer actions, library actions,
 analysis workflows, and optional external tools. Actions provides shortcuts to
@@ -1237,11 +1393,17 @@ for a simple sequence or when a downstream tool specifically requires it. GFF3
 is useful for annotation-centric exchange, but it should be checked against the
 associated sequence before use.</p>
 <h2 id="responsiveness-and-large-files">Responsiveness and large files<a class="headerlink" href="#responsiveness-and-large-files" title="Permanent link">&para;</a></h2>
-<p>File parsing and large digest scans are designed to run away from the Swing
-event thread. Some workflows continue in the background and apply results only
-when they still match the active document. Loading a very large genome can
-still require substantial memory and time; use a machine with enough RAM and
-avoid opening multiple copies unnecessarily.</p>
+<p>File parsing and large digest/feature-library scans are designed to run away
+from the Swing event thread. Some workflows continue in the background and
+apply results only when they still match the active document. The practical
+workload targets are a 10 kb plasmid opening and rendering within roughly two
+seconds on a typical desktop, a 100 kb construct with responsive scrolling,
+and multi-megabase files with visible background work and cancellation where a
+workflow supports it. Sequence rendering paints only rows in the viewport;
+tables use Swing's viewport rendering rather than creating cells for every
+record. Loading a very large genome can still require substantial memory and
+time, so use a machine with enough RAM and avoid opening multiple copies
+unnecessarily.</p>
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

@@ -10,11 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://novelprotein.github.io/instagene/contributing/">
+        <link rel="canonical" href="https://novelprotein.github.io/instagene/formats/">
       
       
-        <link rel="prev" href="../benchmarks/info/">
+        <link rel="prev" href="../tasks/">
       
+      
+        <link rel="next" href="../migration/">
       
       
         
@@ -25,7 +27,7 @@
     
     
       
-        <title>Contributing - InstaGene</title>
+        <title>Format Matrix - InstaGene</title>
       
     
     
@@ -76,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contributing" class="md-skip">
+        <a href="#format-matrix" class="md-skip">
           Skip to content
         </a>
       
@@ -112,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contributing
+              Format Matrix
             
           </span>
         </div>
@@ -419,10 +421,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../formats/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format Matrix
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -438,6 +467,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#built-in-sequence-and-alignment-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in sequence and alignment formats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#desktop-routing-and-file-associations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Desktop routing and file associations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#converter-backed-legacy-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Converter-backed legacy formats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deliberately-deferred-direct-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deliberately deferred direct formats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-working-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a working format
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -608,37 +712,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contributing
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -654,92 +731,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Development setup
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#module-boundaries" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Module boundaries
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tests-and-regression-coverage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tests and regression coverage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Documentation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-style-and-pull-requests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Code style and pull requests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmarks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmarks
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -771,10 +762,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
+  <a href="#built-in-sequence-and-alignment-formats" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development setup
+        Built-in sequence and alignment formats
       
     </span>
   </a>
@@ -782,10 +773,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#module-boundaries" class="md-nav__link">
+  <a href="#desktop-routing-and-file-associations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Module boundaries
+        Desktop routing and file associations
       
     </span>
   </a>
@@ -793,10 +784,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tests-and-regression-coverage" class="md-nav__link">
+  <a href="#converter-backed-legacy-formats" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tests and regression coverage
+        Converter-backed legacy formats
       
     </span>
   </a>
@@ -804,10 +795,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
+  <a href="#deliberately-deferred-direct-formats" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Documentation
+        Deliberately deferred direct formats
       
     </span>
   </a>
@@ -815,21 +806,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#code-style-and-pull-requests" class="md-nav__link">
+  <a href="#choosing-a-working-format" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Code style and pull requests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmarks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmarks
+        Choosing a working format
       
     </span>
   </a>
@@ -856,78 +836,142 @@
   
 
 
-<h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
-<p>InstaGene is a Kotlin/Gradle project with a reusable engine and separate
-front ends. Contributions should keep scientific behavior explicit, testable,
-and honest about what the application supports.</p>
-<h2 id="development-setup">Development setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
-<p>Requirements:</p>
+<h1 id="format-matrix">Format matrix<a class="headerlink" href="#format-matrix" title="Permanent link">&para;</a></h1>
+<p>This matrix distinguishes files that InstaGene parses itself from files that
+need a separately configured converter. “Read/write” means that the engine has
+a built-in serializer for the listed family; it does not mean every annotation
+or vendor-specific extension has an identical representation in every format.
+Keep an original copy and review a converted record before using it.</p>
+<h2 id="built-in-sequence-and-alignment-formats">Built-in sequence and alignment formats<a class="headerlink" href="#built-in-sequence-and-alignment-formats" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Typical extensions</th>
+<th style="text-align: right;">Read</th>
+<th style="text-align: right;">Write</th>
+<th>Practical guidance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FASTA / bare sequence</td>
+<td><code>.fa</code>, <code>.fasta</code>, <code>.fna</code>, <code>.fas</code>, <code>.seq</code>, <code>.txt</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Sequence-focused interchange. It does not retain the editable feature table, circular topology, primers, procedure history, or most record metadata.</td>
+</tr>
+<tr>
+<td>GenBank / DDBJ / ApE</td>
+<td><code>.gb</code>, <code>.gbk</code>, <code>.genbank</code>, <code>.ape</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Preferred working format for annotated or circular records. ApE files use the GenBank-family path.</td>
+</tr>
+<tr>
+<td>GFF3</td>
+<td><code>.gff</code>, <code>.gff3</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Annotation-centric exchange; check the associated sequence and attribute mapping after exchange.</td>
+</tr>
+<tr>
+<td>EMBL / ENA</td>
+<td><code>.embl</code>, <code>.ena</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Flat-file interchange. Review complex qualifiers after a cross-tool round trip.</td>
+</tr>
+<tr>
+<td>Swiss-Prot</td>
+<td><code>.swiss</code>, <code>.sprot</code>, <code>.dat</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Protein-oriented flat-file records.</td>
+</tr>
+<tr>
+<td>FASTA alignment</td>
+<td><code>.afa</code>, <code>.msa</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Multiple aligned rows; use <code>readAll</code>/the Alignment tool when every row is needed.</td>
+</tr>
+<tr>
+<td>Clustal alignment</td>
+<td><code>.aln</code>, <code>.clustal</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Multiple aligned rows and alignment export.</td>
+</tr>
+<tr>
+<td>Stockholm alignment</td>
+<td><code>.sto</code>, <code>.stockholm</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Multiple aligned rows and alignment export.</td>
+</tr>
+<tr>
+<td>PHYLIP alignment</td>
+<td><code>.phy</code>, <code>.phylip</code>, <code>.ph</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Sequential PHYLIP alignment input/output.</td>
+</tr>
+<tr>
+<td>ABI/AB1 chromatogram</td>
+<td><code>.ab1</code>, <code>.abi</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">No</td>
+<td>Imported as trace calls, quality data, and channels for chromatogram/Sanger workflows. It is not a sequence-file export target.</td>
+</tr>
+<tr>
+<td>SCF chromatogram</td>
+<td><code>.scf</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">No</td>
+<td>Imported for chromatogram/Sanger workflows; not exported by InstaGene.</td>
+</tr>
+</tbody>
+</table>
+<p><code>SeqIO.read(file)</code> returns the first record of a multi-record sequence or
+alignment file. Use <code>SeqIO.readAll(file)</code> or the alignment tools when all rows
+are required.</p>
+<h2 id="desktop-routing-and-file-associations">Desktop routing and file associations<a class="headerlink" href="#desktop-routing-and-file-associations" title="Permanent link">&para;</a></h2>
+<p>The desktop open dialog routes native sequence, alignment, chromatogram, text,
+image, PDF, and project files through one flow. Text can open in the in-app
+editor; images and PDFs are handed to the operating system. Installed native
+packages advertise the native sequence and alignment extensions. ABI/AB1 and
+SCF remain unregistered with the operating system even though they can be
+opened in InstaGene, because their direct analysis route is intentionally
+separate from a default-file-handler claim.</p>
+<p>Portable JAR and app-image downloads do not modify operating-system file
+associations.</p>
+<h2 id="converter-backed-legacy-formats">Converter-backed legacy formats<a class="headerlink" href="#converter-backed-legacy-formats" title="Permanent link">&para;</a></h2>
+<p>The following families are catalogued but are not bundled parsers: CLC Bio,
+Clone Manager, DNA Strider, DNADynamo, DNASIS, DNAssist, DNASTAR Lasergene,
+DS Gene, EnzymeX, Gene Construction Kit, Geneious, GeneTool, Genome Compiler,
+Jellyfish, MacVector, pDRAW32, Serial Cloner, Vector NTI, and Visual Cloning.</p>
+<p>Configure a converter with the relevant <code>INSTAGENE_CONVERTER_*</code> environment
+variable or desktop setting. Its command must include <code>{in}</code> and emit FASTA,
+GenBank, EMBL, or GFF3 to <code>{out}</code> or standard output. The converter is a
+separate dependency: inspect its license, version, command line, and output
+before treating the converted record as equivalent to the source.</p>
+<h2 id="deliberately-deferred-direct-formats">Deliberately deferred direct formats<a class="headerlink" href="#deliberately-deferred-direct-formats" title="Permanent link">&para;</a></h2>
+<p>SnapGene <code>.dna</code> is not a built-in or converter-listed direct import target.
+Until its format and legal terms have been reviewed, use SnapGene’s own export
+to GenBank and open the resulting <code>.gb</code>/<code>.gbk</code> file. This documented conversion
+path is different from claiming native SnapGene compatibility.</p>
+<h2 id="choosing-a-working-format">Choosing a working format<a class="headerlink" href="#choosing-a-working-format" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Java 21 or newer;</li>
+<li>Use <strong>GenBank</strong> for annotated plasmids, circular topology, primers, procedure
+  history, or molecule properties that should remain in an editable record.</li>
+<li>Use <strong>FASTA</strong> for a simple sequence or a tool that explicitly requires FASTA.</li>
+<li>Use an <strong>alignment format</strong> for an aligned collection rather than flattening
+  it to a single sequence record.</li>
+<li>Use the <a href="../tasks/#hand-off-a-record-to-an-eln-or-lims">generic ELN/LIMS ZIP</a>
+  when handing off a sequence together with a map, primer table, report, and
+  integrity manifest.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/novelprotein/instagene.git
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>instagene
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>./gradlew<span class="w"> </span>build
-</code></pre></div>
-<p>On Windows, use <code>gradlew.bat</code>.</p>
-<p>Install the repository hooks if you want the local commit checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/install-hooks.sh
-</code></pre></div>
-<p>The pre-commit hook runs the full Gradle build, strict documentation validation,
-and distribution checks for the current operating system. </p>
-<h2 id="module-boundaries">Module boundaries<a class="headerlink" href="#module-boundaries" title="Permanent link">&para;</a></h2>
-<ul>
-<li>engine/ contains front-end-free sequence and workflow logic.</li>
-<li>app-cli/ contains the scriptable command line.</li>
-<li>app-gui/ contains the Swing desktop application.</li>
-<li>app-web/ contains the embedded web front end.</li>
-<li>tests/ contains cross-module and integration coverage.</li>
-</ul>
-<p>The engine must not reference org.instagene.app, and front ends must not
-depend on one another. Check the rule with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./gradlew<span class="w"> </span>verifySeparation
-</code></pre></div>
-<h2 id="tests-and-regression-coverage">Tests and regression coverage<a class="headerlink" href="#tests-and-regression-coverage" title="Permanent link">&para;</a></h2>
-<p>Run the complete gate before opening a pull request:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./gradlew<span class="w"> </span>build
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>./gradlew<span class="w"> </span>:tests:test
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>./scripts/check-distributions.sh
-</code></pre></div>
-<p>Every bug fix should include a focused regression test. Headless Swing tests
-construct and exercise GUI panels without requiring a display. Long-running
-large-sequence tests may have explicit timeouts; do not make the event
-dispatch thread wait for background analysis.</p>
-<h2 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h2>
-<p>Documentation should explain the application primarily from a researcher's
-perspective while remaining accurate for contributors. Avoid claims such as
-“all formats,” “publication quality,” or “validated experimentally” unless the
-implementation and tests explicitly support them.</p>
-<p>Build the documentation with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w"> </span>--site-dir<span class="w"> </span>site
-</code></pre></div>
-<p>The screenshots in <code>docs/screenshots/</code> are documentation assets. Use
-descriptive alt text and keep image references relative to the page.</p>
-<h2 id="code-style-and-pull-requests">Code style and pull requests<a class="headerlink" href="#code-style-and-pull-requests" title="Permanent link">&para;</a></h2>
-<p>Prefer clear Kotlin and small, testable functions. Keep imports focused and
-avoid moving heavy computation onto Swing’s event dispatch thread.</p>
-<p>Before opening a pull request:</p>
-<ol>
-<li>run the relevant tests;</li>
-<li>run <code>./gradlew build</code>;</li>
-<li>run the strict MkDocs build;</li>
-<li>run <code>./scripts/check-distributions.sh</code> on the development host;</li>
-<li>describe user-visible behavior and limitations in the pull request.</li>
-</ol>
-<h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
-<p>Run the CLI benchmark task locally:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./gradlew<span class="w"> </span>:app-cli:bench
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>-Pinput<span class="o">=</span>sequence.fa
-</code></pre></div>
-<p>The CI workflow records benchmark output. Benchmark numbers depend on hardware,
-input size, JVM, and the current commit. Compare trends rather than treating a
-single run as an absolute performance claim. GitHub Actions runners are broadly
-similar, but relative performance should be compared only across similar
-hardware.</p>
 
 
 

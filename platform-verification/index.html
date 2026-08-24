@@ -10,11 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://novelprotein.github.io/instagene/contributing/">
+        <link rel="canonical" href="https://novelprotein.github.io/instagene/platform-verification/">
       
       
-        <link rel="prev" href="../benchmarks/info/">
+        <link rel="prev" href="../releasing/">
       
+      
+        <link rel="next" href="../benchmarks/info/">
       
       
         
@@ -25,7 +27,7 @@
     
     
       
-        <title>Contributing - InstaGene</title>
+        <title>Native Installer Verification - InstaGene</title>
       
     
     
@@ -76,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contributing" class="md-skip">
+        <a href="#native-installer-verification" class="md-skip">
           Skip to content
         </a>
       
@@ -112,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contributing
+              Native Installer Verification
             
           </span>
         </div>
@@ -554,10 +556,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../platform-verification/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native Installer Verification
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -573,6 +602,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#current-release-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current release boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windows-release-owner-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows release-owner checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#macos-release-owner-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS release-owner checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#screenshot-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screenshot status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#linux-and-portable-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux and portable checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -608,37 +712,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contributing
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -654,92 +731,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Development setup
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#module-boundaries" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Module boundaries
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tests-and-regression-coverage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tests and regression coverage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Documentation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-style-and-pull-requests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Code style and pull requests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmarks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmarks
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -771,10 +762,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
+  <a href="#current-release-boundary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development setup
+        Current release boundary
       
     </span>
   </a>
@@ -782,10 +773,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#module-boundaries" class="md-nav__link">
+  <a href="#windows-release-owner-checklist" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Module boundaries
+        Windows release-owner checklist
       
     </span>
   </a>
@@ -793,10 +784,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tests-and-regression-coverage" class="md-nav__link">
+  <a href="#macos-release-owner-checklist" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tests and regression coverage
+        macOS release-owner checklist
       
     </span>
   </a>
@@ -804,10 +795,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
+  <a href="#screenshot-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Documentation
+        Screenshot status
       
     </span>
   </a>
@@ -815,21 +806,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#code-style-and-pull-requests" class="md-nav__link">
+  <a href="#linux-and-portable-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Code style and pull requests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmarks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmarks
+        Linux and portable checks
       
     </span>
   </a>
@@ -856,78 +836,60 @@
   
 
 
-<h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
-<p>InstaGene is a Kotlin/Gradle project with a reusable engine and separate
-front ends. Contributions should keep scientific behavior explicit, testable,
-and honest about what the application supports.</p>
-<h2 id="development-setup">Development setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
-<p>Requirements:</p>
-<ul>
-<li>Java 21 or newer;</li>
-</ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/novelprotein/instagene.git
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>instagene
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>./gradlew<span class="w"> </span>build
-</code></pre></div>
-<p>On Windows, use <code>gradlew.bat</code>.</p>
-<p>Install the repository hooks if you want the local commit checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/install-hooks.sh
-</code></pre></div>
-<p>The pre-commit hook runs the full Gradle build, strict documentation validation,
-and distribution checks for the current operating system. </p>
-<h2 id="module-boundaries">Module boundaries<a class="headerlink" href="#module-boundaries" title="Permanent link">&para;</a></h2>
-<ul>
-<li>engine/ contains front-end-free sequence and workflow logic.</li>
-<li>app-cli/ contains the scriptable command line.</li>
-<li>app-gui/ contains the Swing desktop application.</li>
-<li>app-web/ contains the embedded web front end.</li>
-<li>tests/ contains cross-module and integration coverage.</li>
-</ul>
-<p>The engine must not reference org.instagene.app, and front ends must not
-depend on one another. Check the rule with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./gradlew<span class="w"> </span>verifySeparation
-</code></pre></div>
-<h2 id="tests-and-regression-coverage">Tests and regression coverage<a class="headerlink" href="#tests-and-regression-coverage" title="Permanent link">&para;</a></h2>
-<p>Run the complete gate before opening a pull request:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./gradlew<span class="w"> </span>build
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>./gradlew<span class="w"> </span>:tests:test
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>./scripts/check-distributions.sh
-</code></pre></div>
-<p>Every bug fix should include a focused regression test. Headless Swing tests
-construct and exercise GUI panels without requiring a display. Long-running
-large-sequence tests may have explicit timeouts; do not make the event
-dispatch thread wait for background analysis.</p>
-<h2 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h2>
-<p>Documentation should explain the application primarily from a researcher's
-perspective while remaining accurate for contributors. Avoid claims such as
-“all formats,” “publication quality,” or “validated experimentally” unless the
-implementation and tests explicitly support them.</p>
-<p>Build the documentation with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w"> </span>--site-dir<span class="w"> </span>site
-</code></pre></div>
-<p>The screenshots in <code>docs/screenshots/</code> are documentation assets. Use
-descriptive alt text and keep image references relative to the page.</p>
-<h2 id="code-style-and-pull-requests">Code style and pull requests<a class="headerlink" href="#code-style-and-pull-requests" title="Permanent link">&para;</a></h2>
-<p>Prefer clear Kotlin and small, testable functions. Keep imports focused and
-avoid moving heavy computation onto Swing’s event dispatch thread.</p>
-<p>Before opening a pull request:</p>
+<h1 id="native-installer-verification">Native installer verification<a class="headerlink" href="#native-installer-verification" title="Permanent link">&para;</a></h1>
+<p>InstaGene builds native packages on their target operating systems. Structural
+package checks run in CI, but a release owner still needs to perform the
+platform-specific visual and trust checks below before describing a release as
+fully signed or platform-verified.</p>
+<h2 id="current-release-boundary">Current release boundary<a class="headerlink" href="#current-release-boundary" title="Permanent link">&para;</a></h2>
+<p>The repository validates unsigned installer structure, launch metadata, native
+CLI smoke behavior, and declared file associations in native CI jobs. It does
+not currently have protected Windows signing or Apple notarization credentials.
+Therefore unsigned artifacts must be labeled as unsigned; do not claim
+SmartScreen reputation, notarization, or signing assessment until the relevant
+credential-gated checks have run.</p>
+<h2 id="windows-release-owner-checklist">Windows release-owner checklist<a class="headerlink" href="#windows-release-owner-checklist" title="Permanent link">&para;</a></h2>
 <ol>
-<li>run the relevant tests;</li>
-<li>run <code>./gradlew build</code>;</li>
-<li>run the strict MkDocs build;</li>
-<li>run <code>./scripts/check-distributions.sh</code> on the development host;</li>
-<li>describe user-visible behavior and limitations in the pull request.</li>
+<li>Install the MSI on a clean Windows machine or VM.</li>
+<li>Confirm the application name, icon, version metadata, Start Menu entry,
+   uninstall entry, and per-user install behavior.</li>
+<li>Use <strong>Open with</strong> and a shell launch for a representative FASTA, GenBank,
+   GFF3, EMBL, Swiss-Prot, and alignment file. Confirm the file reaches the
+   unified open flow.</li>
+<li>Inspect the file chooser at normal and high DPI scaling and confirm that
+   text, filters, and progress/cancel controls remain usable.</li>
+<li>Capture the installer, installed application, association, and high-DPI
+   states with the release version visible. Store those captures with the
+   release evidence before adding them to public documentation.</li>
+<li>When protected signing material is available, sign the MSI/executable and
+   verify its Authenticode signature before upload.</li>
 </ol>
-<h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
-<p>Run the CLI benchmark task locally:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./gradlew<span class="w"> </span>:app-cli:bench
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>-Pinput<span class="o">=</span>sequence.fa
-</code></pre></div>
-<p>The CI workflow records benchmark output. Benchmark numbers depend on hardware,
-input size, JVM, and the current commit. Compare trends rather than treating a
-single run as an absolute performance claim. GitHub Actions runners are broadly
-similar, but relative performance should be compared only across similar
-hardware.</p>
+<h2 id="macos-release-owner-checklist">macOS release-owner checklist<a class="headerlink" href="#macos-release-owner-checklist" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Mount the DMG on a clean supported macOS machine and drag <code>InstaGene.app</code>
+   to Applications.</li>
+<li>Confirm the app icon, bundle identifier, version, launch behavior, and
+   document-type association metadata.</li>
+<li>Open representative supported sequence and alignment files from Finder and
+   inspect the file chooser and plasmid map on a Retina display.</li>
+<li>Capture the DMG, Applications installation, Finder open flow, and Retina
+   map/workspace states with the release version visible. Store those captures
+   with the release evidence before publishing them.</li>
+<li>When Apple Developer credentials are available, sign the app, notarize and
+   staple the DMG, then run <code>spctl --assess</code> on the final artifact.</li>
+</ol>
+<h2 id="screenshot-status">Screenshot status<a class="headerlink" href="#screenshot-status" title="Permanent link">&para;</a></h2>
+<p>The documentation currently contains real desktop-workspace screenshots under
+<code>docs/screenshots/</code>. Native installer screenshots are intentionally not
+fabricated from mockups: they remain a release-owner capture requirement until
+the Windows and macOS checks above are run on their native systems.</p>
+<h2 id="linux-and-portable-checks">Linux and portable checks<a class="headerlink" href="#linux-and-portable-checks" title="Permanent link">&para;</a></h2>
+<p>Install a DEB or RPM on its intended distribution, or run the app-image
+launcher. Confirm the desktop entry, MIME metadata, launcher, and a standard
+file-open path. For the portable GUI JAR, confirm Java 21+, allocate an
+appropriate heap for the expected data size, and verify it makes no file
+association changes.</p>
+<p>See <a href="../releasing/">Release and packaging</a> for CI and credential handling.</p>
 
 
 

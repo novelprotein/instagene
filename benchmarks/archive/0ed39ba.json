@@ -1,0 +1,144 @@
+{
+  "commit": "5bc4a02",
+  "timestamp": "2026-08-24T18:05:23.860965+00:00",
+  "sequence": "PRS424",
+  "length": 5616,
+  "results": [
+    {
+      "label": "SequenceStatistics/computeStats",
+      "ms": 13.1
+    },
+    {
+      "label": "SequenceStatistics/gcContentProfile(100, 50)",
+      "ms": 0.3
+    },
+    {
+      "label": "SequenceStatistics/gcSkewProfile(100, 50)",
+      "ms": 0.1
+    },
+    {
+      "label": "SequenceStatistics/cumulativeGcSkew(100, 50)",
+      "ms": 0.1
+    },
+    {
+      "label": "SequenceStatistics/meltingTempProfile(20, 10)",
+      "ms": 0.2
+    },
+    {
+      "label": "SequenceStatistics/nucleotideComposition",
+      "ms": 1.7
+    },
+    {
+      "label": "SequenceStatistics/codonUsage",
+      "ms": 5.5
+    },
+    {
+      "label": "SequenceStatistics/dinucleotideFrequencies",
+      "ms": 3.5
+    },
+    {
+      "label": "SequenceStatistics/tandemRepeats(1..10, minRepeats=3)",
+      "ms": 8.4
+    },
+    {
+      "label": "SeqOps/transcribe",
+      "ms": 0.5
+    },
+    {
+      "label": "SeqOps/backTranscribe",
+      "ms": 0.5
+    },
+    {
+      "label": "SeqOps/translateBases(frame=0)",
+      "ms": 3.2
+    },
+    {
+      "label": "SeqOps/baseCounts",
+      "ms": 0.6
+    },
+    {
+      "label": "SeqOps/find(ATGCATGC)",
+      "ms": 14.0
+    },
+    {
+      "label": "Digest/cutSites(EcoRI)",
+      "ms": 2.6
+    },
+    {
+      "label": "Digest/cutCounts(ALL 53 enzymes)",
+      "ms": 43.8
+    },
+    {
+      "label": "Digest/digest(EcoRI + HindIII)",
+      "ms": 3.2
+    },
+    {
+      "label": "ORFsandSearch/findOrfs(30aa)",
+      "ms": 12.3
+    },
+    {
+      "label": "ORFsandSearch/orfDensity(200, 100)",
+      "ms": 7.9
+    },
+    {
+      "label": "ORFsandSearch/AdvancedSearch.find(ATGC, DNA, 2strands)",
+      "ms": 6.0
+    },
+    {
+      "label": "ORFsandSearch/AdvancedSearch.find(MVSK, AA, 2strands)",
+      "ms": 3.9
+    },
+    {
+      "label": "PrimerThermodynamics(30nt)/thermodynamicResult",
+      "ms": 0.8
+    },
+    {
+      "label": "PrimerThermodynamics(30nt)/selfDimer",
+      "ms": 0.6
+    },
+    {
+      "label": "PrimerThermodynamics(30nt)/heteroDimer(primer, rc)",
+      "ms": 1.8
+    },
+    {
+      "label": "PrimerThermodynamics(30nt)/assessHairpin",
+      "ms": 5.1
+    },
+    {
+      "label": "PrimerThermodynamics(30nt)/fullScreen",
+      "ms": 3.3
+    },
+    {
+      "label": "SiteDomestication/findInternalSites(8 enzymes)",
+      "ms": 7.9
+    },
+    {
+      "label": "SiteDomestication/suggestEnzyme(8 enzymes)",
+      "ms": 2.6
+    },
+    {
+      "label": "SiteDomestication/domesticate(8 enzymes)",
+      "ms": 5.0
+    },
+    {
+      "label": "CodonOptimization/reverseTranslate(1000 aa)",
+      "ms": 3.9
+    },
+    {
+      "label": "CodonOptimization/optimize(codon usage)",
+      "ms": 3.0
+    },
+    {
+      "label": "Desktop/SequenceView first viewport (10 kb)",
+      "ms": 95.1
+    },
+    {
+      "label": "Desktop/SequenceView first viewport (100 kb)",
+      "ms": 4.0
+    },
+    {
+      "label": "Desktop/SequenceView scrolled viewport (100 kb)",
+      "ms": 3.5
+    }
+  ]
+}

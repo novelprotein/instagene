@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://novelprotein.github.io/instagene/benchmarks/info/">
       
       
-        <link rel="prev" href="../../releasing/">
+        <link rel="prev" href="../../platform-verification/">
       
       
         <link rel="next" href="../../contributing/">
@@ -316,6 +316,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundled Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../cli/" class="md-nav__link">
         
   
@@ -351,6 +378,87 @@
     
   
     GUI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Researcher Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration and Exchange
   
 
     
@@ -432,6 +540,33 @@
     
   
     Release and Packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platform-verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native Installer Verification
   
 
     
@@ -554,6 +689,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#memory-profile-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory-profile runs
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -659,6 +805,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#memory-profile-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory-profile runs
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -684,15 +841,16 @@
 engine operations. Results are useful for comparing commits under similar
 conditions; they are not a promise of fixed performance on every machine.</p>
 <h2 id="running-benchmarks">Running benchmarks<a class="headerlink" href="#running-benchmarks" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Run with the built-in test sequence</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>./gradlew<span class="w"> </span>:app-cli:bench
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Run engine and desktop-viewport benchmarks with the built-in test sequence</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>:app-gui:desktopBench
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Run with your own sequence</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>-Pinput<span class="o">=</span>sequence.fa
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>./gradlew<span class="w"> </span>:app-cli:bench<span class="w"> </span>:app-gui:desktopBench<span class="w"> </span>-Pinput<span class="o">=</span>sequence.fa
 </code></pre></div>
 <p>The CLI benchmark command uses the bundled sample sequence unless an input is
-provided. The CI workflow may publish results to the dashboard after a
-successful benchmark run.</p>
+provided. <code>desktopBench</code> measures first and scrolled Swing sequence viewports
+at the 10 kb plasmid and 100 kb construct workload classes. The CI workflow
+publishes both result groups to the same dashboard after a successful run.</p>
 <h2 id="dashboard">Dashboard<a class="headerlink" href="#dashboard" title="Permanent link">&para;</a></h2>
 <p>The interactive benchmark dashboard is hosted on GitHub Pages and shows
 historical performance trends:</p>
@@ -736,6 +894,10 @@ workflow.</p>
 <td>Primer</td>
 <td>Melting temperature, hairpin assessment, self-dimer</td>
 </tr>
+<tr>
+<td>Desktop</td>
+<td>First and scrolled viewport paint for 10 kb/100 kb sequence views</td>
+</tr>
 </tbody>
 </table>
 <h2 id="interpreting-results">Interpreting results<a class="headerlink" href="#interpreting-results" title="Permanent link">&para;</a></h2>
@@ -744,6 +906,16 @@ workflow.</p>
 <li><strong>Regression flag</strong> — the dashboard flags operations that slow down by &gt;15%</li>
 <li><strong>Baseline comparison</strong> — each run is compared against the previous commit</li>
 </ul>
+<h2 id="memory-profile-runs">Memory-profile runs<a class="headerlink" href="#memory-profile-runs" title="Permanent link">&para;</a></h2>
+<p>The normal test suite includes focused asynchronous large-FASTA and full-panel
+genome regressions. For an intentional allocation/heap observation run across
+large FASTA, GenBank, and SCF trace batches, use the opt-in profile test:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./gradlew<span class="w"> </span>:tests:test<span class="w"> </span>--tests<span class="w"> </span><span class="s1">'*MemoryProfileTest'</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>-Dinstagene.memoryProfile<span class="o">=</span><span class="nb">true</span><span class="w"> </span>-Dinstagene.heap<span class="o">=</span>2g
+</code></pre></div>
+<p>The profile prints retained-heap snapshots for the current JVM; compare runs on
+the same machine and JVM. It is a diagnostic aid, not a cross-machine memory
+guarantee.</p>
 
 
 

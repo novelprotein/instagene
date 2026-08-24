@@ -16,7 +16,7 @@
         <link rel="prev" href="..">
       
       
-        <link rel="next" href="../cli/">
+        <link rel="next" href="../examples/">
       
       
         
@@ -485,6 +485,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundled Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cli/" class="md-nav__link">
         
   
@@ -520,6 +547,87 @@
     
   
     GUI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Researcher Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration and Exchange
   
 
     
@@ -601,6 +709,33 @@
     
   
     Release and Packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native Installer Verification
   
 
     
@@ -885,7 +1020,10 @@ the build:</p>
 <p><img alt="InstaGene welcome screen with file, project, and new-document actions" src="../screenshots/welcome.png" /></p>
 <p>The welcome screen provides the starting actions for the desktop application.
 Open a sequence file, open an existing project, create a new document, or
-choose an available recent file or project.</p>
+choose an available recent file or project.
+Bundled examples are synthetic teaching data; see
+<a href="../examples/">bundled example provenance</a> for the source statement behind each
+sequence, alignment, and chromatogram.</p>
 <ol>
 <li>Start InstaGene.</li>
 <li>Choose <strong>Open File...</strong> on the welcome screen, or use <strong>File → Open</strong>.</li>
@@ -935,8 +1073,23 @@ choose an available recent file or project.</p>
 </tr>
 <tr>
 <td>FASTA alignment</td>
-<td><code>.aln</code>, <code>.afa</code>, <code>.msa</code></td>
-<td>Read as multi-record FASTA alignment input</td>
+<td><code>.afa</code>, <code>.msa</code></td>
+<td>Read and write multi-record FASTA alignment input</td>
+</tr>
+<tr>
+<td>Clustal alignment</td>
+<td><code>.aln</code>, <code>.clustal</code></td>
+<td>Read and write Clustal alignment input</td>
+</tr>
+<tr>
+<td>Stockholm alignment</td>
+<td><code>.sto</code>, <code>.stockholm</code></td>
+<td>Read and write Stockholm alignment input</td>
+</tr>
+<tr>
+<td>PHYLIP alignment</td>
+<td><code>.phy</code>, <code>.phylip</code>, <code>.ph</code></td>
+<td>Read and write sequential PHYLIP alignment input</td>
 </tr>
 <tr>
 <td>Chromatograms</td>
@@ -952,7 +1105,12 @@ choose an available recent file or project.</p>
 </table>
 <p>For a proprietary or legacy sequence file, configure an external converter if
 one is available. A converter must emit FASTA, GenBank, EMBL, or GFF3; it is
-not included with the application.</p>
+not included with the application. Direct SnapGene <code>.dna</code> import is deferred
+pending legal and format review. Export the record as GenBank and open that
+file instead.</p>
+<p>The <a href="../formats/">format matrix</a> lists the exact built-in, converter-backed, and
+deferred families. The <a href="../migration/">migration guide</a> gives a safe review
+sequence for moving work from another application or ELN.</p>
 <h2 id="build-and-packaging-tasks">Build and packaging tasks<a class="headerlink" href="#build-and-packaging-tasks" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1007,9 +1165,10 @@ not included with the application.</p>
 handler for FASTA (<code>.fa</code>, <code>.fasta</code>, <code>.fna</code>, <code>.fas</code>, <code>.seq</code>), GenBank (<code>.gb</code>,
 <code>.gbk</code>, <code>.genbank</code>, <code>.ape</code>), GFF3 (<code>.gff</code>, <code>.gff3</code>), EMBL/ENA (<code>.embl</code>, <code>.ena</code>),
 Swiss-Prot (<code>.swiss</code>, <code>.sprot</code>, <code>.dat</code>), and FASTA alignment (<code>.aln</code>, <code>.afa</code>,
-<code>.msa</code>) files. The installer does not force a new default application; choose
-InstaGene from the operating system's <strong>Open With</strong> or <strong>Default Apps</strong> UI when
-needed.</p>
+<code>.msa</code>), Clustal (<code>.clustal</code>), Stockholm (<code>.sto</code>, <code>.stockholm</code>), and PHYLIP
+(<code>.phy</code>, <code>.phylip</code>, <code>.ph</code>) files. The installer does not force a new default
+application; choose InstaGene from the operating system's <strong>Open With</strong> or
+<strong>Default Apps</strong> UI when needed.</p>
 <p>Portable JAR and app-image downloads do not modify operating-system file
 associations. Open files from InstaGene, drag them onto the window, or create a
 manual association to the portable launcher if that is preferred. ABI/AB1 and

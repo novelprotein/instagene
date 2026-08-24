@@ -316,6 +316,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundled Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cli/" class="md-nav__link">
         
   
@@ -351,6 +378,87 @@
     
   
     GUI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Researcher Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration and Exchange
   
 
     
@@ -498,6 +606,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Analysis and design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#responsive-long-running-scans" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsive long-running scans
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#explicit-remote-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit remote retrieval
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -505,6 +641,17 @@
     <span class="md-ellipsis">
       
         Reports and reproducibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generic-elnlims-exchange" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generic ELN/LIMS exchange
       
     </span>
   </a>
@@ -545,6 +692,33 @@
     
   
     Release and Packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native Installer Verification
   
 
     
@@ -679,6 +853,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Analysis and design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#responsive-long-running-scans" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsive long-running scans
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#explicit-remote-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit remote retrieval
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -686,6 +888,17 @@
     <span class="md-ellipsis">
       
         Reports and reproducibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generic-elnlims-exchange" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generic ELN/LIMS exchange
       
     </span>
   </a>
@@ -761,9 +974,10 @@ primers, molecule properties, metadata, and related annotations.</p>
 <p>Sequence editing returns a new record and carries compatible annotations.
 Validate the resulting features when an edit crosses an annotation boundary.</p>
 <h2 id="sequence-io">Sequence I/O<a class="headerlink" href="#sequence-io" title="Permanent link">&para;</a></h2>
-<p><code>SeqIO</code> detects and reads FASTA, GenBank, GFF3, EMBL, Swiss-Prot, alignments,
-and supported ABI/SCF chromatograms. It can read records and write native
-formats through <code>SeqFormat</code>.</p>
+<p><code>SeqIO</code> detects and reads FASTA, GenBank, GFF3, EMBL, Swiss-Prot, FASTA,
+Clustal, Stockholm, and PHYLIP alignments, and supported ABI/SCF
+chromatograms. It can read records and write native formats through
+<code>SeqFormat</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kd">val</span><span class="w"> </span><span class="nv">seq</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SeqIO</span><span class="p">.</span><span class="na">read</span><span class="p">(</span><span class="n">File</span><span class="p">(</span><span class="s">"plasmid.gb"</span><span class="p">))</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kd">val</span><span class="w"> </span><span class="nv">records</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SeqIO</span><span class="p">.</span><span class="na">readAll</span><span class="p">(</span><span class="n">File</span><span class="p">(</span><span class="s">"multi.fa"</span><span class="p">))</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kd">val</span><span class="w"> </span><span class="nv">fasta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SeqIO</span><span class="p">.</span><span class="na">write</span><span class="p">(</span><span class="n">seq</span><span class="p">,</span><span class="w"> </span><span class="n">SeqFormat</span><span class="p">.</span><span class="na">FASTA</span><span class="p">)</span>
@@ -772,7 +986,8 @@ formats through <code>SeqFormat</code>.</p>
 <p>Use <code>preferredSaveFormat(seq)</code> when preserving annotations, topology, primers,
 or molecule properties. Legacy proprietary format support is converter-backed:
 register a command containing <code>{in}</code> and ensure that it emits FASTA, GenBank,
-EMBL, or GFF3.</p>
+EMBL, or GFF3. Direct SnapGene <code>.dna</code> import is intentionally deferred pending
+legal and format review; export a supported GenBank record before loading it.</p>
 <h2 id="analysis-and-design">Analysis and design<a class="headerlink" href="#analysis-and-design" title="Permanent link">&para;</a></h2>
 <p>The main engine services include:</p>
 <table>
@@ -813,7 +1028,7 @@ EMBL, or GFF3.</p>
 </tr>
 <tr>
 <td>Remote</td>
-<td>NcbiClient for NCBI search, fetch, and BLAST polling</td>
+<td>NcbiClient, OnlineCache, and OnlineCacheMode for explicit NCBI retrieval and BLAST polling</td>
 </tr>
 </tbody>
 </table>
@@ -831,11 +1046,62 @@ EMBL, or GFF3.</p>
 large or remote operations on appropriate background workers and for deciding
 how to present errors and cancellation. The internal <code>Parallel</code> helper is not a
 public scheduling contract.</p>
+<h3 id="responsive-long-running-scans">Responsive long-running scans<a class="headerlink" href="#responsive-long-running-scans" title="Permanent link">&para;</a></h3>
+<p><code>PerformanceTargets</code> records the workload classes used by desktop regressions:
+10 kb plasmids, 100 kb constructs, and progressive multi-megabase work.
+<code>Digest.countSites</code> accepts optional cancellation and bounded progress callbacks.
+For large feature libraries, use <code>FeatureLibrary.previewMatchesCancellable</code> or
+<code>annotateCancellable</code>; their <code>FeatureScanProgress</code> callback advances once per
+definition and throws <code>CancellationException</code> when the supplied cancellation
+predicate becomes true.</p>
+<h3 id="explicit-remote-retrieval">Explicit remote retrieval<a class="headerlink" href="#explicit-remote-retrieval" title="Permanent link">&para;</a></h3>
+<p><code>NcbiClient</code> is network-only by default. Pass an <code>OnlineCache</code> and an explicit
+policy when a workflow should retain response data. <code>PREFER_CACHE</code> reuses a
+verified matching response, <code>NETWORK_THEN_CACHE</code> uses a verified response only
+after a network failure, and <code>CACHE_ONLY</code> is safe for offline replay. Every
+<code>fetchGenBank</code> result records NCBI request, response hash, retrieval timestamp,
+and origin in <code>Seq.metadata</code> and a <code>ProcedureRecord</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kd">val</span><span class="w"> </span><span class="nv">cache</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">OnlineCache</span><span class="p">(</span><span class="n">File</span><span class="p">(</span><span class="s">".instagene-cache"</span><span class="p">))</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kd">val</span><span class="w"> </span><span class="nv">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">NcbiClient</span><span class="p">(</span><span class="n">onlineCache</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cache</span><span class="p">,</span><span class="w"> </span><span class="n">onlineCacheMode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">OnlineCacheMode</span><span class="p">.</span><span class="na">PREFER_CACHE</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kd">val</span><span class="w"> </span><span class="nv">record</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="na">fetchGenBank</span><span class="p">(</span><span class="s">"J01636.1"</span><span class="p">)</span>
+</code></pre></div>
 <h2 id="reports-and-reproducibility">Reports and reproducibility<a class="headerlink" href="#reports-and-reproducibility" title="Permanent link">&para;</a></h2>
 <p><code>Reports</code> produces text reports for selected workflows. Sequence records also
 carry procedure records that capture a workflow's inputs, warnings, and
 summary. Reports support review, but they do not replace source-record checks
 or laboratory documentation.</p>
+<h2 id="generic-elnlims-exchange">Generic ELN/LIMS exchange<a class="headerlink" href="#generic-elnlims-exchange" title="Permanent link">&para;</a></h2>
+<p><code>GenericZipElnAdapter</code> is the built-in local-first handoff adapter. It writes a
+versioned ZIP with a manifest, SHA-256 hashes, standard FASTA/GenBank/primer
+attachments for a sequence, optional reports and attachments, and embedded
+procedure provenance. It does not perform network I/O or use an ELN vendor
+credential.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kd">val</span><span class="w"> </span><span class="nv">destination</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">"plasmid-handoff.zip"</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kd">val</span><span class="w"> </span><span class="nv">manifest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GenericZipElnAdapter</span><span class="p">.</span><span class="na">export</span><span class="p">(</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="n">destination</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="n">ElnBundleRequest</span><span class="p">(</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">        </span><span class="n">title</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"pExample handoff"</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">        </span><span class="n">sequence</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plasmid</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">        </span><span class="n">reports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">listOf</span><span class="p">(</span><span class="n">ElnReport</span><span class="p">(</span><span class="s">"reports/review.md"</span><span class="p">,</span><span class="w"> </span><span class="s">"# Review\n\nReady for review."</span><span class="p">)),</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">        </span><span class="n">attachments</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">listOf</span><span class="p">(</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">            </span><span class="n">ElnAttachment</span><span class="p">(</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">                </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"maps/pexample.svg"</span><span class="p">,</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">                </span><span class="n">bytes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">"pexample.svg"</span><span class="p">).</span><span class="na">readBytes</span><span class="p">(),</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">                </span><span class="n">mediaType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"image/svg+xml"</span><span class="p">,</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">                </span><span class="n">role</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ElnArtifactRole</span><span class="p">.</span><span class="na">MAP_SVG</span><span class="p">,</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">            </span><span class="p">),</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">        </span><span class="p">),</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">        </span><span class="n">provenance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mapOf</span><span class="p">(</span><span class="s">"projectFile"</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="s">"constructs/pexample.gb"</span><span class="p">),</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">    </span><span class="p">),</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="p">)</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="n">check</span><span class="p">(</span><span class="n">GenericZipElnAdapter</span><span class="p">.</span><span class="na">verify</span><span class="p">(</span><span class="n">destination</span><span class="p">).</span><span class="na">valid</span><span class="p">)</span>
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="n">println</span><span class="p">(</span><span class="n">manifest</span><span class="p">.</span><span class="na">artifacts</span><span class="p">.</span><span class="na">map</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nb">it</span><span class="p">.</span><span class="na">path</span><span class="w"> </span><span class="p">})</span>
+</code></pre></div>
+<p>Attachment paths are normalized and must be relative, unique bundle paths.
+<code>ElnAdapters.AVAILABLE</code> currently contains only this generic adapter. Live
+vendor adapters are intentionally deferred until an approved integration has
+credentials, authorization, documented field mapping, and API terms.</p>
 <h2 id="compatibility-expectations">Compatibility expectations<a class="headerlink" href="#compatibility-expectations" title="Permanent link">&para;</a></h2>
 <p>The engine API is evolving before a stable 1.0 release. Pin the published
 version in consumers, run the project tests when upgrading, and prefer the

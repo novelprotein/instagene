@@ -455,6 +455,33 @@
   
   
     <li class="md-nav__item">
+      <a href="examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundled Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="cli/" class="md-nav__link">
         
   
@@ -490,6 +517,87 @@
     
   
     GUI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Researcher Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration and Exchange
   
 
     
@@ -571,6 +679,33 @@
     
   
     Release and Packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="platform-verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native Installer Verification
   
 
     
@@ -789,6 +924,9 @@ files and projects are listed beneath these actions when available.</p>
 <ul>
 <li><a href="getting-started/">Install and open your first file</a></li>
 <li><a href="gui/">Learn the desktop workspace</a></li>
+<li><a href="tasks/">Follow researcher task guides</a></li>
+<li><a href="formats/">Check format support before import or export</a></li>
+<li><a href="migration/">Migrate from another sequence tool or ELN</a></li>
 <li><a href="cli/">Automate analyses with the CLI</a></li>
 <li><a href="engine-api/">Use the Kotlin engine</a></li>
 </ul>
@@ -846,11 +984,11 @@ front end provides a lightweight local HTTP interface for selected workflows.</p
 to choose the Java installation yourself or cannot install applications.</p>
 <h2 id="supported-data">Supported data<a class="headerlink" href="#supported-data" title="Permanent link">&para;</a></h2>
 <h3 id="native-sequence-formats">Native sequence formats<a class="headerlink" href="#native-sequence-formats" title="Permanent link">&para;</a></h3>
-<p>FASTA, GenBank/ApE, GFF3, EMBL/ENA, Swiss-Prot, and FASTA alignments are
-handled by the built-in sequence I/O layer. ABI/AB1 and SCF chromatograms are
-read as sequencing data. A file with an unknown extension is inspected by
-content where possible, so a text file containing bare bases can still open as
-a sequence.</p>
+<p>FASTA, GenBank/ApE, GFF3, EMBL/ENA, Swiss-Prot, and FASTA, Clustal,
+Stockholm, and PHYLIP alignments are handled by the built-in sequence I/O
+layer. ABI/AB1 and SCF chromatograms are read as sequencing data. A file with
+an unknown extension is inspected by content where possible, so a text file
+containing bare bases can still open as a sequence.</p>
 <p>Installed desktop packages register these native sequence formats with the
 host operating system. Portable distributions remain association-neutral.</p>
 <h3 id="optional-converters">Optional converters<a class="headerlink" href="#optional-converters" title="Permanent link">&para;</a></h3>
@@ -858,6 +996,13 @@ host operating system. Portable distributions remain association-neutral.</p>
 those formats require a separately configured converter. They are not bundled
 parsers and should not be treated as native support. See the GUI settings and
 the <a href="engine-api/">Engine API</a> for the converter contract.</p>
+<p>SnapGene <code>.dna</code> files are deliberately not imported directly while their
+license and format compatibility are under review. Export the record as
+GenBank from SnapGene, then open the <code>.gb</code>/<code>.gbk</code> file in InstaGene. This
+preserves the supported, inspectable conversion path without implying native
+SnapGene compatibility. The <a href="formats/">format matrix</a> and
+<a href="migration/">migration guide</a> distinguish built-in support from
+converter-backed and deferred routes.</p>
 <h2 id="project-status">Project status<a class="headerlink" href="#project-status" title="Permanent link">&para;</a></h2>
 <p>InstaGene is under active development. Treat tagged releases as the stable
 distribution point; CI artifacts are previews of a particular commit. Sequence
