@@ -1,40 +1,8 @@
 package org.instagene.app.cli
 
-import org.instagene.core.Assembly
-import org.instagene.core.AssemblyException
-import org.instagene.core.AssemblyWorkflows
-import org.instagene.core.AdvancedSearch
-import org.instagene.core.Alignment
-import org.instagene.core.AlignmentParameters
-import org.instagene.core.CodonDesign
-import org.instagene.core.CodonTable
-import org.instagene.core.Digest
-import org.instagene.core.EnzymeAnalysis
-import org.instagene.core.Enzymes
-import org.instagene.core.ExternalTools
-import org.instagene.core.Feature
-import org.instagene.core.GelLane
-import org.instagene.core.MasterMixComponent
-import org.instagene.core.MolecularCalculators
-import org.instagene.core.NcbiClient
-import org.instagene.core.PrimerThermodynamics
-import org.instagene.core.PrimerDesign
-import org.instagene.core.PrimerDesignBackend
-import org.instagene.core.PrimerDesignParameters
-import org.instagene.core.Recombination
-import org.instagene.core.Reports
-import org.instagene.core.SearchMode
-import org.instagene.core.SearchRequest
-import org.instagene.core.Seq
-import org.instagene.core.SeqOps
-import org.instagene.core.SequenceIdentity
-import org.instagene.core.SequenceStatistics
-import org.instagene.core.SiteDomestication
-import org.instagene.core.Topology
-import org.instagene.core.VirtualGel
-import org.instagene.core.Version
-import org.instagene.core.io.SeqFormat
-import org.instagene.core.io.SeqIO
+import kotlinx.serialization.json.Json
+import org.instagene.core.*
+import org.instagene.core.io.*
 import java.io.File
 import java.io.IOException
 import kotlin.system.measureNanoTime
@@ -93,14 +61,17 @@ object Cli {
             "orf" -> orfs(load(args), args)
             "find" -> find(load(args), args)
             "align" -> align(load(args), args)
+            "dotplot", "dot-plot" -> dotPlot(load(args), args)
+            "repeats", "repeat" -> repeats(load(args), args)
             "gel" -> gel(load(args), args)
             "identity" -> identity(load(args), args)
             "dilute" -> dilute(args)
             "mix" -> mix(args)
             "blast-url" -> blastUrl(load(args), args)
             "ncbi-search" -> ncbiSearch(args)
-            "ncbi-fetch" -> emit(NcbiClient().fetchGenBank(args.require("accession")), args)
+            "ncbi-fetch" -> ncbiFetch(args)
             "bench", "benchmark" -> benchmark(args)
+            "eln-bundle", "eln" -> elnBundle(load(args), args)
             "digest" -> digest(load(args), args)
             "sites" -> uniqueSites(load(args))
             "edit" -> emit(edit(load(args), args), args)
@@ -113,6 +84,7 @@ object Cli {
             "gibson" -> gibson(args)
             "golden-gate", "goldengate" -> goldenGate(args)
             "recombine" -> recombine(args)
+            "recipe", "recipes" -> recipe(args)
 
             else -> throw CliException("Unknown command '$command'. Run `instagene help`.")
         }
@@ -342,6 +314,49 @@ object Cli {
         println("Done. (${repeats} repeats, averaged)")
     }
 
+    /** Writes an offline, vendor-neutral ELN/LIMS ZIP handoff for a sequence and optional attachments. */
+    private fun elnBundle(seq: Seq, args: Args) {
+        val destination = File(args.require("out"))
+        fun suppliedPaths(key: String): List<File> = args.opt(key)?.split(',')
+            ?.map(String::trim)
+            ?.filter(String::isNotEmpty)
+            ?.map(::File)
+            .orEmpty()
+        val reports = suppliedPaths("report").map { file ->
+            if (!file.isFile) throw CliException("Report file not found: ${file.path}")
+            ElnReport("reports/${file.nameWithoutExtension}.md", file.readText(), "Supplied report: ${file.name}")
+        }
+        val attachments = suppliedPaths("attachment").map { file ->
+            if (!file.isFile) throw CliException("Attachment file not found: ${file.path}")
+            val extension = file.extension.lowercase()
+            val (mediaType, role) = when (extension) {
+                "svg" -> "image/svg+xml" to ElnArtifactRole.MAP_SVG
+                "png" -> "image/png" to ElnArtifactRole.MAP_PNG
+                "pdf" -> "application/pdf" to ElnArtifactRole.ATTACHMENT
+                "csv" -> "text/csv" to ElnArtifactRole.ATTACHMENT
+                "md", "txt" -> "text/plain" to ElnArtifactRole.ATTACHMENT
+                else -> "application/octet-stream" to ElnArtifactRole.ATTACHMENT
+            }
+            ElnAttachment("attachments/${file.name}", file.readBytes(), mediaType, role, "Supplied attachment: ${file.name}")
+        }
+        val input = args.opt("in") ?: args.positional(0) ?: "stdin"
+        val manifest = ElnAdapters.GENERIC_ZIP.export(
+            destination,
+            ElnBundleRequest(
+                title = args.opt("title", seq.name.ifBlank { "InstaGene sequence" }),
+                sequence = seq,
+                reports = reports,
+                attachments = attachments,
+                provenance = mapOf("input" to input, "exportedBy" to "instagene CLI"),
+            ),
+        )
+        if (args.flag("json")) {
+            println(Json { prettyPrint = true; encodeDefaults = true }.encodeToString(manifest))
+        } else {
+            println("Wrote generic ELN/LIMS bundle: ${destination.path} (${manifest.artifacts.size} attachment(s))")
+        }
+    }
+
     private fun translate(seq: Seq, args: Args) {
         val table = CodonTable.byId(args.int("table", 1))
         val frame = args.int("frame", 1) - 1
@@ -386,9 +401,10 @@ object Cli {
     private fun align(reference: Seq, args: Args) {
         val paths = args.require("query").split(',').map { it.trim() }.filter { it.isNotEmpty() }
         if (paths.isEmpty()) throw CliException("--query needs at least one comma-separated file")
+        val queries = paths.map { loadFile(it, "Query") }
         val result = Alignment.align(
             reference,
-            paths.map { loadFile(it, "Query") },
+            queries,
             AlignmentParameters(
                 mismatchPenalty = -args.double("mismatch", 0.1),
                 gapPenalty = -args.double("gap", 1.5),
@@ -396,11 +412,103 @@ object Cli {
                 lineWidth = args.int("line-width", 60),
             ),
         )
+        val alignment = MultipleAlignmentResult(
+            algorithm = MultipleAlignmentAlgorithm.BUILTIN,
+            sequences = listOf(reference.copy(bases = result.reference.sequence)) +
+                result.queries.mapIndexed { index, row -> queries[index].copy(bases = row.sequence) },
+        )
+        if (args.has("out") || args.has("format")) {
+            emitAlignment(alignment, args)
+            return
+        }
         println(">reference ${reference.name}")
         println(result.reference.sequence)
         result.queries.forEach {
             println(">${it.name}\tscore=${round(it.score)}\tmatches=${it.matches}\tmismatches=${it.mismatches}\tgaps=${it.gaps}")
             println(it.sequence)
+        }
+    }
+
+    /** Writes a multiple alignment in a standard interchange format or a portable image. */
+    private fun emitAlignment(result: MultipleAlignmentResult, args: Args) {
+        val requested = (args.opt("format") ?: args.opt("out")?.substringAfterLast('.', missingDelimiterValue = "") ?: "fasta").lowercase()
+        val format = when (requested) {
+            "fa", "fasta", "afa", "msa" -> "fasta"
+            "aln", "clustal", "clustalw" -> "clustal"
+            "sto", "stockholm" -> "stockholm"
+            "phy", "phylip", "ph" -> "phylip"
+            "svg" -> "svg"
+            "png" -> "png"
+            else -> throw CliException("--format expects fasta, clustal, stockholm, phylip, svg, or png")
+        }
+        val outPath = args.opt("out")
+        if (format == "png" && outPath == null) throw CliException("PNG alignment export requires --out FILE")
+        val text = when (format) {
+            "fasta" -> AlignmentIO.write(result.sequences, AlignmentFormat.FASTA)
+            "clustal" -> AlignmentIO.write(result.sequences, AlignmentFormat.CLUSTAL)
+            "stockholm" -> AlignmentIO.write(result.sequences, AlignmentFormat.STOCKHOLM)
+            "phylip" -> AlignmentIO.write(result.sequences, AlignmentFormat.PHYLIP)
+            "svg" -> AlignmentImages.svg(result)
+            else -> null
+        }
+        if (outPath == null) {
+            print(text.orEmpty())
+            return
+        }
+        val destination = File(outPath)
+        if (format == "png") destination.writeBytes(AlignmentImages.png(result)) else destination.writeText(text.orEmpty())
+        System.err.println(Colors.green("Wrote alignment $format to $outPath", args.colors))
+    }
+
+    private fun dotPlot(horizontal: Seq, args: Args) {
+        val vertical = args.opt("query")?.let { loadFile(it, "Dot-plot query") } ?: horizontal
+        val result = RepeatAnalysis.dotPlot(
+            horizontal = horizontal,
+            vertical = vertical,
+            wordSize = args.int("word-size", 11),
+            includeInverted = args.flag("inverted"),
+            maxPoints = args.int("max-points", 20_000),
+        )
+        val format = args.opt("format", if (args.flag("json")) "json" else "tsv").lowercase()
+        val output = when (format) {
+            "tsv", "csv", "text" -> RepeatAnalysis.dotPlotTsv(result)
+            "json" -> RepeatAnalysis.dotPlotJson(result)
+            "svg" -> RepeatAnalysis.dotPlotSvg(
+                result,
+                width = args.int("width", 900),
+                height = args.int("height", 900),
+            )
+            else -> throw CliException("--format expects tsv, json, or svg")
+        }
+        emitAnalysis(output, "dot-plot $format", args)
+        if (result.truncated) System.err.println("warning: dot-plot output was capped at ${result.points.size} point(s); increase --max-points to inspect more matches")
+    }
+
+    private fun repeats(seq: Seq, args: Args) {
+        val result = RepeatAnalysis.findRepeats(
+            sequence = seq,
+            minimumLength = args.int("min-length", 12),
+            maxResults = args.int("max-results", 2_000),
+            includeDirect = !args.flag("inverted-only"),
+            includeInverted = !args.flag("direct-only"),
+        )
+        val format = args.opt("format", if (args.flag("json")) "json" else "tsv").lowercase()
+        val output = when (format) {
+            "tsv", "csv", "text" -> RepeatAnalysis.repeatsTsv(result)
+            "json" -> RepeatAnalysis.repeatsJson(result)
+            else -> throw CliException("--format expects tsv or json")
+        }
+        emitAnalysis(output, "repeat analysis $format", args)
+        if (result.truncated) System.err.println("warning: repeat output was capped at ${result.repeats.size} call(s); increase --max-results to inspect more matches")
+    }
+
+    private fun emitAnalysis(text: String, label: String, args: Args) {
+        val outPath = args.opt("out")
+        if (outPath == null) {
+            print(text)
+        } else {
+            File(outPath).writeText(text)
+            System.err.println(Colors.green("Wrote $label to $outPath", args.colors))
         }
     }
 
@@ -440,9 +548,47 @@ object Cli {
     }
 
     private fun ncbiSearch(args: Args) {
-        val result = NcbiClient().searchNucleotide(args.require("term"), args.int("max-hits", 20))
+        val result = ncbiClient(args).searchNucleotide(args.require("term"), args.int("max-hits", 20))
         result.hits.forEach { println("${it.accession}\t${it.title}") }
         println("${result.hits.size} hit(s)")
+        result.provenance.takeIf { it.isNotEmpty() }?.let { responses ->
+            System.err.println("NCBI provenance: ${responses.joinToString(",") { it.origin.name.lowercase().replace('_', '-') }}")
+        }
+    }
+
+    private fun ncbiFetch(args: Args) {
+        val seq = ncbiClient(args).fetchGenBank(args.require("accession"))
+        System.err.println("NCBI provenance: ${seq.metadata["ONLINE_ORIGINS"].orEmpty().ifBlank { "network" }}")
+        emit(seq, args)
+    }
+
+    /**
+     * Caching is opt-in: without --cache-dir, NCBI commands are network-only.
+     * Supplying a directory explicitly selects cache reuse unless the caller
+     * chooses another --cache-mode.
+     */
+    private fun ncbiClient(args: Args): NcbiClient {
+        val directory = args.opt("cache-dir")
+        if (args.has("cache-dir") && directory.isNullOrBlank()) {
+            throw CliException("--cache-dir requires a directory path")
+        }
+        val modeValue = args.opt("cache-mode")
+        if (args.has("cache-mode") && modeValue.isNullOrBlank()) {
+            throw CliException("--cache-mode requires network-only, prefer-cache, network-then-cache, or cache-only")
+        }
+        val mode = try {
+            modeValue?.let(OnlineCacheMode::parse)
+                ?: if (directory != null) OnlineCacheMode.PREFER_CACHE else OnlineCacheMode.NETWORK_ONLY
+        } catch (error: IllegalArgumentException) {
+            throw CliException(error.message.orEmpty())
+        }
+        if (directory == null) {
+            if (mode != OnlineCacheMode.NETWORK_ONLY) {
+                throw CliException("--cache-mode ${mode.name.lowercase().replace('_', '-')} requires --cache-dir DIR")
+            }
+            return NcbiClient()
+        }
+        return NcbiClient(onlineCache = OnlineCache(File(directory)), onlineCacheMode = mode)
     }
 
     private fun digest(seq: Seq, args: Args) {
@@ -540,16 +686,50 @@ object Cli {
             "primer3" -> PrimerDesignBackend.PRIMER3
             else -> throw CliException("--backend expects builtin or primer3")
         }
-        if (args.flag("advanced") || requestedBackend == PrimerDesignBackend.PRIMER3) {
-            val result = PrimerDesign.design(
-                seq, from, to,
-                PrimerDesignParameters(targetTm = targetTm),
-                requestedBackend,
-            )
+        val mode = when (args.opt("mode", "pcr").lowercase()) {
+            "pcr" -> PrimerDesignMode.PCR
+            "sequencing", "sequence" -> PrimerDesignMode.SEQUENCING
+            else -> throw CliException("--mode expects pcr or sequencing")
+        }
+        val direction = when (args.opt("direction", "both").lowercase()) {
+            "forward", "f" -> SequencingPrimerDirection.FORWARD
+            "reverse", "r" -> SequencingPrimerDirection.REVERSE
+            "both" -> SequencingPrimerDirection.BOTH
+            else -> throw CliException("--direction expects forward, reverse, or both")
+        }
+        val quality = primerQualityContext(seq, args)
+        val parameters = PrimerDesignParameters(
+            targetTm = targetTm,
+            mode = mode,
+            sequencingDirection = direction,
+            qualityContext = quality,
+        )
+        val useAdvanced = args.flag("advanced") || requestedBackend == PrimerDesignBackend.PRIMER3 ||
+            mode != PrimerDesignMode.PCR || quality != null || args.flag("json") || args.has("report")
+        if (useAdvanced) {
+            val result = PrimerDesign.design(seq, from, to, parameters, requestedBackend)
+            val report = Reports.primerDesignReport(seq, from, to, parameters, result)
+            args.opt("report")?.let { path ->
+                val file = File(path)
+                file.writeText(if (file.extension.equals("json", ignoreCase = true)) Reports.primerDesignJson(report) else Reports.primerDesignMarkdown(report))
+                System.err.println("Wrote primer design report to ${file.absolutePath}")
+            }
+            if (args.flag("json")) {
+                println(Reports.primerDesignJson(report))
+                return
+            }
             println("Amplicon ${from + 1}..$to (${to - from} bp) from ${seq.name}")
+            println("Mode: ${parameters.mode}")
             println("Backend: ${result.backend}")
             result.warnings.forEach { System.err.println("warning: $it") }
             result.command?.let { System.err.println("command: $it") }
+            result.qualitySummary?.let { summary ->
+                println(
+                    "Quality: Q${summary.minimumPhred}; observed ${summary.observedPositions.size}/${seq.length}; " +
+                        "low-quality ${QualityRegions.oneBased(summary.lowQualityRegions).ifBlank { "none" }}; " +
+                        "uncovered ${QualityRegions.oneBased(summary.uncoveredRegions).ifBlank { "none" }}",
+                )
+            }
             if (result.candidates.isEmpty()) println("No candidates passed the filters.")
             result.candidates.take(100).forEach { candidate ->
                 println("${candidate.primer.name}\t${candidate.start + 1}..${candidate.end}\t${candidate.primer.bases}\tTm=${"%.1f".format(candidate.primer.tm)}\tGC=${"%.1f".format(candidate.primer.gc)}\tscore=${"%.2f".format(candidate.score)}")
@@ -562,6 +742,64 @@ object Cli {
         println("  $rev")
     }
 
+    /** Builds the optional quality context used by `primers --advanced`. */
+    private fun primerQualityContext(seq: Seq, args: Args): PrimerQualityContext? {
+        val requested = args.has("qual") || args.has("traces") || args.has("low-quality") ||
+            args.has("quality-threshold") || args.has("exclude-uncovered")
+        if (!requested) return null
+        val threshold = args.int("quality-threshold", 20)
+        if (threshold < 0) throw CliException("--quality-threshold must be non-negative")
+        val evidence = mutableListOf<QualityEvidence>()
+
+        args.opt("qual")?.let { path ->
+            val file = File(path)
+            if (!file.isFile) throw CliException("FASTA-QUAL sidecar not found: $path")
+            val records = FastaQual.read(file)
+            val requestedRecord = args.opt("qual-record")
+            val record = when {
+                requestedRecord != null -> records.firstOrNull { it.name == requestedRecord }
+                    ?: throw CliException("FASTA-QUAL sidecar has no record named '$requestedRecord'")
+                records.size == 1 -> records.single()
+                else -> records.firstOrNull { it.name == seq.name }
+                    ?: throw CliException("FASTA-QUAL sidecar has multiple records; use --qual-record NAME")
+            }
+            val offset = args.int("qual-offset", 1) - 1
+            if (offset < 0) throw CliException("--qual-offset is one-based and must be at least 1")
+            evidence += PrimerQualityContext.evidenceFromFastaQual(record, seq.length, offset, file.absolutePath)
+        }
+
+        args.opt("traces")?.let { rawPaths ->
+            val traces = rawPaths.split(',').map(String::trim).filter(String::isNotEmpty).map { path ->
+                val file = File(path)
+                if (!file.isFile) throw CliException("Chromatogram not found: $path")
+                val header = file.inputStream().use { it.readNBytes(4) }
+                when {
+                    ChromatogramReader.looksLikeAbi(header) -> ChromatogramReader.readAbi(file)
+                    ChromatogramReader.looksLikeScf(header) -> ChromatogramReader.readScf(file)
+                    else -> throw CliException("'${file.name}' is not a readable ABI/AB1 or SCF chromatogram")
+                }
+            }
+            val alignment = SangerAlignment.alignChromatograms(
+                seq,
+                traces,
+                SangerOptions(minQuality = threshold, trimQuality = 0),
+            )
+            val pathsByRead = traces.associateBy({ it.name }, { it.source })
+            evidence += PrimerQualityContext.evidenceFromSangerAlignment(alignment).map { item ->
+                item.copy(source = item.source.copy(sourceId = pathsByRead[item.source.label] ?: item.source.sourceId))
+            }
+        }
+
+        val manual = QualityRegions.parseOneBased(args.opt("low-quality", ""), seq.length)
+        return PrimerQualityContext(
+            templateLength = seq.length,
+            minimumPhred = threshold,
+            evidence = evidence,
+            manualExcludedRegions = manual,
+            excludeUncoveredPositions = args.flag("exclude-uncovered"),
+        )
+    }
+
     private fun plasmid(args: Args) {
         val backbone = loadFile(args.require("backbone"), "Backbone").let {
             if (args.flag("linear-backbone")) it else it.withTopology(Topology.CIRCULAR)
@@ -570,23 +808,26 @@ object Cli {
         val enzymes = Enzymes.parseList(args.require("enzymes"))
         val name = args.opt("name", "${backbone.name}_${insert.name}")
 
-        val result = Assembly.buildPlasmid(backbone, insert, enzymes, name)
-        result.log.forEach { System.err.println("  $it") }
-        System.err.println("Constructed $name: ${result.plasmid.length} bp circular")
-        emit(result.plasmid, args)
+        val result = CloningWorkflows.restriction(backbone, insert, enzymes, name)
+        result.steps.forEach { System.err.println("  ${it.detail}") }
+        System.err.println("Constructed $name: ${result.product.length} bp circular")
+        saveRecipe(args, result.method.name, result.product, listOf(backbone, insert), result.parameters)
+        emit(result.product, args)
     }
 
     private fun gibson(args: Args) {
         val paths = args.require("parts").split(',').map { it.trim() }.filter { it.isNotEmpty() }
         if (paths.size < 2) throw CliException("--parts needs at least two comma-separated files")
         val parts = paths.map { loadFile(it, "Part") }
-        val result = Assembly.gibson(
+        val result = CloningWorkflows.overlapAssembly(
+            method = CloningMethod.GIBSON,
             parts = parts,
             minOverlap = args.int("min-overlap", 15),
             name = args.opt("name", "gibson_assembly"),
             circular = !args.flag("linear"),
         )
-        result.log.forEach { System.err.println("  $it") }
+        result.steps.forEach { System.err.println("  ${it.detail}") }
+        saveRecipe(args, result.method.name, result.product, parts, result.parameters)
         emit(result.product, args)
     }
 
@@ -597,25 +838,81 @@ object Cli {
         if (overhangs.size != paths.size + 1) {
             throw CliException("--overhangs needs exactly one more item than --parts (left, between each part, right)")
         }
-        val result = AssemblyWorkflows.goldenGate(
-            paths.map { loadFile(it, "Part") },
+        val parts = paths.map { loadFile(it, "Part") }
+        val result = CloningWorkflows.goldenGate(
+            parts,
             overhangs,
             name = args.opt("name", "golden_gate_product"),
             circular = !args.flag("linear"),
         )
-        result.log.forEach { System.err.println("  $it") }
+        result.steps.forEach { System.err.println("  ${it.detail}") }
+        result.diagnostics.forEach { System.err.println("${it.severity}: ${it.message}") }
+        saveRecipe(args, result.method.name, result.product, parts, result.parameters)
         emit(result.product, args)
     }
 
     private fun recombine(args: Args) {
         val target = loadFile(args.require("target"), "Target")
         val donor = loadFile(args.require("donor"), "Donor")
-        val candidates = Recombination.candidates(target, donor, args.int("arm", 20))
-        val selected = candidates.getOrNull(args.int("candidate", 1) - 1)
-            ?: throw CliException("No matching recombination candidate found (or --candidate is out of range)")
-        val result = Recombination.recombine(target, donor, selected, args.opt("name", "${target.name}_recombined"))
-        System.err.println("Recombined ${target.name} with ${donor.name}: target ${selected.targetLeft + 1}..${selected.targetRight + selected.armLength}")
+        val armLength = args.int("arm", 20)
+        val candidateIndex = args.int("candidate", 1) - 1
+        val result = CloningWorkflows.homologyRecombination(
+            target,
+            donor,
+            armLength,
+            candidateIndex,
+            args.opt("name", "${target.name}_recombined"),
+        )
+        result.steps.forEach { System.err.println("  ${it.detail}") }
+        saveRecipe(args, result.method.name, result.product, listOf(target, donor), result.parameters)
         emit(result.product, args)
+    }
+
+    /** Saves a portable, identity-checked recipe alongside any cloning output when requested. */
+    private fun saveRecipe(
+        args: Args,
+        operation: String,
+        product: Seq,
+        inputs: List<Seq>,
+        parameters: Map<String, String>,
+    ) {
+        val path = args.opt("recipe") ?: return
+        val file = File(path)
+        file.writeText(WorkflowRecipes.encode(Reports.workflowRecipe(operation, product, inputs, parameters)))
+        System.err.println("Wrote reproducibility recipe to ${file.absolutePath}")
+    }
+
+    private fun recipe(args: Args) {
+        when (args.positional(0)?.lowercase() ?: "replay") {
+            "replay" -> replayRecipe(args)
+            else -> throw CliException("Recipe action must be 'replay'. Example: instagene recipe replay --file workflow.json --inputs vector.gb,insert.fa")
+        }
+    }
+
+    private fun replayRecipe(args: Args) {
+        val recipeFile = File(args.require("file"))
+        if (!recipeFile.isFile) throw CliException("Recipe file not found: ${recipeFile.path}")
+        val recipe = WorkflowRecipes.decode(recipeFile.readText())
+        val paths = args.require("inputs").split(',').map(String::trim).filter(String::isNotEmpty)
+        val inputs = paths.map { loadFile(it, "Recipe input") }
+        val result = WorkflowReplays.replay(
+            recipe,
+            inputs,
+            WorkflowReplayAuthorization(
+                allowExternalTools = args.flag("allow-external"),
+                allowOnlineSources = args.flag("allow-online"),
+            ),
+        )
+        if (!result.succeeded) throw CliException(result.messages.joinToString(" ").ifBlank { "Recipe replay failed: ${result.status}" })
+        val product = result.product ?: throw CliException("Recipe replay completed without a product")
+        if (args.flag("json")) {
+            // A named output may still be written; stdout remains a JSON contract for automation.
+            if (args.opt("out") != null) emit(product, args)
+            println(Reports.workflowReplayJson(result))
+        } else {
+            result.messages.forEach { System.err.println(it) }
+            emit(product, args)
+        }
     }
 
     private fun listEnzymes(args: Args) {
@@ -630,6 +927,20 @@ object Cli {
 
     private fun externalTools(args: Args) {
         val toolId = args.opt("run")
+        if (args.flag("rescan")) ExternalTools.rescan()
+        if (args.flag("health") || (args.flag("json") && toolId == null)) {
+            val timeout = args.int("timeout", 5)
+            if (timeout !in 1..30) throw CliException("--timeout for tool health must be between 1 and 30 seconds")
+            val selected = toolId?.let { id ->
+                listOf(
+                    ExternalTools.CATALOG.firstOrNull { it.id == id || it.executable == id }
+                        ?: throw CliException("Unknown tool '$id'. Available: ${ExternalTools.CATALOG.joinToString(", ") { it.id }}"),
+                )
+            } ?: ExternalTools.CATALOG
+            val health = ExternalTools.healthChecks(selected, timeout.toLong())
+            if (args.flag("json")) println(ExternalTools.healthJson(health)) else print(ExternalTools.healthReport(health))
+            return
+        }
         if (toolId == null) {
             print(ExternalTools.report())
             return
@@ -662,7 +973,12 @@ object Cli {
     private fun sample(args: Args) {
         val requested = args.positional(0) ?: args.opt("name")
         if (requested == null) {
-            println("Bundled samples: ${SeqIO.Samples.ALL.joinToString(", ") { it.name }}")
+            println("Bundled samples:")
+            SeqIO.Samples.ALL.forEach { seq ->
+                println("- ${seq.name}: ${seq.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()}")
+            }
+            println("- ${SeqIO.Samples.CHROMATOGRAM_DEMO.name}: ${SeqIO.Samples.CHROMATOGRAM_DEMO.source}")
+            println("- alignment_demo: ${SeqIO.Samples.ALIGNMENT_DEMO_SOURCE}")
             return
         }
         val seq = SeqIO.Samples.ALL.firstOrNull { it.name.equals(requested, ignoreCase = true) }
@@ -761,17 +1077,22 @@ object Cli {
           orf [--min-aa 30] [--table 11]  open reading frames on both strands
           find --pattern GGATCC [--forward-only]
           find --pattern GGATCC [--mismatches 1] [--three-prime 4] [--mode dna|literal|amino]
-          align --query read.fa[,read2.fa] reference.fa
+          align --query read.fa[,read2.fa] reference.fa [--out alignment.aln] [--format fasta|clustal|stockholm|phylip|svg|png]
+          dotplot [--query other.fa] [--word-size 11] [--inverted] [--format tsv|json|svg] [--out plot.svg]
+          repeats [--min-length 12] [--direct-only|--inverted-only] [--format tsv|json] [--out repeats.tsv]
           gel --enzymes EcoRI,BamHI sequence.fa [--completion 50]
           identity FILE [--json]                print a stable sequence identity
           dilute --stock 100 --final 10 --volume 100
           mix --components buffer=2,water=5 --reactions 10 [--overhead 0.1]
           blast-url FILE [--program blastn] [--expect 100]
-          ncbi-search --term "gene name" [--max-hits 20]
-          ncbi-fetch --accession ACCESSION [--to genbank]
+          ncbi-search --term "gene name" [--max-hits 20] [--cache-dir DIR] [--cache-mode MODE]
+          ncbi-fetch --accession ACCESSION [--to genbank] [--cache-dir DIR] [--cache-mode MODE]
+            MODE is network-only, prefer-cache, network-then-cache, or cache-only.
           enzymes [--filter eco]          the built-in restriction enzyme list
           sites FILE                      unique cutters and non-cutters
           bench | benchmark FILE           time all engine operations on the input
+          eln-bundle --out handoff.zip FILE [--report report.md] [--attachment map.svg,pdf]
+                                        write an offline generic ELN/LIMS ZIP with hashes and provenance
 
         Editing
           revcomp | complement | transcribe | backtranscribe
@@ -785,15 +1106,21 @@ object Cli {
           convert --to genbank|gff3
 
         Building plasmids
-          plasmid --backbone vec.gb --insert gene.fa --enzymes EcoRI,HindIII [--name pMyGene]
-          gibson --parts a.fa,b.fa,c.fa [--min-overlap 20] [--linear]
-          golden-gate --parts a.fa,b.fa --overhangs A,G,A [--linear]
-          recombine --target target.fa --donor donor.fa --arm 20 [--candidate 1]
+          plasmid --backbone vec.gb --insert gene.fa --enzymes EcoRI,HindIII [--name pMyGene] [--recipe clone.json]
+          gibson --parts a.fa,b.fa,c.fa [--min-overlap 20] [--linear] [--recipe assembly.json]
+          golden-gate --parts a.fa,b.fa --overhangs GGAG,AATG,GGAG [--linear] [--recipe assembly.json]
+          recombine --target target.fa --donor donor.fa --arm 20 [--candidate 1] [--recipe recombination.json]
+          recipe replay --file workflow.json --inputs vector.gb,insert.fa [--allow-external] [--allow-online] [--json]
           digest --enzymes EcoRI,BamHI [--fasta]   cut sites and fragments
           primers --from 100 --to 400 [--tm 60] [--advanced] [--backend builtin|primer3]
+          primers --mode sequencing --direction forward --from 100 --to 220 [--advanced]
+          primers --qual read.qual [--qual-record NAME] [--qual-offset 1] [--low-quality 1-20,45]
+                  [--traces read1.ab1,read2.scf] [--quality-threshold 20] [--exclude-uncovered]
+                  [--report primers.md|json] [--json]
 
         External CLI tools (optional)
-          tools                           what is installed, and how to install the rest
+          tools [--health] [--json]       optional-tool availability, versions, and recovery actions
+          tools --health --run primer3    inspect one optional tool without running it
           tools --run primer3 --preview   show a reproducible command without running it
           tools --run seqkit-stats FILE
           tools --run emboss-restrict FILE
@@ -805,10 +1132,11 @@ object Cli {
           ${INSTAGENE_GUI}           environment variable pointing at the GUI launcher
 
         Other
-          sample [pUC19_MCS|GFP_CDS]      write a bundled example sequence
+          sample [NAME]                    write a bundled example sequence
           --circular                      treat the input as a circular molecule
 
         Examples
+          instagene sample pBR322_NCBI --to genbank > pbr322.gb
           instagene sample GFP_CDS > gfp.fa
           cat gfp.fa | instagene translate --stop-at-stop
           instagene digest --enzymes EcoRI,HindIII gfp.fa

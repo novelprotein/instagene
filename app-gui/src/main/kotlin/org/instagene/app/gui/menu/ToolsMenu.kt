@@ -1,22 +1,20 @@
 package org.instagene.app.gui.menu
 
+import org.instagene.app.gui.dialog.AnalysisDialogs
+import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.enzyme.EnzymeManagerDialog
 import org.instagene.app.gui.enzyme.findEnzyme
-import org.instagene.app.gui.dialog.AnalysisDialogs
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.tool.DigestPanel
 import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.app.gui.tool.LibraryPanel
 import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
-import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JOptionPane
-import javax.swing.KeyStroke
 
 class ToolsMenu(
     private val doc: SeqDocument,
@@ -149,7 +147,7 @@ class ToolsMenu(
             add(calculatorItem.apply { addActionListener { onAnalysis("Calculators") } })
             addSeparator()
             add(JMenuItem("NCBI Search...").apply {
-                accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_G, InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK)
+                accelerator = menuShortcutWithShift(KeyEvent.VK_G)
                 addActionListener {
                     val accession = JOptionPane.showInputDialog(
                         null,

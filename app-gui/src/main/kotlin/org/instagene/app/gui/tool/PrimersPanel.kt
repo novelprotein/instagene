@@ -9,22 +9,35 @@ import org.instagene.core.Feature
 import org.instagene.core.Alphabet
 import org.instagene.core.PrimerDesign
 import org.instagene.core.PrimerDesignBackend
+import org.instagene.core.PrimerDesignMode
 import org.instagene.core.PrimerDesignParameters
 import org.instagene.core.PrimerAnnotation
+import org.instagene.core.PrimerQualityContext
+import org.instagene.core.QualityEvidence
+import org.instagene.core.QualityRegions
+import org.instagene.core.Reports
+import org.instagene.core.SangerAlignment
+import org.instagene.core.SangerOptions
+import org.instagene.core.SequencingPrimerDirection
+import org.instagene.core.ChromatogramReader
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
 import org.instagene.core.Strand
+import org.instagene.core.io.FastaQual
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
+import java.io.File
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JComboBox
+import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JPopupMenu
 import javax.swing.JOptionPane
@@ -195,46 +208,180 @@ class PrimersPanel(
         if (start !in 0 until doc.seq.length || end <= start || end > doc.seq.length) return
         val minLength = JSpinner(SpinnerNumberModel(18, 8, 100, 1))
         val maxLength = JSpinner(SpinnerNumberModel(30, 8, 100, 1))
+        val targetTm = JSpinner(SpinnerNumberModel((tmSpinner.value as Number).toDouble(), 40.0, 75.0, 0.5))
         val minTm = JTextField("50", 6)
         val maxTm = JTextField("70", 6)
         val minGc = JTextField("30", 6)
         val maxGc = JTextField("70", 6)
         val backend = JComboBox(PrimerDesignBackend.entries.toTypedArray())
-        val form = JPanel(GridLayout(5, 4, 6, 6)).apply {
+        val mode = JComboBox(PrimerDesignMode.entries.toTypedArray())
+        val direction = JComboBox(SequencingPrimerDirection.entries.toTypedArray())
+        val qualityThreshold = JSpinner(SpinnerNumberModel(20, 0, 255, 1))
+        val qualFile = JTextField(24)
+        val qualRecord = JTextField(12)
+        val qualOffset = JTextField("1", 5)
+        val traceFiles = JTextField(24)
+        val manualRegions = JTextField(18)
+        val excludeUncovered = JCheckBox("Exclude uncovered positions")
+        val form = JPanel(GridLayout(0, 2, 6, 6)).apply {
             add(JLabel("Min length")); add(minLength)
             add(JLabel("Max length")); add(maxLength)
             add(JLabel("Min Tm")); add(minTm)
             add(JLabel("Max Tm")); add(maxTm)
             add(JLabel("Min GC %")); add(minGc)
             add(JLabel("Max GC %")); add(maxGc)
-            add(JLabel("Target Tm")); add(tmSpinner)
+            add(JLabel("Target Tm")); add(targetTm)
             add(JLabel("Target")); add(JLabel("Amplicon ${start + 1}..$end"))
             add(JLabel("Backend")); add(backend)
             add(JLabel("Primer3")); add(JLabel("Optional; falls back to built-in if unavailable"))
+            add(JLabel("Mode")); add(mode)
+            add(JLabel("Sequencing direction")); add(direction)
+            add(JLabel("Minimum Phred")); add(qualityThreshold)
+            add(JLabel("FASTA-QUAL sidecar")); add(fileInput(qualFile, "Choose FASTA-QUAL sidecar", multiple = false))
+            add(JLabel("QUAL record (optional)")); add(qualRecord)
+            add(JLabel("QUAL offset (1-based)")); add(qualOffset)
+            add(JLabel("ABI/SCF trace files")); add(fileInput(traceFiles, "Choose ABI/SCF chromatograms", multiple = true))
+            add(JLabel("Manual low-quality regions")); add(manualRegions)
+            add(JLabel("Coverage policy")); add(excludeUncovered)
         }
         val ok = JOptionPane.showConfirmDialog(null, form, "Advanced Primer Candidates", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
         if (ok != JOptionPane.OK_OPTION) return
         runCatching {
-            PrimerDesign.design(doc.seq, start, end, PrimerDesignParameters(
+            val quality = buildQualityContext(
+                minimumPhred = (qualityThreshold.value as Number).toInt(),
+                qualPath = qualFile.text.trim(),
+                qualRecordName = qualRecord.text.trim(),
+                qualOffset = qualOffset.text.trim(),
+                tracePaths = traceFiles.text.trim(),
+                manualSpecification = manualRegions.text.trim(),
+                excludeUncovered = excludeUncovered.isSelected,
+            )
+            val parameters = PrimerDesignParameters(
                 minLength = (minLength.value as Number).toInt(),
                 maxLength = (maxLength.value as Number).toInt(),
-                targetTm = (tmSpinner.value as Number).toDouble(),
+                targetTm = (targetTm.value as Number).toDouble(),
                 minTm = minTm.text.toDouble(), maxTm = maxTm.text.toDouble(),
                 minGc = minGc.text.toDouble(), maxGc = maxGc.text.toDouble(),
-            ), backend.selectedItem as PrimerDesignBackend)
-        }.onSuccess { design ->
+                mode = mode.selectedItem as PrimerDesignMode,
+                sequencingDirection = direction.selectedItem as SequencingPrimerDirection,
+                qualityContext = quality,
+            )
+            val design = PrimerDesign.design(doc.seq, start, end, parameters, backend.selectedItem as PrimerDesignBackend)
+            design to Reports.primerDesignReport(doc.seq, start, end, parameters, design)
+        }.onSuccess { (design, report) ->
             val text = buildString {
                 append("Backend: ${design.backend}")
+                append("\nMode: ${report.mode}")
                 if (design.warnings.isNotEmpty()) append("\n${design.warnings.joinToString("\n")}")
                 if (design.command != null) append("\nCommand: ${design.command}")
+                design.qualitySummary?.let { quality ->
+                    append("\nQuality: Q${quality.minimumPhred}; observed ${quality.observedPositions.size}/${doc.seq.length}; ")
+                    append("low-quality ${QualityRegions.oneBased(quality.lowQualityRegions).ifBlank { "none" }}; ")
+                    append("uncovered ${QualityRegions.oneBased(quality.uncoveredRegions).ifBlank { "none" }}")
+                }
                 if (design.candidates.isNotEmpty()) append("\n\n")
                 append(design.candidates.take(100).joinToString("\n") {
-                "${it.primer.name}\t${it.start + 1}..${it.end}\t${it.primer.bases}\tTm=${"%.1f".format(it.primer.tm)}\tGC=${"%.1f".format(it.primer.gc)}\tscore=${"%.2f".format(it.score)}\tself=${it.selfComplementarity}"
+                    "${it.primer.name}\t${it.start + 1}..${it.end}\t${it.primer.bases}\tTm=${"%.1f".format(it.primer.tm)}\tGC=${"%.1f".format(it.primer.gc)}\tscore=${"%.2f".format(it.score)}\tself=${it.selfComplementarity}"
                 }.ifBlank { "No candidates passed the filters." })
             }
-            val area = org.instagene.app.gui.monospacedTextArea(24, 110, text)
-            JOptionPane.showMessageDialog(null, JScrollPane(area), "Advanced Primer Candidates", JOptionPane.INFORMATION_MESSAGE)
+            showAdvancedDesignResult(text, report)
         }.onFailure { JOptionPane.showMessageDialog(null, it.message ?: "Primer search failed", "Advanced Primer Candidates", JOptionPane.ERROR_MESSAGE) }
+    }
+
+    /** Chooser-backed path input so trace and sidecar file selection remains usable on every desktop. */
+    private fun fileInput(field: JTextField, title: String, multiple: Boolean): JPanel = JPanel(BorderLayout(4, 0)).apply {
+        add(field, BorderLayout.CENTER)
+        add(JButton("Browse…").apply {
+            addActionListener {
+                val chooser = JFileChooser().apply { isMultiSelectionEnabled = multiple; dialogTitle = title }
+                if (chooser.showOpenDialog(this@PrimersPanel) == JFileChooser.APPROVE_OPTION) {
+                    val files = if (multiple) chooser.selectedFiles.toList() else listOf(chooser.selectedFile)
+                    field.text = files.filterNotNull().joinToString(", ") { it.absolutePath }
+                }
+            }
+        }, BorderLayout.EAST)
+    }
+
+    private fun buildQualityContext(
+        minimumPhred: Int,
+        qualPath: String,
+        qualRecordName: String,
+        qualOffset: String,
+        tracePaths: String,
+        manualSpecification: String,
+        excludeUncovered: Boolean,
+    ): PrimerQualityContext? {
+        val requested = qualPath.isNotBlank() || tracePaths.isNotBlank() || manualSpecification.isNotBlank() || excludeUncovered
+        if (!requested) return null
+        val evidence = mutableListOf<QualityEvidence>()
+        if (qualPath.isNotBlank()) {
+            val file = File(qualPath)
+            require(file.isFile) { "FASTA-QUAL sidecar was not found: $qualPath" }
+            val records = FastaQual.read(file)
+            val record = when {
+                qualRecordName.isNotBlank() -> records.firstOrNull { it.name == qualRecordName }
+                    ?: error("FASTA-QUAL sidecar has no record named '$qualRecordName'.")
+                records.size == 1 -> records.single()
+                else -> records.firstOrNull { it.name == doc.seq.name }
+                    ?: error("FASTA-QUAL sidecar has multiple records; enter the matching record name.")
+            }
+            val offset = qualOffset.toIntOrNull()?.minus(1)
+                ?: error("QUAL offset must be a one-based whole number.")
+            require(offset >= 0) { "QUAL offset must be at least 1." }
+            evidence += PrimerQualityContext.evidenceFromFastaQual(record, doc.seq.length, offset, file.absolutePath)
+        }
+        if (tracePaths.isNotBlank()) {
+            val traces = tracePaths.split(',').map(String::trim).filter(String::isNotEmpty).map { path ->
+                val file = File(path)
+                require(file.isFile) { "Chromatogram was not found: $path" }
+                val header = file.inputStream().use { it.readNBytes(4) }
+                when {
+                    ChromatogramReader.looksLikeAbi(header) -> ChromatogramReader.readAbi(file)
+                    ChromatogramReader.looksLikeScf(header) -> ChromatogramReader.readScf(file)
+                    else -> error("'${file.name}' is not a readable ABI/AB1 or SCF chromatogram.")
+                }
+            }
+            val alignment = SangerAlignment.alignChromatograms(
+                doc.seq, traces, SangerOptions(minQuality = minimumPhred, trimQuality = 0),
+            )
+            val sourcesByRead = traces.associateBy({ it.name }, { it.source })
+            evidence += PrimerQualityContext.evidenceFromSangerAlignment(alignment).map { item ->
+                item.copy(source = item.source.copy(sourceId = sourcesByRead[item.source.label] ?: item.source.sourceId))
+            }
+        }
+        return PrimerQualityContext(
+            templateLength = doc.seq.length,
+            minimumPhred = minimumPhred,
+            evidence = evidence,
+            manualExcludedRegions = QualityRegions.parseOneBased(manualSpecification, doc.seq.length),
+            excludeUncoveredPositions = excludeUncovered,
+        )
+    }
+
+    private fun showAdvancedDesignResult(text: String, report: Reports.PrimerDesignReport) {
+        val area = org.instagene.app.gui.monospacedTextArea(24, 110, text)
+        val content = JPanel(BorderLayout(6, 6)).apply {
+            add(JScrollPane(area), BorderLayout.CENTER)
+            add(JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
+                add(JButton("Save report…").apply {
+                    addActionListener {
+                        val chooser = JFileChooser().apply { dialogTitle = "Save primer design report" }
+                        if (chooser.showSaveDialog(this@PrimersPanel) == JFileChooser.APPROVE_OPTION) {
+                            runCatching {
+                                val file = chooser.selectedFile
+                                file.writeText(
+                                    if (file.extension.equals("json", ignoreCase = true)) Reports.primerDesignJson(report)
+                                    else Reports.primerDesignMarkdown(report),
+                                )
+                            }.onFailure { error ->
+                                JOptionPane.showMessageDialog(this@PrimersPanel, error.message ?: "Unable to save primer report", "Primer report", JOptionPane.ERROR_MESSAGE)
+                            }
+                        }
+                    }
+                })
+            }, BorderLayout.SOUTH)
+        }
+        JOptionPane.showMessageDialog(this, content, "Advanced Primer Candidates", JOptionPane.INFORMATION_MESSAGE)
     }
 
     private fun fillFromSelection() {

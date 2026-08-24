@@ -165,7 +165,8 @@ class FileMenuTest {
 
     /**
      * The Digest panel's per-enzyme cut counts must land on a background thread:
-     * the Cuts column fills in after the sequence appears, never blocking it.
+     * completed rows become available before a whole crowded catalog finishes,
+     * never blocking the sequence load.
      */
     @Test
     @Order(3)
@@ -180,7 +181,7 @@ class FileMenuTest {
             assertTrue(awaitEdt { content.doc.seq.length == expected })
 
             assertTrue(
-                awaitEdt(120_000) { content.digestPanel.computedCutCounts()?.get(ecoRi)?.let { it > 0 } == true },
+                awaitEdt(30_000) { content.digestPanel.observedCutCounts()?.get(ecoRi)?.let { it > 0 } == true },
                 "Async EcoRI cut counts never arrived for the 1.2 Mbp genome",
             )
         } finally {

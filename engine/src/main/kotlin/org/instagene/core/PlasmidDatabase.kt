@@ -1,5 +1,7 @@
 package org.instagene.core
 
+import org.instagene.core.io.SeqIO
+
 data class PlasmidRecord(
     val name: String,
     val sizeBp: Int,
@@ -7,6 +9,7 @@ data class PlasmidRecord(
     val markers: List<String>,
     val origin: String,
     val description: String,
+    val sampleName: String? = null,
 )
 
 data class PlasmidSearchResult(val results: List<PlasmidRecord>)
@@ -15,7 +18,15 @@ object PlasmidDatabase {
 
     private val BUILT_IN = listOf(
         PlasmidRecord("pUC19", 2686, "E. coli", listOf("AmpR"), "pMB1", "High-copy cloning vector"),
-        PlasmidRecord("pBR322", 4361, "E. coli", listOf("AmpR", "TetR"), "pMB1", "Classic cloning vector"),
+        PlasmidRecord(
+            "pBR322",
+            4361,
+            "E. coli",
+            listOf("AmpR", "TetR"),
+            "pMB1",
+            "Classic cloning vector; BLAST-verified bundled sequence from NCBI GenBank J01749.1",
+            sampleName = SeqIO.Samples.PBR322_NCBI.name,
+        ),
         PlasmidRecord("pET-28a", 5369, "E. coli", listOf("KanR"), "pBR322", "T7 expression vector with N-terminal His-tag"),
         PlasmidRecord("pcDNA3.1", 5471, "Mammalian", listOf("AmpR", "NeoR"), "SV40", "Mammalian expression vector"),
         PlasmidRecord("pGEX-4T-1", 4969, "E. coli", listOf("AmpR"), "pBR322", "GST fusion expression vector"),
@@ -38,6 +49,12 @@ object PlasmidDatabase {
 
     fun getByName(name: String): PlasmidRecord? =
         BUILT_IN.firstOrNull { it.name.equals(name, ignoreCase = true) }
+
+    fun sequenceFor(record: PlasmidRecord): Seq? =
+        record.sampleName?.let { sample -> SeqIO.Samples.ALL.firstOrNull { it.name.equals(sample, ignoreCase = true) } }
+
+    fun sequenceFor(name: String): Seq? =
+        getByName(name)?.let(::sequenceFor)
 
     fun all(): List<PlasmidRecord> = BUILT_IN.toList()
 }

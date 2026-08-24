@@ -321,6 +321,40 @@ class GuiSmokeTest {
     }
 
     @Test
+    fun digestPanelShowsProgressAndCanCancelACrowdedCatalogScan() {
+        onEdt {
+            val panel = DigestPanel(
+                SeqDocument(Seq(bases = "ACGT".repeat(500_000))),
+                { _: Seq -> },
+                { _, _ -> },
+            )
+            try {
+                panel.refresh()
+                assertTrue(panel.isCutCountScanRunning())
+                assertTrue(panel.cutCountScanStatus().contains("Scanning restriction sites"))
+
+                panel.cancelCutCountScan()
+
+                assertFalse(panel.isCutCountScanRunning())
+                assertEquals("Restriction-site scan cancelled.", panel.cutCountScanStatus())
+                assertNull(panel.computedCutCounts())
+            } finally {
+                panel.dispose()
+            }
+        }
+    }
+
+    @Test
+    fun sequenceViewPaintsOnlyTheVisibleRowsForALargeSequence() {
+        onEdt {
+            val view = SequenceView(SeqDocument(Seq(bases = "ACGT".repeat(500_000))))
+            paintComponent(view, 900, 400)
+
+            assertTrue(view.lastViewportPaintedRowCount() in 1..99)
+        }
+    }
+
+    @Test
     fun circularCheckboxReflectsTopologyAndIsUndoable() {
         onEdt {
             val doc = SeqDocument(Seq(bases = "NNNGAATTCNNN"))
@@ -867,6 +901,11 @@ class GuiSmokeTest {
             assertEquals("0", panel.featuresLabel.text)
             assertEquals("0", panel.primersLabel.text)
             assertEquals("0", panel.historyLabel.text)
+            assertTrue(panel.identityLabel.text.startsWith("cdseguid-"))
+            assertTrue(panel.identityLabel.text.contains("computed"))
+
+            panel.applyIdentityButton.doClick()
+            assertTrue(panel.identityLabel.text.contains("stored"))
 
             panel.renameTo("renamed")
             assertEquals("renamed", doc.seq.name)

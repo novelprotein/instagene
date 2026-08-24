@@ -5,4 +5,4 @@ Comment=DNA/RNA editing and plasmid construction
 Exec=/opt/instagene/bin/InstaGene %F
 Terminal=false
 Categories=Science;Education;
-MimeType=text/x-fasta;chemical/x-genbank;text/x-gff3;text/x-embl;chemical/x-swiss-prot;text/x-fasta-alignment;
+MimeType=text/x-fasta;chemical/x-genbank;text/x-gff3;text/x-embl;chemical/x-swiss-prot;text/x-fasta-alignment;text/x-clustal-alignment;text/x-stockholm-alignment;text/x-phylip-alignment;

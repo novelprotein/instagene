@@ -59,8 +59,11 @@ internal class PlasmidDatabaseAnalysisPanel(private val onOpenSequence: (Seq) ->
         val row = table.selectedRow
         if (row < 0) { output.text = "Select a plasmid to open."; return }
         val record = results[row]
-        val bases = "ATCG".repeat(record.sizeBp / 4 + 1).take(record.sizeBp)
-        onOpenSequence(Seq(record.name, bases, SeqKind.DNA))
+        val sequence = PlasmidDatabase.sequenceFor(record) ?: run {
+            val bases = "ATCG".repeat(record.sizeBp / 4 + 1).take(record.sizeBp)
+            Seq(record.name, bases, SeqKind.DNA)
+        }
+        onOpenSequence(sequence)
         output.text = "Opened ${record.name} (${record.sizeBp} bp) as a new sequence tab."
     }
 

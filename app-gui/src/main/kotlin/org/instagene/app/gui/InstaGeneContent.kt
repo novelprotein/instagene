@@ -13,13 +13,18 @@ import org.instagene.app.gui.edit.EditRecorder
 import org.instagene.app.gui.edit.SequenceEditActions
 import org.instagene.app.gui.edit.TextEditActions
 import org.instagene.app.gui.file.FileType
+import org.instagene.app.gui.file.FileOpenBatch
+import org.instagene.app.gui.file.FileOpenFailure
+import org.instagene.app.gui.file.FileOpenService
 import org.instagene.app.gui.file.FileTypes
+import org.instagene.app.gui.file.OpenedFile
 import org.instagene.app.gui.menu.FileMenu
 import org.instagene.app.gui.menu.HelpMenu
 import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
 import org.instagene.app.gui.menu.confirmDiscardChanges
 import org.instagene.app.gui.menu.menuShortcut
+import org.instagene.app.gui.menu.menuShortcutWithShift
 import org.instagene.app.gui.project.BatchOperation
 import org.instagene.app.gui.project.ProjectDialogs
 import org.instagene.app.gui.project.ProjectTreePanel
@@ -31,12 +36,22 @@ import org.instagene.app.gui.tool.LibraryPanel
 import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.app.gui.tool.SequenceView
+import org.instagene.core.ElnAdapters
+import org.instagene.core.ElnArtifactRole
+import org.instagene.core.ElnAttachment
+import org.instagene.core.ElnBundleRequest
+import org.instagene.core.ElnCopy
 import org.instagene.core.NcbiClient
 import org.instagene.core.Seq
+import org.instagene.core.SeqKind
 import org.instagene.core.Version
+import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
 import org.instagene.core.project.ProjectSearch
 import org.instagene.core.project.ProjectLayout
+import org.instagene.core.project.ProjectFileRevision
+import org.instagene.core.project.ProjectReload
+import org.instagene.core.project.ProjectReloadDisposition
 import org.instagene.core.project.SeqProject
 import java.awt.BasicStroke
 import java.awt.BorderLayout
@@ -47,6 +62,7 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Graphics
 import java.awt.Graphics2D
+import java.awt.GraphicsEnvironment
 import java.awt.Insets
 import java.awt.RenderingHints
 import java.awt.event.ComponentAdapter
@@ -56,6 +72,7 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
+import java.nio.file.Files
 import javax.swing.BorderFactory
 import javax.swing.Icon
 import javax.swing.JButton
@@ -63,11 +80,13 @@ import javax.swing.JCheckBoxMenuItem
 import javax.swing.JComponent
 import javax.swing.JFileChooser
 import javax.swing.JFrame
+import javax.swing.JDialog
 import javax.swing.JLabel
 import javax.swing.JMenu
 import javax.swing.JMenuBar
 import javax.swing.JMenuItem
 import javax.swing.JPanel
+import javax.swing.JProgressBar
 import javax.swing.JScrollPane
 import javax.swing.JSplitPane
 import javax.swing.JTabbedPane
@@ -75,11 +94,14 @@ import javax.swing.JToggleButton
 import javax.swing.JTextField
 import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
+import javax.swing.SwingWorker
 import javax.swing.JTable
 import javax.swing.JOptionPane
+import javax.swing.WindowConstants
 import javax.swing.table.DefaultTableModel
 import javax.swing.plaf.basic.BasicSplitPaneDivider
 import javax.swing.plaf.basic.BasicSplitPaneUI
+import javax.swing.filechooser.FileNameExtensionFilter
 import kotlin.math.roundToInt
 
 /**
@@ -250,6 +272,23 @@ class InstaGeneContent(
 
     private val hub = DocumentHub<Doc>()
 
+    /** Latest unified file-open batch, exposed for headless UI regression tests. */
+    var lastFileOpenBatch: FileOpenBatch? = null
+        private set
+
+    /** One completed item in the background file-open worker. */
+    private data class FileOpenProgress(
+        val completed: Int,
+        val total: Int,
+        val opened: OpenedFile? = null,
+        val failure: FileOpenFailure? = null,
+    )
+
+    private data class OpenProgressDialog(
+        val dialog: JDialog,
+        val progress: JProgressBar,
+    )
+
     /** Per-document menus; created lazily the first time a document is activated. */
     private val menus = HashMap<Doc, MenuSet>()
 
@@ -261,6 +300,15 @@ class InstaGeneContent(
 
     /** The last file each document was saved to, to catch save-as in [onDocChanged]. */
     private val recordedFile = HashMap<Doc, File?>()
+
+    /** Last observed on-disk revision for project-backed tabs. Kept separate from a document's dirty baseline. */
+    private val projectRevisions = HashMap<Doc, ProjectFileRevision?>()
+
+    /** Coalesces watcher notifications while a reload worker is already comparing files. */
+    private var projectReloadPending = false
+
+    /** Human-readable outcome of the most recent external or explicit project reload. */
+    private var lastProjectReloadStatus = "No project reload has run."
 
     /** True while [syncDocTabs] is rebuilding the tab strip; its own tab events must be ignored. */
     private var inSync = false
@@ -349,12 +397,14 @@ class InstaGeneContent(
             onNewDocument = { newDocument() },
             onOpenRecentFile = { openFileInTab(it) },
             onOpenRecentProject = { openProjectAt(it) },
+            onOpenExample = ::openBundledExample,
         )
         projectTreePanel = ProjectTreePanel(
             onOpenFile = { file -> openFileInTab(file) },
             onOpenInFolder = { dir -> if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(dir) },
             onOpenWithSystem = { file -> if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(file) },
             openFiles = { hub.openDocuments.mapNotNull { it.file } },
+            onExternalProjectChange = { scheduleProjectReload() },
         )
         treeScroll = JScrollPane(projectTreePanel)
         fileBrowserPanel = JPanel(BorderLayout()).apply {
@@ -381,6 +431,7 @@ class InstaGeneContent(
         })
         add(projectSplit, BorderLayout.CENTER)
         add(statusBar, BorderLayout.SOUTH)
+        installCommandPaletteShortcut()
 
         toolTabs.addChangeListener { prefs.update { it.copy(activeTab = toolTabs.selectedIndex) } }
         toolTabs.selectedIndex = prefs.value.activeTab.coerceIn(0, toolTabs.tabCount - 1)
@@ -396,7 +447,7 @@ class InstaGeneContent(
         if (requestedPaths.isEmpty()) {
             // With no file to open the window starts in the welcome state.
         } else {
-            requestedPaths.forEach { path -> openFileInTab(File(path)) }
+            openFiles(requestedPaths.map(::File))
         }
 
         onActiveDocumentChanged()
@@ -409,6 +460,8 @@ class InstaGeneContent(
         trackedTreeDivider?.removeMouseListener(treeDividerMouseListener)
         trackedTreeDivider = null
         digestPanel.dispose()
+        featuresPanel.dispose()
+        sequenceView.dispose()
         analysisPanel.detachedWindows.toList().forEach { it.dispose() }
     }
 
@@ -517,28 +570,255 @@ class InstaGeneContent(
         return doc
     }
 
-    /**
-     * Opens a file picker restricted to sequence files and places the selected
-     * file in a new tab. Other file types are opened through the project tree.
-     */
+    /** Opens a self-contained tutorial input without downloading or creating files. */
+    private fun openBundledExample(example: WelcomeExample) {
+        when (example) {
+            WelcomeExample.PLASMID -> openSequence(SeqIO.Samples.PLASMID_DEMO)
+            WelcomeExample.REAL_PLASMID -> openSequence(SeqIO.Samples.PBR322_NCBI)
+            WelcomeExample.GENE -> openSequence(SeqIO.Samples.GFP_CDS)
+            WelcomeExample.CHROMATOGRAM -> {
+                val record = SeqIO.Samples.CHROMATOGRAM_DEMO
+                ensureSequenceWorkspace(record.toSeq())
+                analysisPanel.showChromatogram(record)
+            }
+            WelcomeExample.ALIGNMENT -> {
+                val alignment = SeqIO.Samples.ALIGNMENT_DEMO
+                ensureSequenceWorkspace(alignment.first())
+                analysisPanel.showAlignment(alignment)
+            }
+        }
+    }
+
+    /** Opens one or more researcher files or an InstaGene project folder. */
     fun openFile() {
         val chooser = JFileChooser().apply {
-            fileSelectionMode = JFileChooser.FILES_ONLY
+            fileSelectionMode = JFileChooser.FILES_AND_DIRECTORIES
+            isMultiSelectionEnabled = true
             isAcceptAllFileFilterUsed = false
-            fileFilter = FileTypes.sequenceFileFilter()
+            fileFilter = FileTypes.supportedOpenFileFilter()
         }
         if (chooser.showOpenDialog(owner) == JFileChooser.APPROVE_OPTION) {
-            openFileInTab(chooser.selectedFile)
+            openFiles((chooser.selectedFiles.toList() + listOfNotNull(chooser.selectedFile)).distinct())
         }
     }
 
     /**
-     * Opens [file] in a new tab (or hands it to the system app when it is not
-     * editable in-app), dispatching on its type. If it is already open the
-     * existing tab is activated instead, preventing duplicate tabs for the same file.
+     * Opens [file] through the same background route as the chooser. Existing
+     * document tabs are activated immediately rather than parsed again.
      */
     fun openFileInTab(file: File) {
-        hub.documentFor(file)?.let { hub.activate(it) } ?: Openers.forFile(file).open(this, file)
+        openFiles(listOf(file))
+    }
+
+    /**
+     * Routes a native file-manager drop. A homogeneous ABI/SCF drop onto an
+     * active nucleotide document means "verify this reference"; every other
+     * drop retains the ordinary, typed file-open behavior.
+     */
+    fun handleDroppedFiles(files: List<File>) {
+        val selected = files.distinctBy { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath) }
+        val reference = activeDoc as? SeqDocument
+        val traceDrop = selected.isNotEmpty() && selected.all { FileTypes.classify(it) == FileType.CHROMATOGRAM }
+        if (traceDrop && reference != null && reference.seq.kind != SeqKind.PROTEIN && reference.seq.length > 0) {
+            alignDroppedReads(reference, selected)
+        } else {
+            openFiles(selected)
+        }
+    }
+
+    /** Parses dropped trace files in the background, then opens Sanger verification on the explicit reference tab. */
+    private fun alignDroppedReads(reference: SeqDocument, files: List<File>) {
+        var worker: SwingWorker<FileOpenBatch, FileOpenProgress>? = null
+        val progressDialog = createOpenProgressDialog(files.size) { worker?.cancel(true) }
+        statusBar.setMessage("Loading ${files.size} dropped ABI/SCF read(s) for ${reference.seq.name}…")
+        worker = object : SwingWorker<FileOpenBatch, FileOpenProgress>() {
+            @Volatile private var completedBatch: FileOpenBatch? = null
+
+            override fun doInBackground(): FileOpenBatch {
+                var completed = 0
+                return FileOpenService.loadAll(
+                    files,
+                    cancellationRequested = { isCancelled },
+                    onResult = { opened ->
+                        completed++
+                        publish(FileOpenProgress(completed, files.size, opened = opened))
+                    },
+                    onFailure = { failure ->
+                        completed++
+                        publish(FileOpenProgress(completed, files.size, failure = failure))
+                    },
+                ).also { completedBatch = it }
+            }
+
+            override fun process(items: MutableList<FileOpenProgress>) {
+                items.lastOrNull()?.let { update ->
+                    progressDialog?.progress?.value = update.completed
+                    statusBar.setMessage("Loading dropped reads: ${update.completed}/${update.total}")
+                }
+            }
+
+            override fun done() {
+                val batch = if (isCancelled) {
+                    completedBatch ?: FileOpenBatch(emptyList(), emptyList(), cancelled = true)
+                } else runCatching { get() }.getOrElse { error ->
+                    FileOpenBatch(emptyList(), listOf(FileOpenFailure(files.first(), error.message ?: "Unable to load dropped read.")))
+                }
+                lastFileOpenBatch = batch
+                progressDialog?.dialog?.dispose()
+                val reads = batch.opened.filterIsInstance<OpenedFile.Chromatogram>()
+                if (reads.isEmpty()) {
+                    statusBar.setMessage("No dropped ABI/SCF reads could be loaded for ${reference.seq.name}.")
+                    if (batch.failures.isNotEmpty()) showOpenFailures(batch.failures)
+                    return
+                }
+                if (!hub.contains(reference)) {
+                    statusBar.setMessage("Dropped reads were loaded, but reference '${reference.seq.name}' was closed before verification started.")
+                    return
+                }
+                // The drop target—not whichever tab happened to become active while
+                // parsing—is the reference. Re-activate it before binding Sanger UI.
+                hub.activate(reference)
+                analysisPanel.showSangerVerification(reads.map { it.record }, reads.map { it.file })
+                toolTabs.selectedIndex = toolTabs.indexOfTab("Analysis")
+                statusBar.setMessage(
+                    "Aligned ${reads.size} dropped read(s) to ${reference.seq.name}" +
+                        if (batch.cancelled) " (drop loading was cancelled after available reads)." else ".",
+                )
+                if (batch.failures.isNotEmpty()) showOpenFailures(batch.failures)
+            }
+        }
+        progressDialog?.dialog?.isVisible = true
+        worker.execute()
+    }
+
+    /**
+     * Parses every selected path in a background worker, applies successful
+     * results on the EDT, and reports failures together after the batch. This
+     * makes opening a folder-derived list reliable even when one input is bad.
+     */
+    fun openFiles(files: List<File>) {
+        val selected = files
+            .distinctBy { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath) }
+        if (selected.isEmpty()) return
+
+        val toLoad = selected.filter { file ->
+            hub.documentFor(file)?.let { hub.activate(it) } == null
+        }
+        if (toLoad.isEmpty()) {
+            lastFileOpenBatch = FileOpenBatch(emptyList(), emptyList())
+            return
+        }
+
+        var worker: SwingWorker<FileOpenBatch, FileOpenProgress>? = null
+        val progressDialog = createOpenProgressDialog(toLoad.size) { worker?.cancel(true) }
+        worker = object : SwingWorker<FileOpenBatch, FileOpenProgress>() {
+            @Volatile private var completedBatch: FileOpenBatch? = null
+
+            override fun doInBackground(): FileOpenBatch {
+                var completed = 0
+                return FileOpenService.loadAll(
+                    toLoad,
+                    cancellationRequested = { isCancelled },
+                    onResult = { opened ->
+                        completed++
+                        publish(FileOpenProgress(completed, toLoad.size, opened = opened))
+                    },
+                    onFailure = { failure ->
+                        completed++
+                        publish(FileOpenProgress(completed, toLoad.size, failure = failure))
+                    },
+                ).also { completedBatch = it }
+            }
+
+            override fun process(items: MutableList<FileOpenProgress>) {
+                items.forEach { update ->
+                    update.opened?.let(::applyOpenedFile)
+                    progressDialog?.progress?.value = update.completed
+                    statusBar.setMessage("Opening files: ${update.completed}/${update.total}")
+                }
+            }
+
+            override fun done() {
+                val batch = if (isCancelled) {
+                    completedBatch ?: FileOpenBatch(emptyList(), emptyList(), cancelled = true)
+                } else runCatching { get() }.getOrElse { error ->
+                    FileOpenBatch(emptyList(), listOf(FileOpenFailure(toLoad.first(), error.message ?: "File opening failed.")))
+                }
+                lastFileOpenBatch = batch
+                progressDialog?.dialog?.dispose()
+                when {
+                    batch.cancelled -> statusBar.setMessage("File opening cancelled after ${batch.completed}/${toLoad.size} item(s).")
+                    batch.failures.isNotEmpty() -> {
+                        statusBar.setMessage("Opened ${batch.opened.size} file(s); ${batch.failures.size} failed.")
+                        showOpenFailures(batch.failures)
+                    }
+                    else -> statusBar.setMessage("Opened ${batch.opened.size} file(s).")
+                }
+            }
+        }
+        progressDialog?.dialog?.isVisible = true
+        worker.execute()
+    }
+
+    /** Applies an already parsed result on the EDT. */
+    private fun applyOpenedFile(opened: OpenedFile) {
+        when (opened) {
+            is OpenedFile.Sequence -> {
+                if (hub.documentFor(opened.file) == null) {
+                    noteRecent(openSequence(opened.sequence, opened.file), opened.file)
+                }
+            }
+            is OpenedFile.Text -> {
+                if (hub.documentFor(opened.file) == null) openText(opened.text, opened.file)
+            }
+            is OpenedFile.Project -> openProjectAt(opened.file)
+            is OpenedFile.System -> Openers.SystemAppOpener.open(this, opened.file)
+            is OpenedFile.Chromatogram -> {
+                ensureSequenceWorkspace(opened.record.toSeq())
+                analysisPanel.showChromatogram(opened.record, opened.file)
+            }
+            is OpenedFile.Alignment -> {
+                ensureSequenceWorkspace(opened.sequences.first())
+                analysisPanel.showAlignment(opened.sequences, opened.file)
+            }
+        }
+    }
+
+    /** Makes analysis results visible when opening a trace or alignment from an empty welcome screen. */
+    private fun ensureSequenceWorkspace(sequence: Seq) {
+        if (activeDoc !is SeqDocument) openSequence(sequence)
+    }
+
+    private fun createOpenProgressDialog(total: Int, onCancel: () -> Unit): OpenProgressDialog? {
+        if (owner == null || GraphicsEnvironment.isHeadless()) return null
+        val progress = JProgressBar(0, total).apply {
+            isStringPainted = true
+            string = "0 / $total"
+        }
+        progress.addChangeListener { progress.string = "${progress.value} / $total" }
+        val cancel = JButton("Cancel").apply { addActionListener { onCancel() } }
+        val dialog = JDialog(owner, "Opening files", false).apply {
+            defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
+            contentPane = JPanel(BorderLayout(8, 8)).apply {
+                border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
+                add(JLabel("Opening $total file${if (total == 1) "" else "s"}…"), BorderLayout.NORTH)
+                add(progress, BorderLayout.CENTER)
+                add(JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply { add(cancel) }, BorderLayout.SOUTH)
+            }
+            pack()
+            setLocationRelativeTo(owner)
+        }
+        return OpenProgressDialog(dialog, progress)
+    }
+
+    private fun showOpenFailures(failures: List<FileOpenFailure>) {
+        if (GraphicsEnvironment.isHeadless()) return
+        val message = buildString {
+            append("Some selected files could not be opened:\n\n")
+            failures.take(12).forEach { failure -> append("• ${failure.file.name}: ${failure.message}\n") }
+            if (failures.size > 12) append("… and ${failures.size - 12} more.\n")
+        }
+        JOptionPane.showMessageDialog(owner, message, "File open results", JOptionPane.WARNING_MESSAGE)
     }
 
     /** Records [file] as a recent file for the menus of [doc]. */
@@ -566,6 +846,7 @@ class InstaGeneContent(
         hub.remove(doc)
         menus.remove(doc)
         recordedFile.remove(doc)
+        projectRevisions.remove(doc)
         tabLabels.remove(doc)
         // When the last tab closes the welcome screen is shown automatically
         // by updateWorkingState() via onHubChanged(DOCS_CHANGED).
@@ -590,6 +871,8 @@ class InstaGeneContent(
         if (chooser.showOpenDialog(owner) != JFileChooser.APPROVE_OPTION) return
         val root = chooser.selectedFile
         noteRecentProject(root)
+        projectRevisions.clear()
+        projectReloadPending = false
         project = SeqProject.create(root).also { it.save() }
         projectTreePanel.setProject(project)
         editRecorder.setProject(project, created = true)
@@ -611,6 +894,8 @@ class InstaGeneContent(
     fun openProjectAt(root: File) {
         val opened = SeqProject.open(root)
         noteRecentProject(root)
+        projectRevisions.clear()
+        projectReloadPending = false
         project = opened
         projectTreePanel.setProject(opened)
         editRecorder.setProject(opened, created = false)
@@ -664,6 +949,20 @@ class InstaGeneContent(
         class Text(val text: String, file: File) : Opened(file)
     }
 
+    /** A stable EDT snapshot of one project-backed tab before a reload worker examines the filesystem. */
+    private data class ProjectReloadCandidate(
+        val document: Doc,
+        val file: File,
+        val previousRevision: ProjectFileRevision?,
+        val dirty: Boolean,
+    )
+
+    /** Parsed replacement content applied only after a final dirty-state recheck on the EDT. */
+    private sealed class ReloadedProjectDocument(val document: Doc, val file: File) {
+        class Sequence(document: SeqDocument, val sequence: Seq, file: File) : ReloadedProjectDocument(document, file)
+        class Text(document: TextDocument, val text: String, file: File) : ReloadedProjectDocument(document, file)
+    }
+
     /**
      * Persists the project manifest (open set, active tab, layout). Only
      * file-backed documents inside the project are recorded.
@@ -676,6 +975,111 @@ class InstaGeneContent(
         p.setLayout(ProjectLayout(activeToolTab = toolTabs.selectedIndex, treeSplitRatio = splitRatio()))
         p.save()
         editRecorder.flush()
+    }
+
+    /**
+     * Explicitly compares the project against disk, including a manifest edited
+     * by Git or a sync client. Clean tabs refresh; dirty buffers are retained
+     * and reported as conflicts rather than being overwritten.
+     */
+    fun reloadProjectFromDisk() = scheduleProjectReload(includeManifest = true)
+
+    /** Last conflict-tolerant reload outcome, exposed for headless regression tests and status integrations. */
+    fun projectReloadStatus(): String = lastProjectReloadStatus
+
+    /** Schedules one non-blocking comparison of open project files against their stored revisions. */
+    private fun scheduleProjectReload(includeManifest: Boolean = false) {
+        val p = project ?: return
+        if (projectReloadPending) return
+        projectReloadPending = true
+        val candidates = hub.openDocuments.mapNotNull { document ->
+            val file = document.file ?: return@mapNotNull null
+            if (p.relativePath(file) == null) return@mapNotNull null
+            ProjectReloadCandidate(document, file, projectRevisions[document] ?: ProjectReload.snapshot(file), document.isDirty)
+        }
+        val alreadyOpenPaths = hub.openDocuments.mapNotNull { it.file }.map { it.canonicalFile.path }.toSet()
+        Thread {
+            val decisions = candidates.associateWith { candidate ->
+                ProjectReload.decide(candidate.previousRevision, ProjectReload.snapshot(candidate.file), candidate.dirty)
+            }
+            val replacements = decisions.filterValues { it.disposition == ProjectReloadDisposition.RELOAD_FROM_DISK }
+                .keys.mapNotNull { candidate ->
+                    runCatching {
+                        when (val document = candidate.document) {
+                            is SeqDocument -> ReloadedProjectDocument.Sequence(document, SeqIO.read(candidate.file), candidate.file)
+                            is TextDocument -> ReloadedProjectDocument.Text(document, candidate.file.readText(), candidate.file)
+                            else -> null
+                        }
+                    }.getOrNull()
+                }
+            val manifestEntries = if (includeManifest) SeqProject.open(p.root).manifest.openDocs else emptyList()
+            val newlyDeclared = manifestEntries.mapNotNull { p.resolvePath(it)?.takeIf(File::isFile) }
+                .filter { it.canonicalFile.path !in alreadyOpenPaths }
+                .mapNotNull { file ->
+                    runCatching {
+                        when (FileTypes.classify(file)) {
+                            FileType.SEQUENCE -> SeqIO.read(file).let { Opened.Sequence(it, file) }
+                            FileType.TEXT -> file.readText().let { Opened.Text(it, file) }
+                            else -> null
+                        }
+                    }.getOrNull()
+                }
+            SwingUtilities.invokeLater {
+                if (project !== p) return@invokeLater
+                projectReloadPending = false
+                var refreshed = 0
+                var preserved = 0
+                var missing = 0
+                for ((candidate, decision) in decisions) {
+                    projectRevisions[candidate.document] = decision.currentRevision
+                    when (decision.disposition) {
+                        ProjectReloadDisposition.PRESERVE_LOCAL_CONFLICT,
+                        ProjectReloadDisposition.PRESERVE_MISSING_LOCAL -> preserved++
+                        ProjectReloadDisposition.MISSING_ON_DISK -> missing++
+                        else -> Unit
+                    }
+                }
+                for (replacement in replacements) {
+                    if (!hub.contains(replacement.document)) continue
+                    // A user edit after the background snapshot wins over disk.
+                    if (replacement.document.isDirty) {
+                        preserved++
+                        continue
+                    }
+                    when (replacement) {
+                        is ReloadedProjectDocument.Sequence -> (replacement.document as SeqDocument).reset(replacement.sequence, replacement.file)
+                        is ReloadedProjectDocument.Text -> (replacement.document as TextDocument).reset(replacement.text, replacement.file)
+                    }
+                    projectRevisions[replacement.document] = ProjectReload.snapshot(replacement.file)
+                    refreshed++
+                }
+                if (newlyDeclared.isNotEmpty()) {
+                    loadingProject = true
+                    try {
+                        newlyDeclared.forEach { opened ->
+                            if (hub.documentFor(opened.file) == null) {
+                                when (opened) {
+                                    is Opened.Sequence -> openSequence(opened.seq, opened.file)
+                                    is Opened.Text -> openText(opened.text, opened.file)
+                                }
+                            }
+                        }
+                    } finally {
+                        loadingProject = false
+                    }
+                }
+                val parts = buildList {
+                    if (refreshed > 0) add("reloaded $refreshed clean file${if (refreshed == 1) "" else "s"}")
+                    if (newlyDeclared.isNotEmpty()) add("opened ${newlyDeclared.size} manifest file${if (newlyDeclared.size == 1) "" else "s"}")
+                    if (preserved > 0) add("preserved $preserved local change${if (preserved == 1) "" else "s"}")
+                    if (missing > 0) add("kept $missing missing-file tab${if (missing == 1) "" else "s"}")
+                }
+                lastProjectReloadStatus = if (parts.isEmpty()) "Project reload: no external changes." else "Project reload: ${parts.joinToString("; ")}."
+                statusBar.setMessage(lastProjectReloadStatus)
+                projectTreePanel.refresh()
+                persistProject()
+            }
+        }.apply { isDaemon = true; name = "ProjectReload-${p.root.name}" }.start()
     }
 
     /**
@@ -692,11 +1096,177 @@ class InstaGeneContent(
         }
         persistProject()
         project = null
+        projectRevisions.clear()
+        projectReloadPending = false
         projectTreePanel.setProject(null)
         editRecorder.setProject(null, created = false)
         rebuildMenuBar()
         updateWorkingState()
     }
+
+    // -------------------------------------------------------- ELN / LIMS handoff
+
+    /** Returns the Markdown summary used by the generic ELN handoff for the active sequence. */
+    fun activeElnSummary(): String? = (activeDoc as? SeqDocument)?.let { ElnCopy.sequenceSummaryMarkdown(it.seq) }
+
+    /**
+     * Writes a complete, vendor-neutral ELN/LIMS bundle for the active sequence.
+     *
+     * The method is deliberately synchronous so callers such as scripts and
+     * headless tests can verify the resulting file. The desktop menu prepares
+     * its request on the event thread and invokes the write on a worker.
+     */
+    fun exportActiveSequenceElnBundle(destination: File) =
+        ElnAdapters.GENERIC_ZIP.export(
+            destination,
+            activeElnBundleRequest()
+                ?: throw IllegalStateException("Open a sequence document before exporting an ELN bundle."),
+        )
+
+    /** Builds a local-first exchange request, adding the active plasmid-map SVG when it can be rendered. */
+    private fun activeElnBundleRequest(): ElnBundleRequest? {
+        val document = activeDoc as? SeqDocument ?: return null
+        val sequence = document.seq
+        val attachments = if (sequence.length == 0) emptyList() else listOf(renderElnMapAttachment(document))
+        val provenance = buildMap {
+            document.file?.let { source ->
+                val relative = project?.relativePath(source)
+                put(if (relative != null) "projectFile" else "sourceFile", relative ?: source.name)
+            }
+        }
+        return ElnBundleRequest(
+            title = sequence.name.ifBlank { "InstaGene sequence" },
+            sequence = sequence,
+            attachments = attachments,
+            provenance = provenance,
+        )
+    }
+
+    /** Renders a map only to a temporary file, then embeds its bytes in the portable bundle. */
+    private fun renderElnMapAttachment(document: SeqDocument): ElnAttachment {
+        val temporary = Files.createTempFile("instagene-eln-map-", ".svg")
+        try {
+            plasmidMapPanel.bindDocument(document)
+            plasmidMapPanel.exportSvg(temporary.toFile())
+            return ElnAttachment(
+                path = "maps/${elnFileStem(document.seq.name)}-map.svg",
+                bytes = Files.readAllBytes(temporary),
+                mediaType = "image/svg+xml",
+                role = ElnArtifactRole.MAP_SVG,
+                description = "Plasmid or sequence map exported by InstaGene",
+            )
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
+    }
+
+    private fun copyElnSummary() {
+        val summary = activeElnSummary() ?: return
+        runCatching { ContextMenus.copyToClipboard(summary) }
+            .onSuccess { statusBar.setMessage("Copied ELN sequence summary.") }
+            .onFailure { reportElnExportFailure("Copy ELN summary", it) }
+    }
+
+    private fun exportElnSummary() {
+        val document = activeDoc as? SeqDocument ?: return
+        val destination = chooseElnSaveFile("Export ELN Summary", "${elnFileStem(document.seq.name)}-summary.md", "md") ?: return
+        writeElnFile("ELN summary", destination) { destination.writeText(ElnCopy.sequenceSummaryMarkdown(document.seq)) }
+    }
+
+    private fun exportElnPrimerCsv() {
+        val document = activeDoc as? SeqDocument ?: return
+        val destination = chooseElnSaveFile("Export ELN Primer CSV", "${elnFileStem(document.seq.name)}-primers.csv", "csv") ?: return
+        writeElnFile("ELN primer CSV", destination) { destination.writeText(ElnCopy.primerCsv(document.seq)) }
+    }
+
+    private fun exportElnMapSvg() {
+        val document = activeDoc as? SeqDocument ?: return
+        if (document.seq.length == 0) {
+            statusBar.setMessage("Add sequence bases before exporting a map.")
+            return
+        }
+        val destination = chooseElnSaveFile("Export ELN Map SVG", "${elnFileStem(document.seq.name)}-map.svg", "svg") ?: return
+        writeElnFile("ELN map SVG", destination) {
+            plasmidMapPanel.bindDocument(document)
+            plasmidMapPanel.exportSvg(destination)
+        }
+    }
+
+    private fun exportElnSequenceAttachment() {
+        val document = activeDoc as? SeqDocument ?: return
+        val fasta = FileNameExtensionFilter("FASTA sequence", "fasta", "fa", "fna")
+        val genBank = FileNameExtensionFilter("GenBank sequence", "gb", "gbk", "genbank")
+        val chooser = JFileChooser().apply {
+            dialogTitle = "Export ELN Sequence Attachment"
+            addChoosableFileFilter(fasta)
+            addChoosableFileFilter(genBank)
+            fileFilter = genBank
+            selectedFile = File("${elnFileStem(document.seq.name)}.gb")
+        }
+        if (chooser.showSaveDialog(owner) != JFileChooser.APPROVE_OPTION) return
+        val format = if (chooser.fileFilter == fasta) SeqFormat.FASTA else SeqFormat.GENBANK
+        val extension = if (format == SeqFormat.FASTA) "fasta" else "gb"
+        val destination = ensureElnExtension(chooser.selectedFile, extension)
+        if (!confirmElnOverwrite(destination)) return
+        writeElnFile("ELN sequence attachment", destination) {
+            destination.writeText(SeqIO.write(document.seq, format))
+        }
+    }
+
+    /** Prepares the graphical map on the EDT, then writes the ZIP without freezing the desktop. */
+    private fun exportGenericElnBundle() {
+        val document = activeDoc as? SeqDocument ?: return
+        val destination = chooseElnSaveFile("Export Generic ELN/LIMS Bundle", "${elnFileStem(document.seq.name)}-eln.zip", "zip") ?: return
+        val request = runCatching { activeElnBundleRequest() }
+            .getOrElse { error ->
+                reportElnExportFailure("Prepare ELN bundle", error)
+                return
+            } ?: return
+        statusBar.setMessage("Exporting generic ELN/LIMS bundle…")
+        Thread {
+            runCatching { ElnAdapters.GENERIC_ZIP.export(destination, request) }
+                .onSuccess { manifest ->
+                    SwingUtilities.invokeLater {
+                        statusBar.setMessage("Exported generic ELN/LIMS bundle with ${manifest.artifacts.size} attachment(s).")
+                    }
+                }
+                .onFailure { error -> SwingUtilities.invokeLater { reportElnExportFailure("Export ELN bundle", error) } }
+        }.apply { isDaemon = true; name = "ElnBundleExport-${document.seq.name}" }.start()
+    }
+
+    private fun chooseElnSaveFile(title: String, suggestedName: String, extension: String): File? {
+        val chooser = JFileChooser().apply {
+            dialogTitle = title
+            fileFilter = FileNameExtensionFilter("${extension.uppercase()} file", extension)
+            selectedFile = File(suggestedName)
+        }
+        if (chooser.showSaveDialog(owner) != JFileChooser.APPROVE_OPTION) return null
+        val destination = ensureElnExtension(chooser.selectedFile, extension)
+        return destination.takeIf(::confirmElnOverwrite)
+    }
+
+    private fun ensureElnExtension(file: File, extension: String): File =
+        if (file.name.contains('.')) file else File(file.parentFile, "${file.name}.$extension")
+
+    private fun confirmElnOverwrite(file: File): Boolean =
+        !file.exists() || JOptionPane.showConfirmDialog(owner, "${file.name} already exists. Overwrite it?", "Overwrite export", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION
+
+    private fun writeElnFile(label: String, destination: File, write: () -> Unit) {
+        runCatching(write)
+            .onSuccess { statusBar.setMessage("Exported $label: ${destination.name}") }
+            .onFailure { reportElnExportFailure("Export $label", it) }
+    }
+
+    private fun reportElnExportFailure(action: String, error: Throwable) {
+        val message = error.message ?: error.javaClass.simpleName
+        statusBar.setMessage("$action failed: $message")
+        if (!GraphicsEnvironment.isHeadless()) {
+            JOptionPane.showMessageDialog(owner, "$action failed:\n$message", "ELN export", JOptionPane.ERROR_MESSAGE)
+        }
+    }
+
+    private fun elnFileStem(name: String): String =
+        name.trim().lowercase().replace(Regex("[^a-z0-9._-]+"), "-").trim('-', '.').ifBlank { "sequence" }
 
     /** The fixed tree width represented as the 0..1 ratio used by the project manifest. */
     private fun splitRatio(): Double {
@@ -712,6 +1282,11 @@ class InstaGeneContent(
     private fun addDocument(doc: Doc): Doc {
         doc.addDocListener { onDocChanged(it) }
         recordedFile[doc] = doc.file
+        project?.let { p ->
+            doc.file?.takeIf { p.relativePath(it) != null }?.let { file ->
+                projectRevisions[doc] = ProjectReload.snapshot(file)
+            }
+        }
         hub.add(doc)
         editRecorder.bind(doc)
         // Restored project documents are not re-logged as opens: they are already part of the history.
@@ -727,6 +1302,13 @@ class InstaGeneContent(
         if (project != null && recordedFile[doc] != doc.file) {
             recordedFile[doc] = doc.file
             persistProject()
+        }
+        project?.let { p ->
+            if (!doc.isDirty) {
+                doc.file?.takeIf { p.relativePath(it) != null }?.let { file ->
+                    projectRevisions[doc] = ProjectReload.snapshot(file)
+                }
+            }
         }
     }
 
@@ -900,6 +1482,7 @@ class InstaGeneContent(
 
     private fun rebuildMenuBar() {
         menuBar.removeAll()
+        menuBar.add(createCommandMenu())
         val active = hub.active
         if (active == null) {
             buildEmptyMenuBar()
@@ -933,7 +1516,7 @@ class InstaGeneContent(
             add(menuItem("Close Tab", KeyEvent.VK_W, menuShortcut(KeyEvent.VK_W)) { closeTab(activeDoc ?: newDocument()) })
             addSeparator()
             add(menuItem("Save", KeyEvent.VK_S, menuShortcut(KeyEvent.VK_S)) { activeFileMenu().saveFile() })
-            add(menuItem("Save As...", KeyEvent.VK_A, KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK)) { activeFileMenu().saveFileAs() })
+            add(menuItem("Save As...", KeyEvent.VK_A, menuShortcutWithShift(KeyEvent.VK_S)) { activeFileMenu().saveFileAs() })
             addSeparator()
             add(menuItem("Preferences...") { SettingsDialog.showPreferences(null, prefs) })
             add(menuItem("Settings...") { SettingsDialog.showSystemSettings(null) })
@@ -952,12 +1535,104 @@ class InstaGeneContent(
         menuBar.add(HelpMenu().create())
     }
 
+    /** A compact keyboard-first route to documents, projects, tools, and workflows. */
+    private fun createCommandMenu(): JMenu = JMenu("Command").apply {
+        mnemonic = KeyEvent.VK_C
+        add(menuItem("Command Palette...", KeyEvent.VK_P, commandPaletteShortcut()) { showCommandPalette() })
+    }
+
+    private fun commandPaletteShortcut(): KeyStroke {
+        val shortcut = menuShortcut(KeyEvent.VK_P)
+        return KeyStroke.getKeyStroke(KeyEvent.VK_P, shortcut.modifiers or InputEvent.SHIFT_DOWN_MASK)
+    }
+
+    private fun installCommandPaletteShortcut() {
+        getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+            .put(commandPaletteShortcut(), "show-command-palette")
+        actionMap.put("show-command-palette", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(event: java.awt.event.ActionEvent?) = showCommandPalette()
+        })
+    }
+
+    private fun showCommandPalette() = CommandPalette.show(this, commandPaletteCommands())
+
+    /** Commands are rebuilt on opening so recents and project-specific actions stay current. */
+    fun commandPaletteCommands(): List<CommandPaletteCommand> = buildList {
+        add(CommandPaletteCommand("file.new", "New sequence", "Create an empty sequence document", listOf("file document")) { newDocument() })
+        add(CommandPaletteCommand("file.new-text", "New text file", "Create a plain-text document", listOf("file document note")) { openText() })
+        add(CommandPaletteCommand("file.open", "Open files…", "Open sequence, trace, alignment, text, or project files", listOf("file import")) { openFile() })
+        prefs.value.recentFiles.map(::File).filter(File::exists).forEach { file ->
+            add(CommandPaletteCommand("file.recent.${file.absolutePath}", "Open recent: ${file.name}", file.absolutePath, listOf("recent file")) {
+                openFileInTab(file)
+            })
+        }
+        add(CommandPaletteCommand("project.new", "New project…", "Create a project folder", listOf("project")) { newProject() })
+        add(CommandPaletteCommand("project.open", "Open project…", "Open an existing InstaGene project", listOf("project")) { openProject() })
+        if (project != null) {
+            add(CommandPaletteCommand("project.close", "Close project", "Detach the current project", listOf("project")) { closeProject() })
+            add(CommandPaletteCommand("project.reload", "Reload project from disk", "Refresh clean files and preserve unsaved local edits", listOf("project reload sync")) { reloadProjectFromDisk() })
+            add(CommandPaletteCommand("project.search", "Search project…", "Search sequence files and annotations", listOf("project find")) { showProjectSearch(true) })
+            add(CommandPaletteCommand("project.collections", "Project collections…", "Manage project collections", listOf("project")) { showProjectCollections() })
+        }
+        if (activeDoc is SeqDocument) {
+            add(CommandPaletteCommand("eln.copy-summary", "Copy ELN sequence summary", "Copy a Markdown sequence and provenance summary", listOf("eln lims lab notebook copy")) { copyElnSummary() })
+            add(CommandPaletteCommand("eln.export-bundle", "Export generic ELN/LIMS bundle…", "Write a local vendor-neutral ZIP with sequence, map, primers, and hashes", listOf("eln lims lab notebook export handoff")) { exportGenericElnBundle() })
+        }
+        prefs.value.recentProjects.map(::File).filter(File::exists).forEach { root ->
+            add(CommandPaletteCommand("project.recent.${root.absolutePath}", "Open recent project: ${root.name}", root.absolutePath, listOf("recent project")) {
+                openProjectAt(root)
+            })
+        }
+
+        listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers", "Library", "History").forEach { name ->
+            add(CommandPaletteCommand("panel.${name.lowercase()}", "Show $name panel", "Open the $name workspace", listOf("panel tab")) {
+                ensureSequenceWorkspace(Seq(""))
+                toolTabs.selectedIndex = toolTabs.indexOfTab(name)
+            })
+        }
+        analysisPanel.toolNames().forEach { name ->
+            add(CommandPaletteCommand("analysis.${name.lowercase()}", "Open $name", "Analysis tool", listOf("analysis tool workflow")) {
+                ensureSequenceWorkspace(Seq(""))
+                analysisPanel.selectTool(name)
+                toolTabs.selectedIndex = toolTabs.indexOfTab("Analysis")
+            })
+        }
+        add(CommandPaletteCommand("workflow.pcr", "Start PCR / mutagenesis", "Open PCR product and cloning workflow", listOf("pcr cloning")) {
+            ensureSequenceWorkspace(Seq(""))
+            analysisPanel.selectTool("PCR / Mutagenesis")
+            toolTabs.selectedIndex = toolTabs.indexOfTab("Analysis")
+        })
+        add(CommandPaletteCommand("workflow.assembly", "Start plasmid assembly", "Open assembly workflow", listOf("cloning plasmid gibson golden gate")) {
+            ensureSequenceWorkspace(Seq(""))
+            analysisPanel.selectTool("Assembly")
+            toolTabs.selectedIndex = toolTabs.indexOfTab("Analysis")
+        })
+        add(CommandPaletteCommand("workflow.replay", "Replay workflow recipe…", "Reproduce an identity-matched local workflow", listOf("recipe reproducibility cloning replay")) {
+            analysisPanel.showRecipeReplayDialog(owner)
+        })
+        add(CommandPaletteCommand("settings.preferences", "Preferences…", "Application preferences", listOf("settings theme")) {
+            SettingsDialog.showPreferences(owner, prefs)
+        })
+    }
+
     private fun createProjectMenu(): JMenu = JMenu("Project").apply {
         mnemonic = KeyEvent.VK_P
         val hasProject = project != null
         add(menuItem("New Project...") { newProject() })
         add(menuItem("Open Project...", KeyEvent.VK_P, shiftShortcut(KeyEvent.VK_P)) { openProject() })
         add(menuItem("Close Project") { closeProject() }.apply { isEnabled = hasProject })
+        add(menuItem("Reload Project from Disk") { reloadProjectFromDisk() }.apply { isEnabled = hasProject })
+        addSeparator()
+        add(JMenu("ELN / Lab Notebook").apply {
+            isEnabled = activeDoc is SeqDocument
+            add(menuItem("Copy ELN Summary") { copyElnSummary() })
+            add(menuItem("Export ELN Summary...") { exportElnSummary() })
+            add(menuItem("Export Sequence Attachment...") { exportElnSequenceAttachment() })
+            add(menuItem("Export Primer CSV...") { exportElnPrimerCsv() })
+            add(menuItem("Export Map SVG...") { exportElnMapSvg() })
+            addSeparator()
+            add(menuItem("Export Generic ELN/LIMS Bundle...") { exportGenericElnBundle() })
+        })
         addSeparator()
         add(menuItem("Search Project...") { showProjectSearch(promptIfBlank = true) }.apply { isEnabled = hasProject })
         add(menuItem("Collections...") { showProjectCollections() }.apply { isEnabled = hasProject })
@@ -989,8 +1664,7 @@ class InstaGeneContent(
 
     /** The menu accelerator for [keyCode] plus the shift modifier. */
     private fun shiftShortcut(keyCode: Int): KeyStroke {
-        val base = menuShortcut(keyCode)
-        return KeyStroke.getKeyStroke(keyCode, base.modifiers or InputEvent.SHIFT_DOWN_MASK)
+        return menuShortcutWithShift(keyCode)
     }
 
     private fun buildToolTabs(): JTabbedPane {

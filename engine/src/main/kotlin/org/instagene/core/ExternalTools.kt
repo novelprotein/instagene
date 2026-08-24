@@ -1,5 +1,7 @@
 package org.instagene.core
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.instagene.core.io.Fasta
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -23,6 +25,8 @@ data class ExternalTool(
     val builtinEquivalent: String,
     val capabilities: Set<ToolCapability> = emptySet(),
     val minimumVersion: String? = null,
+    /** Arguments used for a harmless, short version probe. */
+    val versionArgs: List<String> = listOf("--version"),
     val readsStdin: Boolean = argsTemplate.none { it.contains("{in}") },
     val producesOutFile: Boolean = argsTemplate.any { it.contains("{out}") },
 )
@@ -42,6 +46,10 @@ data class ToolResult(
     fun payload(): String = outputFile?.let { File(it).takeIf(File::exists)?.readText() } ?: stdout
 }
 
+@Serializable
+enum class ToolHealthStatus { AVAILABLE, MISSING, VERSION_CHECK_FAILED, INCOMPATIBLE }
+
+/** A concrete health observation, including the next safe action for the researcher. */
 data class ToolHealth(
     val tool: ExternalTool,
     val available: Boolean,
@@ -49,6 +57,42 @@ data class ToolHealth(
     val version: String? = null,
     val error: String? = null,
     val compatible: Boolean = available && error == null,
+    val status: ToolHealthStatus = when {
+        !available -> ToolHealthStatus.MISSING
+        !compatible -> ToolHealthStatus.INCOMPATIBLE
+        else -> ToolHealthStatus.AVAILABLE
+    },
+) {
+    /** An install, upgrade, or fallback instruction that can be displayed verbatim in CLI/GUI diagnostics. */
+    val recommendedAction: String
+        get() = when (status) {
+            ToolHealthStatus.AVAILABLE -> "Ready to use."
+            ToolHealthStatus.MISSING -> "Install with: ${tool.installHint}. Built-in fallback: ${tool.builtinEquivalent}."
+            ToolHealthStatus.VERSION_CHECK_FAILED ->
+                "The executable was found but could not answer its version check. Verify it runs from a terminal, then rescan. " +
+                    "Built-in fallback: ${tool.builtinEquivalent}."
+            ToolHealthStatus.INCOMPATIBLE -> {
+                val requirement = tool.minimumVersion?.let { "Update to version $it or newer." } ?: "Check the installed version and command-line support."
+                "$requirement Built-in fallback: ${tool.builtinEquivalent}."
+            }
+        }
+}
+
+/** Stable JSON shape for automation and help-desk diagnostics; it does not expose environment variables. */
+@Serializable
+data class ToolHealthDiagnostic(
+    val id: String,
+    val displayName: String,
+    val executable: String,
+    val status: ToolHealthStatus,
+    val path: String? = null,
+    val version: String? = null,
+    val minimumVersion: String? = null,
+    val error: String? = null,
+    val action: String,
+    val installHint: String,
+    val builtinEquivalent: String,
+    val capabilities: List<String>,
 )
 
 /** A reproducible command preview that never creates temporary files or executes a process. */
@@ -80,6 +124,7 @@ object ExternalTools {
             installHint = "conda install -c bioconda seqkit",
             builtinEquivalent = "instagene stats",
             capabilities = setOf(ToolCapability.SEQUENCE_STATS),
+            versionArgs = listOf("version"),
         ),
         ExternalTool(
             id = "seqkit-locate",
@@ -90,6 +135,7 @@ object ExternalTools {
             installHint = "conda install -c bioconda seqkit",
             builtinEquivalent = "instagene find --pattern ...",
             capabilities = setOf(ToolCapability.LOCAL_SEARCH),
+            versionArgs = listOf("version"),
         ),
         ExternalTool(
             id = "emboss-revseq",
@@ -100,6 +146,7 @@ object ExternalTools {
             installHint = "apt install emboss",
             builtinEquivalent = "instagene revcomp",
             capabilities = setOf(ToolCapability.TRANSLATION),
+            versionArgs = listOf("-version"),
         ),
         ExternalTool(
             id = "emboss-transeq",
@@ -110,6 +157,7 @@ object ExternalTools {
             installHint = "apt install emboss",
             builtinEquivalent = "instagene translate",
             capabilities = setOf(ToolCapability.TRANSLATION),
+            versionArgs = listOf("-version"),
         ),
         ExternalTool(
             id = "emboss-restrict",
@@ -120,6 +168,7 @@ object ExternalTools {
             installHint = "apt install emboss",
             builtinEquivalent = "instagene digest --enzymes ...",
             capabilities = setOf(ToolCapability.RESTRICTION_ANALYSIS),
+            versionArgs = listOf("-version"),
         ),
         ExternalTool(
             id = "emboss-needle",
@@ -130,6 +179,7 @@ object ExternalTools {
             installHint = "apt install emboss",
             builtinEquivalent = "(no built-in aligner)",
             capabilities = setOf(ToolCapability.ALIGNMENT),
+            versionArgs = listOf("-version"),
         ),
         ExternalTool(
             id = "primer3",
@@ -142,6 +192,7 @@ object ExternalTools {
             installHint = "apt install primer3",
             builtinEquivalent = "instagene primers --from --to",
             capabilities = setOf(ToolCapability.PRIMER_DESIGN),
+            minimumVersion = "2.6.0",
         ),
         ExternalTool(
             id = "blastn",
@@ -152,6 +203,7 @@ object ExternalTools {
             installHint = "apt install ncbi-blast+",
             builtinEquivalent = "(no built-in aligner)",
             capabilities = setOf(ToolCapability.LOCAL_SEARCH, ToolCapability.ALIGNMENT),
+            versionArgs = listOf("-version"),
         ),
         ExternalTool(
             id = "muscle",
@@ -162,6 +214,8 @@ object ExternalTools {
             installHint = "apt install muscle",
             builtinEquivalent = "(no built-in aligner)",
             capabilities = setOf(ToolCapability.MULTIPLE_ALIGNMENT),
+            minimumVersion = "5.0.0",
+            versionArgs = listOf("-version"),
         ),
         ExternalTool(
             id = "clustalo",
@@ -172,6 +226,7 @@ object ExternalTools {
             installHint = "conda install -c bioconda clustalo",
             builtinEquivalent = "InstaGene pairwise/reference alignment",
             capabilities = setOf(ToolCapability.MULTIPLE_ALIGNMENT),
+            minimumVersion = "1.2.0",
         ),
         ExternalTool(
             id = "mafft",
@@ -192,6 +247,7 @@ object ExternalTools {
             installHint = "conda install -c bioconda t_coffee",
             builtinEquivalent = "InstaGene pairwise/reference alignment",
             capabilities = setOf(ToolCapability.MULTIPLE_ALIGNMENT),
+            versionArgs = listOf("-version"),
         ),
         ExternalTool(
             id = "cap3",
@@ -216,40 +272,127 @@ object ExternalTools {
     )
 
     private val pathCache = HashMap<String, String?>()
+    private val diagnosticsJson = Json { prettyPrint = true; encodeDefaults = true }
 
     /** Absolute path of [executable] on `PATH`, or null when it is not installed. */
-    fun locate(executable: String): String? = pathCache.getOrPut(executable) {
-        val pathEnv = System.getenv("PATH") ?: return@getOrPut null
-        pathEnv.split(File.pathSeparator)
-            .asSequence()
-            .map { File(it, executable) }
-            .firstOrNull { it.isFile && it.canExecute() }
-            ?.absolutePath
+    fun locate(executable: String): String? = synchronized(pathCache) {
+        pathCache.getOrPut(executable) {
+            val pathEnv = System.getenv("PATH") ?: return@getOrPut null
+            pathEnv.split(File.pathSeparator)
+                .asSequence()
+                .map { File(it, executable) }
+                .firstOrNull { it.isFile && it.canExecute() }
+                ?.absolutePath
+        }
     }
 
     /** True when [tool]'s executable is installed on `PATH`. */
     fun isAvailable(tool: ExternalTool): Boolean = locate(tool.executable) != null
 
-    /** Checks availability and asks the executable for a short version string. */
-    fun healthCheck(tool: ExternalTool, timeoutSeconds: Long = 5): ToolHealth {
-        val path = locate(tool.executable) ?: return ToolHealth(tool, false, error = "${tool.executable} is not on PATH")
+    /**
+     * Checks availability and runs the tool's documented version probe. The optional
+     * [executablePath] makes this usable by bundled-tool launchers and deterministic tests.
+     */
+    fun healthCheck(tool: ExternalTool, timeoutSeconds: Long = 5, executablePath: String? = locate(tool.executable)): ToolHealth {
+        require(timeoutSeconds > 0) { "Version-check timeout must be positive" }
+        val path = executablePath ?: return ToolHealth(tool, false, error = "${tool.executable} is not on PATH", status = ToolHealthStatus.MISSING)
         return try {
-            val process = ProcessBuilder(path, "--version").redirectErrorStream(true).start()
+            val process = ProcessBuilder(listOf(path) + tool.versionArgs).redirectErrorStream(true).start()
+            val outputFuture = java.util.concurrent.CompletableFuture.supplyAsync {
+                process.inputStream.bufferedReader().readText()
+            }
             val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
-                ToolHealth(tool, true, path, error = "version check timed out", compatible = false)
-            } else {
-                val output = process.inputStream.bufferedReader().readText().trim()
+                process.waitFor(2, TimeUnit.SECONDS)
                 ToolHealth(
-                    tool, process.exitValue() == 0, path, output.ifBlank { null },
-                    if (process.exitValue() == 0) null else "exit ${process.exitValue()}",
-                    compatible = process.exitValue() == 0 && versionIsCompatible(output, tool.minimumVersion),
+                    tool = tool,
+                    available = true,
+                    path = path,
+                    error = "version check timed out after ${timeoutSeconds}s",
+                    compatible = false,
+                    status = ToolHealthStatus.VERSION_CHECK_FAILED,
+                )
+            } else {
+                val output = outputFuture.get(5, TimeUnit.SECONDS).trim()
+                val succeeded = process.exitValue() == 0
+                val compatible = succeeded && isVersionCompatible(output, tool.minimumVersion)
+                val status = when {
+                    !succeeded -> ToolHealthStatus.VERSION_CHECK_FAILED
+                    !compatible -> ToolHealthStatus.INCOMPATIBLE
+                    else -> ToolHealthStatus.AVAILABLE
+                }
+                ToolHealth(
+                    tool = tool,
+                    available = true,
+                    path = path,
+                    version = conciseVersion(output),
+                    error = when {
+                        !succeeded -> "${tool.versionArgs.joinToString(" ")} exited with ${process.exitValue()}"
+                        !compatible -> "requires version ${tool.minimumVersion} or newer; detected ${conciseVersion(output) ?: "an unreadable version"}"
+                        else -> null
+                    },
+                    compatible = compatible,
+                    status = status,
                 )
             }
         } catch (e: Exception) {
-            ToolHealth(tool, false, path, error = e.message ?: "version check failed")
+            ToolHealth(
+                tool = tool,
+                available = true,
+                path = path,
+                error = e.message ?: "version check failed",
+                compatible = false,
+                status = ToolHealthStatus.VERSION_CHECK_FAILED,
+            )
         }
+    }
+
+    /** Checks catalog entries concurrently, preserving catalog order for display and JSON consumers. */
+    fun healthChecks(tools: List<ExternalTool> = CATALOG, timeoutSeconds: Long = 5): List<ToolHealth> {
+        require(timeoutSeconds > 0) { "Version-check timeout must be positive" }
+        val futures = tools.map { tool ->
+            java.util.concurrent.CompletableFuture.supplyAsync { healthCheck(tool, timeoutSeconds) }
+        }
+        return futures.map { future -> future.get(timeoutSeconds + 7, TimeUnit.SECONDS) }
+    }
+
+    fun healthDiagnostics(checks: List<ToolHealth>): List<ToolHealthDiagnostic> = checks.map { health ->
+        ToolHealthDiagnostic(
+            id = health.tool.id,
+            displayName = health.tool.displayName,
+            executable = health.tool.executable,
+            status = health.status,
+            path = health.path,
+            version = health.version,
+            minimumVersion = health.tool.minimumVersion,
+            error = health.error,
+            action = health.recommendedAction,
+            installHint = health.tool.installHint,
+            builtinEquivalent = health.tool.builtinEquivalent,
+            capabilities = health.tool.capabilities.map(ToolCapability::name).sorted(),
+        )
+    }
+
+    /** Machine-readable diagnostics for CI, issue reports, and scripted workstation setup. */
+    fun healthJson(checks: List<ToolHealth> = healthChecks()): String =
+        diagnosticsJson.encodeToString(healthDiagnostics(checks))
+
+    /** Human-readable diagnostics that always say what to install, upgrade, or use instead. */
+    fun healthReport(checks: List<ToolHealth> = healthChecks()): String = buildString {
+        appendLine("External CLI tool health (all tools are optional):")
+        appendLine()
+        checks.forEach { health ->
+            appendLine("  ${health.tool.displayName}: ${health.status.name.lowercase().replace('_', ' ')}")
+            health.path?.let { appendLine("    path: $it") }
+            health.version?.let { appendLine("    version: $it") }
+            health.tool.minimumVersion?.let { appendLine("    required: >= $it") }
+            health.error?.let { appendLine("    detail: $it") }
+            appendLine("    action: ${health.recommendedAction}")
+            appendLine()
+        }
+        val ready = checks.count { it.status == ToolHealthStatus.AVAILABLE }
+        appendLine("$ready of ${checks.size} tools ready. Use `instagene tools --health --json` for structured diagnostics.")
     }
 
     /** Every catalog entry that is actually installed on this machine. */
@@ -259,7 +402,7 @@ object ExternalTools {
     fun missing(): List<ExternalTool> = CATALOG.filterNot(::isAvailable)
 
     /** Clears the `PATH` lookup cache, for when a tool is installed mid-session. */
-    fun rescan() = pathCache.clear()
+    fun rescan() = synchronized(pathCache) { pathCache.clear() }
 
     /** Renders a safe, reproducible command before the user runs an external executable. */
     fun commandPreview(
@@ -435,6 +578,7 @@ object ExternalTools {
     /** One-line availability report, as used by `instagene tools`. */
     fun report(): String = buildString {
         appendLine("External CLI tools (optional — InstaGene works without them):")
+        appendLine("Run `instagene tools --health` to probe installed versions and see recovery actions.")
         appendLine()
         for (tool in CATALOG) {
             val path = locate(tool.executable)
@@ -449,7 +593,8 @@ object ExternalTools {
         appendLine("$found of ${CATALOG.size} tools available.")
     }
 
-    private fun versionIsCompatible(versionOutput: String, minimumVersion: String?): Boolean {
+    /** True when a detectable semantic version in [versionOutput] satisfies [minimumVersion]. */
+    fun isVersionCompatible(versionOutput: String, minimumVersion: String?): Boolean {
         if (minimumVersion == null) return true
         val actual = Regex("\\d+(?:\\.\\d+)+").find(versionOutput)?.value ?: return false
         fun pieces(value: String) = value.split('.').map { it.toIntOrNull() ?: 0 }
@@ -459,4 +604,10 @@ object ExternalTools {
             (found.getOrElse(index) { 0 }) != (required.getOrElse(index) { 0 })
         }?.let { index -> found.getOrElse(index) { 0 } > required.getOrElse(index) { 0 } } ?: true
     }
+
+    /** Keeps diagnostics readable while retaining the most useful first version line. */
+    private fun conciseVersion(output: String): String? = output.lineSequence()
+        .map(String::trim)
+        .firstOrNull(String::isNotBlank)
+        ?.take(240)
 }

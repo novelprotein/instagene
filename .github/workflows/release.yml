@@ -263,7 +263,7 @@ jobs:
           if (-not (Test-Path $executable)) { throw "Missing installed executable: $executable" }
           $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\InstaGene\InstaGene.lnk'
           if (-not (Test-Path $shortcut)) { throw "Missing Start Menu shortcut: $shortcut" }
-          $extensions = @('.fa', '.fasta', '.fna', '.fas', '.seq', '.gb', '.gbk', '.genbank', '.ape', '.gff', '.gff3', '.embl', '.ena', '.swiss', '.sprot', '.dat', '.aln', '.afa', '.msa')
+          $extensions = @('.fa', '.fasta', '.fna', '.fas', '.seq', '.gb', '.gbk', '.genbank', '.ape', '.gff', '.gff3', '.embl', '.ena', '.swiss', '.sprot', '.dat', '.aln', '.clustal', '.afa', '.msa', '.sto', '.stockholm', '.phy', '.phylip', '.ph')
           foreach ($extension in $extensions) {
             $association = Get-ItemProperty "Registry::HKEY_CURRENT_USER\Software\Classes\$extension" -ErrorAction SilentlyContinue
             if ($null -eq $association -or [string]::IsNullOrWhiteSpace($association.'(default)')) {

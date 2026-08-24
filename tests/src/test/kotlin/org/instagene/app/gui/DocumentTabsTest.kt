@@ -124,7 +124,8 @@ class DocumentTabsTest {
 
         try {
             onEdt {
-                val fileMenu = content.menuBar.getMenu(0) ?: fail("File menu missing")
+                val fileMenu = (0 until content.menuBar.menuCount).mapNotNull { content.menuBar.getMenu(it) }
+                    .firstOrNull { it.text == "File" } ?: fail("File menu missing")
                 val exit = fileMenu.menuComponents
                     .filterIsInstance<JMenuItem>()
                     .firstOrNull { it.text == "Exit" }
@@ -283,6 +284,45 @@ class DocumentTabsTest {
     }
 
     @Test
+    fun projectReloadRefreshesCleanTabsAndPreservesDirtyConflictTabs() {
+        val root = Files.createTempDirectory("instagene-reload-project").toFile()
+        val file = File(root, "a.fasta").apply { writeText(">a\nAAAA\n") }
+        SeqProject.create(root).apply {
+            addDocument(file)
+            setActive(file)
+            save()
+        }
+        val content = onEdt { InstaGeneContent() }
+        onEdt { content.openProjectAt(root) }
+        assertTrue(awaitEdt { content.activeDoc?.file == file }, "project file was not opened")
+        val document = content.activeDocument
+        onEdt { content.projectTreePanel.stopWatching() }
+
+        val firstRevision = file.lastModified()
+        file.writeText(">a\nCCCC\n")
+        file.setLastModified(firstRevision + 2_000)
+        onEdt { content.reloadProjectFromDisk() }
+        assertTrue(
+            awaitEdt { document.seq.bases == "CCCC" && content.projectReloadStatus().contains("reloaded 1 clean file") },
+            "clean tab was not refreshed from disk: ${content.projectReloadStatus()}",
+        )
+        assertFalse(document.isDirty)
+
+        onEdt { document.mutate("local edit") { it.insertAt(0, "T") } }
+        val secondRevision = file.lastModified()
+        file.writeText(">a\nGGGG\n")
+        file.setLastModified(secondRevision + 2_000)
+        onEdt { content.reloadProjectFromDisk() }
+        assertTrue(
+            awaitEdt { content.projectReloadStatus().contains("preserved 1 local change") },
+            "dirty tab was not reported as a conflict: ${content.projectReloadStatus()}",
+        )
+        assertEquals("TCCCC", document.seq.bases, "disk content must not overwrite local unsaved edits")
+        assertTrue(document.isDirty)
+        onEdt { content.dispose() }
+    }
+
+    @Test
     fun welcomeStateShowsOpenOptionsAndLeavesWhenADocumentOpens() {
         onEdt {
             val content = InstaGeneContent()
@@ -292,12 +332,13 @@ class DocumentTabsTest {
             // The empty-state menu bar still shows the full set of top-level
             // options; the sequence-only ones are merely disabled.
             val menus = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text }
-            assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools", "Help"), menus, "all top-level menus must be present")
-            val edit = content.menuBar.getMenu(1)!!
-            val view = content.menuBar.getMenu(2)!!
-            val project = content.menuBar.getMenu(3)!!
-            val actions = content.menuBar.getMenu(4)!!
-            val tools = content.menuBar.getMenu(5)!!
+            assertEquals(listOf("Command", "File", "Edit", "View", "Project", "Actions", "Tools", "Help"), menus, "all top-level menus must be present")
+            val menusByName = (0 until content.menuBar.menuCount).mapNotNull { content.menuBar.getMenu(it) }.associateBy { it.text }
+            val edit = menusByName.getValue("Edit")
+            val view = menusByName.getValue("View")
+            val project = menusByName.getValue("Project")
+            val actions = menusByName.getValue("Actions")
+            val tools = menusByName.getValue("Tools")
             assertFalse(edit.isEnabled, "Edit must be disabled with no document open")
             assertTrue(view.isEnabled, "View must stay enabled so themes and the file browser can be changed")
             assertTrue(project.isEnabled, "Project menu stays enabled so new projects can be opened")
@@ -471,7 +512,8 @@ class DocumentTabsTest {
     }
 
     private fun showFileBrowserItem(content: InstaGeneContent): JCheckBoxMenuItem {
-        val viewMenu = content.menuBar.getMenu(2) ?: fail("View menu missing")
+        val viewMenu = (0 until content.menuBar.menuCount).mapNotNull { content.menuBar.getMenu(it) }
+            .firstOrNull { it.text == "View" } ?: fail("View menu missing")
         return viewMenu.menuComponents.filterIsInstance<JCheckBoxMenuItem>()
             .first { it.text == "Show File Browser" }
     }

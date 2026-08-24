@@ -25,10 +25,7 @@ Install the repository hooks if you want the local commit checks:
 ~~~
 
 The pre-commit hook runs the full Gradle build, strict documentation validation,
-and distribution checks for the current operating system. On Linux, this
-includes the DEB and app-image archive; Windows MSI and macOS DMG checks remain
-in their native CI jobs because `jpackage` cannot cross-compile installers.
-
+and distribution checks for the current operating system. 
 ## Module boundaries
 
 - engine/ contains front-end-free sequence and workflow logic.
@@ -51,6 +48,7 @@ Run the complete gate before opening a pull request:
 ~~~bash
 ./gradlew build
 ./gradlew :tests:test
+./scripts/check-distributions.sh
 ~~~
 
 Every bug fix should include a focused regression test. Headless Swing tests

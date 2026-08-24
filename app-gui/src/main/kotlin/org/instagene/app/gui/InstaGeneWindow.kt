@@ -81,7 +81,7 @@ class InstaGeneWindow(
                 e.acceptDrop(DnDConstants.ACTION_COPY)
                 val transferable = e.transferable
                 val files = transferable.getTransferData(flavor) as? List<File> ?: emptyList()
-                files.forEach { content.openFileInTab(it) }
+                content.handleDroppedFiles(files)
                 e.dropComplete(true)
             }
         })

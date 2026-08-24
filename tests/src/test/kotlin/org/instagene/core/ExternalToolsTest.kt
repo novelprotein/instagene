@@ -63,7 +63,43 @@ class ExternalToolsTest {
         )
         val health = ExternalTools.healthCheck(tool)
         assertFalse(health.available)
+        assertEquals(ToolHealthStatus.MISSING, health.status)
         assertTrue(health.error.orEmpty().contains("not on PATH"))
+        assertTrue(health.recommendedAction.contains("Install with"))
+    }
+
+    @Test
+    fun versionCompatibilityAndDiagnosticExportsAreActionable() {
+        assertTrue(ExternalTools.isVersionCompatible("tool 2.10.1", "2.6.0"))
+        assertFalse(ExternalTools.isVersionCompatible("tool 2.5.9", "2.6.0"))
+        assertFalse(ExternalTools.isVersionCompatible("unknown", "2.6.0"))
+
+        val tool = ExternalTool(
+            id = "outdated-tool",
+            displayName = "Outdated tool",
+            executable = "outdated",
+            argsTemplate = emptyList(),
+            description = "test",
+            installHint = "install outdated-tool",
+            builtinEquivalent = "instagene test",
+            minimumVersion = "3.0.0",
+        )
+        val health = ToolHealth(
+            tool = tool,
+            available = true,
+            path = "/opt/tools/outdated",
+            version = "outdated 2.0.0",
+            error = "requires version 3.0.0 or newer",
+            compatible = false,
+            status = ToolHealthStatus.INCOMPATIBLE,
+        )
+
+        val report = ExternalTools.healthReport(listOf(health))
+        val json = ExternalTools.healthJson(listOf(health))
+        assertTrue(report.contains("Update to version 3.0.0"))
+        assertTrue(report.contains("Built-in fallback"))
+        assertTrue(json.contains("\"status\": \"INCOMPATIBLE\""))
+        assertTrue(json.contains("\"action\""))
     }
 
     @Test

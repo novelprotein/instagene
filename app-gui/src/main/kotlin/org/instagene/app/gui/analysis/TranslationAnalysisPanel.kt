@@ -5,7 +5,9 @@ import java.awt.BorderLayout
 import javax.swing.*
 
 internal class TranslationAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) : BoundAnalysisPanel() {
-    private val operation = JComboBox(arrayOf("Find ORFs", "Make protein", "Reverse translate", "Optimize codons", "GC profile", "Secondary structure"))
+    private val operation = JComboBox(arrayOf(
+        "Find ORFs", "Make protein", "Reverse translate", "Optimize codons", "GC profile", "Secondary structure", "Validate CDS features",
+    ))
     private val frame = JSpinner(SpinnerNumberModel(1, 1, 3, 1))
     private val profile = JComboBox(CodonDesign.PROFILES.map { it.name }.toTypedArray())
     private val window = JSpinner(SpinnerNumberModel(100, 10, 10_000, 10))
@@ -53,9 +55,12 @@ internal class TranslationAnalysisPanel(private val onOpenSequence: (Seq) -> Uni
                     4 -> SequenceProfiles.gcWindows(seq, windowValue).joinToString("\n") {
                         "${it.start + 1}..${it.end}\t${"%.2f".format(it.gcPercent)}% GC"
                     } to null
-                    else -> SecondaryStructure.predict(seq).let {
+                    5 -> SecondaryStructure.predict(seq).let {
                         ("${it.algorithm}: ${it.pairedBases} base pair(s), estimated \u0394G ${"%.1f".format(it.estimatedDeltaG)} kcal/mol\n\n${it.sequence}\n${it.dotBracket}") to null
                     }
+                    else -> FeatureTranslations.validateCodingFeatures(seq).joinToString("\n\n") {
+                        FeatureTranslations.summary(it, includeCodons = false)
+                    }.ifBlank { "No CDS features are annotated on this sequence." } to null
                 }
             }
 

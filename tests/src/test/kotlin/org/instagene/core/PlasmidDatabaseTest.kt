@@ -38,4 +38,14 @@ class PlasmidDatabaseTest {
     fun allReturnsBuiltInSet() {
         assertTrue(PlasmidDatabase.all().size >= 8, "Should have at least 8 built-in plasmids")
     }
+
+    @Test
+    fun pbr322DatabaseRecordUsesBundledNcbiSequence() {
+        val sequence = PlasmidDatabase.sequenceFor("pBR322")
+        assertNotNull(sequence)
+        assertEquals("pBR322_NCBI", sequence.name)
+        assertEquals(4361, sequence.length)
+        assertTrue(sequence.features.isNotEmpty())
+        assertEquals("J01749.1", sequence.metadata["ONLINE_ACCESSION"])
+    }
 }

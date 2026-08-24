@@ -50,6 +50,19 @@ Additional inspection commands:
 - `ncbi-fetch --accession ACCESSION` retrieves a GenBank record.
 - `dilute` and `mix` calculate common preparation volumes.
 
+NCBI commands are network-only by default. To deliberately keep and reuse
+responses, pass `--cache-dir DIR`; this selects `prefer-cache` unless another
+`--cache-mode` is chosen. The available modes are `network-only`,
+`prefer-cache`, `network-then-cache`, and `cache-only`. Cached entries are
+versioned and SHA-256 verified. A retrieved GenBank record includes the request,
+response hash, timestamp, and cache/network origin in its metadata and procedure
+history; `cache-only` never contacts NCBI.
+
+~~~bash
+instagene ncbi-fetch --accession J01636.1 --cache-dir .instagene-ncbi-cache
+instagene ncbi-fetch --accession J01636.1 --cache-dir .instagene-ncbi-cache --cache-mode cache-only
+~~~
+
 ## Restriction mapping and plasmids
 
 ~~~bash
@@ -85,6 +98,24 @@ instagene convert --to gff3 sequence.gb
 Coordinates in command help are the user-facing sequence coordinates. Check
 the command output and the resulting record before using an edited file in a
 downstream workflow.
+
+## Generic ELN/LIMS handoff
+
+`eln-bundle` creates a local, vendor-neutral ZIP rather than contacting an ELN
+service. The bundle contains FASTA and GenBank sequence attachments, a primer
+CSV, a Markdown sequence/provenance summary, supplied reports/attachments, and
+a versioned `manifest.json` with SHA-256 hashes.
+
+~~~bash
+instagene eln-bundle --out plasmid-handoff.zip plasmid.gb
+instagene eln-bundle --out plasmid-handoff.zip --report verification.md \
+  --attachment plasmid-map.svg,trace.pdf plasmid.gb
+instagene eln-bundle --out plasmid-handoff.zip --json plasmid.gb
+~~~
+
+The command does not upload to Benchling, an ELN, or another vendor. Vendor
+connectors remain deferred until credentials, authorization, and API terms are
+supplied.
 
 ## Primer design
 

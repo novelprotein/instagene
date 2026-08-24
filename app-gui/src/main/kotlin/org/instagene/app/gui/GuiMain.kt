@@ -10,12 +10,29 @@ import kotlin.system.exitProcess
 
 /** Standalone entry point for the desktop front-end (`./gradlew :app-gui:runGui`). */
 fun main(argv: Array<String>) {
+    configurePlatformConventions()
     if (GraphicsEnvironment.isHeadless()) {
         System.err.println("No display available, so the desktop GUI cannot start.")
         System.err.println("Use the CLI front-end (`:app-cli:runCli`) or the web front-end (`:app-web:runWeb`) instead.")
         exitProcess(2)
     }
     launch(argv.filterNot { it.startsWith("-") })
+}
+
+/** Configure Apple-specific Swing integration before the AWT toolkit starts. */
+private fun configurePlatformConventions(osName: String = System.getProperty("os.name", "")) {
+    when {
+        osName.contains("mac", ignoreCase = true) -> {
+            System.setProperty("apple.laf.useScreenMenuBar", "true")
+            System.setProperty("apple.awt.application.name", "InstaGene")
+            System.setProperty("com.apple.mrj.application.apple.menu.about.name", "InstaGene")
+        }
+        osName.contains("win", ignoreCase = true) -> {
+            // Opt in before AWT starts so Java follows the monitor DPI when a
+            // researcher moves the app between mixed-scale Windows displays.
+            System.setProperty("sun.java2d.dpiaware", "true")
+        }
+    }
 }
 
 private val launched = AtomicBoolean(false)

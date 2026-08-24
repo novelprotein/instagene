@@ -13,17 +13,25 @@ import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.core.Feature
 import org.instagene.core.FeatureDefinition
 import org.instagene.core.FeatureLibrary
+import org.instagene.core.FeatureLibraryFile
+import org.instagene.core.FeatureTranslationResult
+import org.instagene.core.FeatureTranslations
+import org.instagene.core.LabLibraryFiles
+import org.instagene.core.LibraryImportMode
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
 import java.awt.event.ActionListener
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ExecutionException
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
+import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JPopupMenu
 import javax.swing.JOptionPane
@@ -35,8 +43,10 @@ import javax.swing.JTextField
 import javax.swing.ListSelectionModel
 import javax.swing.JSpinner
 import javax.swing.SpinnerNumberModel
+import javax.swing.SwingWorker
 import javax.swing.event.ListSelectionListener
 import javax.swing.table.AbstractTableModel
+import java.io.File
 
 /**
  * Annotated regions on the current sequence: browse, jump to, add from the
@@ -58,10 +68,16 @@ class FeaturesPanel(
     private val addButton = JButton("Add Feature from Selection...")
     private val manualAddButton = JButton("Add Feature Manually...")
     private val autoAnnotateButton = JButton("Auto-annotate...")
+    private val importFeatureLibraryButton = JButton("Import feature library…")
+    private val exportFeatureLibraryButton = JButton("Export feature library…")
     private val editElementButton = JButton("Edit Element...")
     private val saveFeatureButton = JButton("Save feature to library")
+    private val validateFrameButton = JButton("Validate reading frame")
     private val deleteButton = JButton("Delete")
     private val summary = JLabel(" ")
+
+    /** The active large-library annotation job, if any. Its result is ignored when the document changes. */
+    private var autoAnnotationWorker: SwingWorker<org.instagene.core.Seq, org.instagene.core.FeatureScanProgress>? = null
 
     private val rowSelectionListener = ListSelectionListener {
         if (!it.valueIsAdjusting) {
@@ -104,6 +120,8 @@ class FeaturesPanel(
      */
     fun bindDocument(newDoc: SeqDocument) {
         if (newDoc !== doc) {
+            autoAnnotationWorker?.cancel(true)
+            autoAnnotationWorker = null
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
             if (docListener != null) doc.addListener(docListener!!)
@@ -113,6 +131,12 @@ class FeaturesPanel(
             doc.addListener(docListener!!)
         }
         refresh()
+    }
+
+    /** Cancels background annotation before the owning editor is disposed. */
+    fun dispose() {
+        autoAnnotationWorker?.cancel(true)
+        autoAnnotationWorker = null
     }
 
     private fun buildButtons(): JPanel = JPanel().apply {
@@ -127,6 +151,14 @@ class FeaturesPanel(
             add(autoAnnotateButton.apply {
                 addActionListener { autoAnnotateDialog() }
             })
+            add(importFeatureLibraryButton.apply {
+                toolTipText = "Import a versioned, reviewable feature-library JSON file."
+                addActionListener { importFeatureLibraryDialog() }
+            })
+            add(exportFeatureLibraryButton.apply {
+                toolTipText = "Export the saved feature-library rules as a versioned JSON file."
+                addActionListener { exportFeatureLibraryDialog() }
+            })
         })
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
             add(editElementButton.apply {
@@ -134,6 +166,10 @@ class FeaturesPanel(
             })
             add(saveFeatureButton.apply {
                 addActionListener { saveSelectedFeature() }
+            })
+            add(validateFrameButton.apply {
+                toolTipText = "Translate the selected feature from its exact coordinates and validate its reading frame."
+                addActionListener { showFeatureTranslation(featureTable.selectedRow) }
             })
             add(deleteButton.apply {
                 addActionListener { deleteSelectedFeature() }
@@ -164,10 +200,11 @@ class FeaturesPanel(
     private fun refreshSelectionState() {
         addButton.isEnabled = doc.hasSelection && doc.selectionEnd > doc.selectionStart
         manualAddButton.isEnabled = doc.seq.length > 0
-        autoAnnotateButton.isEnabled = doc.seq.kind != SeqKind.PROTEIN && doc.seq.length > 0
+        autoAnnotateButton.isEnabled = doc.seq.kind != SeqKind.PROTEIN && doc.seq.length > 0 && autoAnnotationWorker == null
         deleteButton.isEnabled = featureTable.selectedRow in doc.seq.features.indices
         editElementButton.isEnabled = deleteButton.isEnabled
         saveFeatureButton.isEnabled = savableFeature(featureTable.selectedRow) != null
+        validateFrameButton.isEnabled = deleteButton.isEnabled && doc.seq.kind != SeqKind.PROTEIN
         val features = doc.seq.features
         summary.text = if (features.isEmpty()) {
             "No features. Select a region and use \"Add Feature from Selection...\", or type coordinates with \"Add Feature Manually...\"."
@@ -211,6 +248,11 @@ class FeaturesPanel(
             savableFeature(row ?: -1) != null,
         ) { saveFeature(row ?: -1) })
         add(ContextMenus.item(
+            "Validate Reading Frame",
+            "Translate this feature from its annotated coordinates and inspect linked codon positions.",
+            hasRow && doc.seq.kind != SeqKind.PROTEIN,
+        ) { showFeatureTranslation(row ?: -1) })
+        add(ContextMenus.item(
             "Delete",
             "Remove this feature from the current sequence.",
             hasRow,
@@ -225,6 +267,65 @@ class FeaturesPanel(
 
     /** Whether "Auto-annotate..." is available for the current document. */
     fun isAutoAnnotateEnabled(): Boolean = autoAnnotateButton.isEnabled
+
+    /** Current persisted feature rules in the engine's portable representation. */
+    fun featureLibraryDefinitions(): List<FeatureDefinition> = prefs.value.featureLibrary.map { it.toDefinition() }
+
+    /** Builds a portable feature-library file without writing it, useful for tests and headless callers. */
+    fun exportFeatureLibrary(name: String = "Feature library", description: String = ""): FeatureLibraryFile =
+        LabLibraryFiles.featureLibrary(name, featureLibraryDefinitions(), description)
+
+    /** Imports a previously decoded feature library using an explicit non-destructive or replace policy. */
+    fun importFeatureLibrary(file: FeatureLibraryFile, mode: LibraryImportMode = LibraryImportMode.MERGE): Int {
+        val merged = LabLibraryFiles.mergeDefinitions(featureLibraryDefinitions(), file.definitions, mode)
+        prefs.update { current -> current.copy(featureLibrary = merged.map { it.toSaved() }) }
+        return merged.size
+    }
+
+    private fun importFeatureLibraryDialog() {
+        val chooser = JFileChooser().apply { dialogTitle = "Import feature library" }
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return
+        runCatching { LabLibraryFiles.readFeatureLibrary(chooser.selectedFile) }.onSuccess { file ->
+            val mode = chooseFeatureImportMode(file) ?: return@onSuccess
+            val count = importFeatureLibrary(file, mode)
+            summary.text = "${if (mode == LibraryImportMode.MERGE) "Merged" else "Replaced"} feature library with $count rule(s) from ${file.name}."
+        }.onFailure { error ->
+            JOptionPane.showMessageDialog(this, error.message ?: "Unable to import the feature library.", "Import feature library", JOptionPane.ERROR_MESSAGE)
+        }
+    }
+
+    private fun exportFeatureLibraryDialog() {
+        val chooser = JFileChooser().apply {
+            dialogTitle = "Export feature library"
+            selectedFile = File("feature-library${LabLibraryFiles.FEATURE_LIBRARY_SUFFIX}")
+        }
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return
+        val destination = chooser.selectedFile
+        val displayName = destination.name.removeSuffix(LabLibraryFiles.FEATURE_LIBRARY_SUFFIX).removeSuffix(".json")
+        runCatching { LabLibraryFiles.write(destination, exportFeatureLibrary(displayName)) }
+            .onSuccess { summary.text = "Exported ${featureLibraryDefinitions().size} feature rule(s) to ${destination.name}." }
+            .onFailure { error ->
+                JOptionPane.showMessageDialog(this, error.message ?: "Unable to export the feature library.", "Export feature library", JOptionPane.ERROR_MESSAGE)
+            }
+    }
+
+    private fun chooseFeatureImportMode(file: FeatureLibraryFile): LibraryImportMode? {
+        val choice = JOptionPane.showOptionDialog(
+            this,
+            "Import '${file.name}' (${file.definitions.size} rule(s)).\nMerge retains existing rules; replace clears them first.",
+            "Import feature library",
+            JOptionPane.DEFAULT_OPTION,
+            JOptionPane.QUESTION_MESSAGE,
+            null,
+            arrayOf("Merge", "Replace", "Cancel"),
+            "Merge",
+        )
+        return when (choice) {
+            0 -> LibraryImportMode.MERGE
+            1 -> LibraryImportMode.REPLACE
+            else -> null
+        }
+    }
 
     /** Whether "Edit Element..." can act on the currently selected feature row. */
     fun isEditElementEnabled(): Boolean = editElementButton.isEnabled
@@ -248,8 +349,27 @@ class FeaturesPanel(
     /** Exposed for tests: whether the selected feature can be saved to the Library. */
     fun isSaveFeatureEnabled(): Boolean = saveFeatureButton.isEnabled
 
+    /** Coordinate-linked translation validation for one annotated feature, or null for an invalid row. */
+    fun validateFeatureTranslation(row: Int): FeatureTranslationResult? = doc.seq.features.getOrNull(row)
+        ?.takeIf { doc.seq.kind != SeqKind.PROTEIN }
+        ?.let { FeatureTranslations.translate(doc.seq, it) }
+
     /** Exposed for tests: the current summary or confirmation text. */
     fun summaryText(): String = summary.text
+
+    private fun showFeatureTranslation(row: Int) {
+        val result = validateFeatureTranslation(row) ?: return
+        val details = JTextArea(FeatureTranslations.summary(result), 20, 76).apply {
+            isEditable = false
+            font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12)
+        }
+        JOptionPane.showMessageDialog(
+            this,
+            JScrollPane(details),
+            "Reading-frame validation: ${result.feature.name}",
+            if (result.hasErrors) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE,
+        )
+    }
 
     /** Exposed for tests: the description associated with the feature at [row]. */
     fun featureDescription(row: Int): String = doc.seq.features.getOrNull(row)?.notes.orEmpty()
@@ -491,9 +611,12 @@ class FeaturesPanel(
         matchCountLabel.toolTipText = "Preview shows how many matches each pattern finds."
         val previewButton = JButton("Preview matches")
         previewButton.toolTipText = "Count matches for each pattern without applying changes."
+        var previewWorker: SwingWorker<List<org.instagene.core.MatchInfo>, org.instagene.core.FeatureScanProgress>? = null
 
         val patterns = JTextArea(
-            prefs.value.featureLibrary.takeIf { it.isNotEmpty() }?.joinToString("\n") { "${it.name}|${it.type}|${it.pattern}" }
+            prefs.value.featureLibrary.takeIf { it.isNotEmpty() }?.joinToString("\n") { saved ->
+                "${saved.name}|${saved.type}|${if (saved.exclude) "!" else ""}${saved.pattern}"
+            }
                 ?: "promoter|promoter|TATAAA",
             10,
             50,
@@ -527,13 +650,21 @@ class FeaturesPanel(
             val selected = presetCombo.selectedItem?.toString() ?: "<None>"
             if (selected != "<None>") {
                 val presets = FeatureLibrary.BUILTIN_PRESETS[selected] ?: emptyList()
-                val presetText = presets.joinToString("\n") { "${it.name}|${it.type}|${it.pattern}" }
+                val presetText = presets.joinToString("\n") { definition ->
+                    "${definition.name}|${definition.type}|${if (definition.exclude) "!" else ""}${definition.pattern}"
+                }
                 patterns.text = presetText
             }
         }
         presetCombo.addActionListener(presetListener)
 
         val previewListener = ActionListener {
+            previewWorker?.let { running ->
+                running.cancel(true)
+                previewButton.isEnabled = false
+                matchCountLabel.text = "Cancelling feature scan…"
+                return@ActionListener
+            }
             val defs = parseAutoAnnotateDefinitions(patterns.text)
             if (defs.isEmpty()) {
                 matchCountLabel.text = "No valid definitions."
@@ -541,12 +672,60 @@ class FeaturesPanel(
             }
             val strandIdx = strandCombo.selectedIndex
             val searchBoth = strandIdx == 2
-            val matches = FeatureLibrary.previewMatches(doc.seq, defs, searchBoth)
-            val byName = matches.filter { !it.definition.exclude }.groupBy { it.name }
-            val excluded = matches.filter { it.definition.exclude }.size
-            val total = matches.count { !it.definition.exclude }
-            matchCountLabel.text = "<html>${defs.size} pattern(s): <b>${total}</b> match(es)${if (excluded > 0) ", $excluded excluded" else ""}</html>"
-            matchCountLabel.toolTipText = byName.entries.joinToString("\n") { (name, list) -> "$name: ${list.size} match(es)" }
+            val source = doc.seq
+            val worker = object : SwingWorker<List<org.instagene.core.MatchInfo>, org.instagene.core.FeatureScanProgress>() {
+                override fun doInBackground(): List<org.instagene.core.MatchInfo> =
+                    FeatureLibrary.previewMatchesCancellable(
+                        source,
+                        defs,
+                        searchBothStrands = searchBoth,
+                        cancellationRequested = { isCancelled || Thread.currentThread().isInterrupted },
+                        progress = { publish(it) },
+                    )
+
+                override fun process(chunks: MutableList<org.instagene.core.FeatureScanProgress>) {
+                    if (previewWorker !== this || chunks.isEmpty()) return
+                    val update = chunks.last()
+                    matchCountLabel.text = "Scanning feature patterns: ${update.completedDefinitions}/${update.totalDefinitions} (${update.matches} match(es))…"
+                }
+
+                override fun done() {
+                    if (previewWorker !== this) return
+                    previewWorker = null
+                    previewButton.text = "Preview matches"
+                    previewButton.isEnabled = true
+                    if (isCancelled) {
+                        matchCountLabel.text = "Feature scan cancelled."
+                        return
+                    }
+                    val matches = try {
+                        get()
+                    } catch (_: CancellationException) {
+                        matchCountLabel.text = "Feature scan cancelled."
+                        return
+                    } catch (error: ExecutionException) {
+                        matchCountLabel.text = "Feature scan failed: ${error.cause?.message ?: "unknown error"}"
+                        return
+                    } catch (error: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        matchCountLabel.text = "Feature scan interrupted."
+                        return
+                    }
+                    if (doc.seq !== source) {
+                        matchCountLabel.text = "Feature scan ignored because the sequence changed."
+                        return
+                    }
+                    val byName = matches.filter { !it.definition.exclude }.groupBy { it.name }
+                    val excluded = matches.count { it.definition.exclude }
+                    val total = matches.count { !it.definition.exclude }
+                    matchCountLabel.text = "<html>${defs.size} pattern(s): <b>${total}</b> match(es)${if (excluded > 0) ", $excluded excluded" else ""}</html>"
+                    matchCountLabel.toolTipText = byName.entries.joinToString("\n") { (name, list) -> "$name: ${list.size} match(es)" }
+                }
+            }
+            previewWorker = worker
+            previewButton.text = "Cancel preview"
+            matchCountLabel.text = "Scanning feature patterns: 0/${defs.size}…"
+            worker.execute()
         }
         previewButton.addActionListener(previewListener)
 
@@ -584,6 +763,10 @@ class FeaturesPanel(
             null, panel, "Auto-annotate from Feature Library", JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.PLAIN_MESSAGE,
         )
+        previewWorker?.let { worker ->
+            previewWorker = null
+            worker.cancel(true)
+        }
         if (ok != JOptionPane.OK_OPTION) return
         val definitions = parseAutoAnnotateDefinitions(patterns.text)
         if (definitions.isEmpty()) {
@@ -592,15 +775,72 @@ class FeaturesPanel(
         }
         val strandIdx = strandCombo.selectedIndex
         val searchBoth = strandIdx == 2
-        val annotated = FeatureLibrary.annotate(doc.seq, definitions, searchBothStrands = searchBoth)
-        val added = annotated.features.size - doc.seq.features.size
-        prefs.update { current ->
-            current.copy(featureLibrary = (current.featureLibrary + definitions.map {
-                SavedFeatureDefinition(it.name, it.pattern, it.type, it.strand, it.color, it.uppercaseOnly)
-            }).distinctBy { it.name.lowercase() })
+        annotateAsync(doc.seq, definitions, searchBoth)
+    }
+
+    /** Runs the potentially expensive annotation pass outside the event thread. */
+    private fun annotateAsync(
+        source: org.instagene.core.Seq,
+        definitions: List<FeatureDefinition>,
+        searchBoth: Boolean,
+    ) {
+        autoAnnotationWorker?.cancel(true)
+        val worker = object : SwingWorker<org.instagene.core.Seq, org.instagene.core.FeatureScanProgress>() {
+            override fun doInBackground(): org.instagene.core.Seq = FeatureLibrary.annotateCancellable(
+                source,
+                definitions,
+                searchBothStrands = searchBoth,
+                cancellationRequested = { isCancelled || Thread.currentThread().isInterrupted },
+                progress = { publish(it) },
+            )
+
+            override fun process(chunks: MutableList<org.instagene.core.FeatureScanProgress>) {
+                if (autoAnnotationWorker !== this || chunks.isEmpty()) return
+                val update = chunks.last()
+                summary.text = "Auto-annotating: ${update.completedDefinitions}/${update.totalDefinitions} pattern(s), ${update.matches} match(es)…"
+            }
+
+            override fun done() {
+                if (autoAnnotationWorker !== this) return
+                autoAnnotationWorker = null
+                val annotated = try {
+                    get()
+                } catch (_: CancellationException) {
+                    summary.text = "Auto-annotation cancelled."
+                    refreshSelectionState()
+                    return
+                } catch (error: ExecutionException) {
+                    summary.text = "Auto-annotation failed: ${error.cause?.message ?: "unknown error"}"
+                    refreshSelectionState()
+                    return
+                } catch (error: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    summary.text = "Auto-annotation interrupted."
+                    refreshSelectionState()
+                    return
+                }
+                if (doc.seq !== source) {
+                    summary.text = "Auto-annotation ignored because the sequence changed."
+                    refreshSelectionState()
+                    return
+                }
+                val added = annotated.features.size - source.features.size
+                prefs.update { current ->
+                    current.copy(featureLibrary = LabLibraryFiles.mergeDefinitions(
+                        current.featureLibrary.map { it.toDefinition() },
+                        definitions,
+                        LibraryImportMode.MERGE,
+                    ).map { it.toSaved() })
+                }
+                doc.mutate("auto-annotate features") { annotated }
+                summary.text = "Auto-annotated $added feature(s) from ${definitions.size} definition(s)."
+                refreshSelectionState()
+            }
         }
-        doc.mutate("auto-annotate features") { annotated }
-        summary.text = "Auto-annotated $added feature(s) from ${definitions.size} definition(s)."
+        autoAnnotationWorker = worker
+        autoAnnotateButton.isEnabled = false
+        summary.text = "Auto-annotating: 0/${definitions.size} pattern(s)…"
+        worker.execute()
     }
 
     private fun parseAutoAnnotateDefinitions(text: String): List<FeatureDefinition> = text.lineSequence()
@@ -608,15 +848,37 @@ class FeaturesPanel(
         .filter { it.isNotEmpty() && !it.startsWith("#") }
         .mapNotNull { line ->
             val fields = line.split('|', limit = 3).map(String::trim)
+            fun definition(name: String, pattern: String, type: String = "misc_feature"): FeatureDefinition? {
+                if (name.isBlank() || pattern.isBlank()) return null
+                return FeatureDefinition(name, pattern.removePrefix("!"), type.ifBlank { "misc_feature" }, exclude = pattern.startsWith("!"))
+            }
             when (fields.size) {
-                3 -> if (fields[0].isNotEmpty() && fields[2].isNotEmpty())
-                    FeatureDefinition(fields[0], fields[2], fields[1].ifBlank { "misc_feature" }) else null
-                2 -> if (fields[0].isNotEmpty() && fields[1].isNotEmpty())
-                    FeatureDefinition(fields[0], fields[1]) else null
+                3 -> definition(fields[0], fields[2], fields[1])
+                2 -> definition(fields[0], fields[1])
                 else -> null
             }
         }
         .toList()
+
+    private fun SavedFeatureDefinition.toDefinition(): FeatureDefinition = FeatureDefinition(
+        name = name,
+        pattern = pattern.removePrefix("!"),
+        type = type,
+        strand = strand,
+        color = color,
+        uppercaseOnly = uppercaseOnly,
+        exclude = exclude || pattern.startsWith("!"),
+    )
+
+    private fun FeatureDefinition.toSaved(): SavedFeatureDefinition = SavedFeatureDefinition(
+        name = name,
+        pattern = pattern.removePrefix("!"),
+        type = type,
+        strand = strand,
+        color = color,
+        uppercaseOnly = uppercaseOnly,
+        exclude = exclude,
+    )
 
     /** Deletes the feature currently selected in the table (undoable). */
     fun deleteSelectedFeature() {

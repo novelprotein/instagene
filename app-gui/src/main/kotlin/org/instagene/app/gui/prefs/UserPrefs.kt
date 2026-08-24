@@ -37,6 +37,7 @@ data class SavedFeatureDefinition(
     val strand: Strand = Strand.FORWARD,
     val color: String? = null,
     val uppercaseOnly: Boolean = false,
+    val exclude: Boolean = false,
 )
 
 /**
@@ -65,6 +66,21 @@ data class SavedItem(
 ) {
     val length: Int get() = bases.length
 }
+
+/** Last-used, researcher-controlled defaults for the non-destructive analysis workspaces. */
+@Serializable
+data class AnalysisDefaults(
+    val lastTool: String = "Search",
+    val alignmentAlgorithm: String = "BUILTIN",
+    val alignmentMismatchPenalty: Double = 0.1,
+    val alignmentGapPenalty: Double = 1.5,
+    val alignmentGapExtensionPenalty: Double = 0.5,
+    val repeatWordSize: Int = 11,
+    val repeatMinimumLength: Int = 12,
+    val repeatMaxPoints: Int = 20_000,
+    val repeatIncludeInverted: Boolean = true,
+    val sangerMinimumQuality: Int = 20,
+)
 
 /**
  * Everything InstaGene remembers between launches. Field-level defaults make
@@ -107,6 +123,10 @@ data class UserPrefs(
     val graphStepSize: Int = 50,
     val graphOrfMinAa: Int = 30,
     val graphOrfWindowSize: Int = 200,
+    /** Reopened analysis controls use the last explicitly run values. */
+    val analysisDefaults: AnalysisDefaults = AnalysisDefaults(),
+    /** NCBI response caching stays network-only until the researcher opts in. */
+    val onlineCacheMode: String = "NETWORK_ONLY",
     val autosaveEnabled: Boolean = true,
     val autosaveFrequencyMinutes: Int = 5,
     val autosaveMaxVersions: Int = 10,

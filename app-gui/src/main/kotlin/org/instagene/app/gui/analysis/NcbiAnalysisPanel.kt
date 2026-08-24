@@ -1,6 +1,8 @@
 package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.ContextMenus
+import org.instagene.app.gui.prefs.AppDirs
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.*
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
@@ -14,6 +16,7 @@ internal class NcbiAnalysisPanel(
     private val onOpenSequence: (Seq) -> Unit,
     private val client: NcbiClient,
     pollIntervalMillis: Long,
+    private val prefs: Prefs,
 ) : BoundAnalysisPanel() {
     private val pollIntervalMillis = pollIntervalMillis.coerceAtLeast(0L)
     private val term = JTextField(24).apply {
@@ -30,6 +33,11 @@ internal class NcbiAnalysisPanel(
     private val resultTabs = JTabbedPane()
     private val output = output()
     private val queryStatus = JLabel().apply { name = "ncbiQueryStatus" }
+    private val cacheMode = JComboBox(enumValues<CacheSelection>()).apply {
+        name = "ncbiCacheMode"
+        selectedItem = CacheSelection.fromPreference(prefs.value.onlineCacheMode)
+        toolTipText = "Network only does not retain responses. Other modes use the local NCBI response cache explicitly."
+    }
     private val searchButton = JButton("Search NCBI")
     private val fetchButton = JButton("Fetch GenBank")
     private val blastButton = JButton("Run BLAST")
@@ -66,6 +74,10 @@ internal class NcbiAnalysisPanel(
         copyBlastAccessionMenuItem.addActionListener { copySelectedBlastAccession() }
         querySource.addActionListener {
             queryChanged()
+        }
+        cacheMode.addActionListener {
+            val selected = cacheMode.selectedItem as? CacheSelection ?: CacheSelection.NETWORK_ONLY
+            prefs.update { it.copy(onlineCacheMode = selected.mode.name) }
         }
         term.document.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent) = queryChanged()
@@ -119,7 +131,11 @@ internal class NcbiAnalysisPanel(
     }
 
     private fun ncbiControls(): JPanel =
-        row(JLabel("Query source"), querySource, term, queryStatus, searchButton, fetchButton, blastButton)
+        row(
+            JLabel("Query source"), querySource, term, queryStatus,
+            JLabel("Result cache"), cacheMode,
+            searchButton, fetchButton, blastButton,
+        )
 
     override fun refreshDocument() {
         val state = currentQueryState()
@@ -168,8 +184,9 @@ internal class NcbiAnalysisPanel(
         updateFetchButton()
         resultTabs.selectedIndex = 0
         output.text = "Searching NCBI..."
+        val retrievalClient = retrievalClient()
         searchWorker = object : SwingWorker<NcbiSearchResult, Unit>() {
-            override fun doInBackground() = client.searchNucleotide(query)
+            override fun doInBackground() = retrievalClient.searchNucleotide(query)
 
             override fun done() {
                 if (generation != searchGeneration || isCancelled) return
@@ -182,7 +199,8 @@ internal class NcbiAnalysisPanel(
                     resultTabs.selectedIndex = 0
                     if (hits.isNotEmpty() && nucleotideModel.rowCount > 0) nucleotideTable.setRowSelectionInterval(0, 0)
                     updateFetchButton()
-                    output.text = "${hits.size} result(s) shown${if (result.totalCount > hits.size) " of ${result.totalCount}" else ""}."
+                    output.text = "${hits.size} result(s) shown${if (result.totalCount > hits.size) " of ${result.totalCount}" else ""}." +
+                        cacheStatus(result.provenance)
                 }.onFailure { output.text = it.message ?: "NCBI search failed" }
                 searchRunning = false
                 updateSearchControls()
@@ -222,8 +240,9 @@ internal class NcbiAnalysisPanel(
             return
         }
         output.text = "Fetching $accession..."
+        val retrievalClient = retrievalClient()
         val worker = object : SwingWorker<Seq, Unit>() {
-            override fun doInBackground() = client.fetchGenBank(accession)
+            override fun doInBackground() = retrievalClient.fetchGenBank(accession)
 
             override fun done() {
                 if (fetchWorker !== this) return
@@ -231,7 +250,7 @@ internal class NcbiAnalysisPanel(
                 runCatching { get() }
                     .onSuccess {
                         onOpenSequence(it)
-                        output.text = "Opened $accession in a new sequence tab."
+                        output.text = "Opened $accession in a new sequence tab." + cacheStatus(it)
                     }
                     .onFailure { output.text = it.message ?: "NCBI fetch failed" }
                 updateFetchButton()
@@ -465,12 +484,44 @@ internal class NcbiAnalysisPanel(
             .firstOrNull { NCBI_ACCESSION_TOKEN.matches(it) }
     }
 
+    /** NCBI retrieval caching is a user-controlled preference, never an implicit side effect. */
+    private fun retrievalClient(): NcbiClient {
+        val selected = cacheMode.selectedItem as? CacheSelection ?: CacheSelection.NETWORK_ONLY
+        val cache = if (selected.mode == OnlineCacheMode.NETWORK_ONLY) null else OnlineCache(AppDirs.cacheDir())
+        return client.withOnlineCache(cache, selected.mode)
+    }
+
+    private fun cacheStatus(provenance: List<OnlineFetchProvenance>): String =
+        provenance.takeIf { it.isNotEmpty() }?.let { " [${it.joinToString(", ") { response -> response.origin.name.lowercase().replace('_', '-') }}]" }
+            .orEmpty()
+
+    private fun cacheStatus(seq: Seq): String = seq.metadata["ONLINE_ORIGINS"]
+        ?.takeIf(String::isNotBlank)
+        ?.let { " [${it}]" }
+        .orEmpty()
+
     companion object {
         private const val MAX_BLAST_POLL_INTERVAL_MILLIS = 15_000L
         private val NCBI_ACCESSION_TOKEN = Regex("[A-Za-z]{1,4}_[A-Za-z0-9]+(?:\\.\\d+)?|[A-Za-z]+\\d+(?:\\.\\d+)?")
     }
 
     private data class BlastInput(val seq: Seq, val selection: IntRange?)
+
+    private enum class CacheSelection(val label: String, val mode: OnlineCacheMode) {
+        NETWORK_ONLY("Network only", OnlineCacheMode.NETWORK_ONLY),
+        PREFER_CACHE("Save and reuse cache", OnlineCacheMode.PREFER_CACHE),
+        NETWORK_THEN_CACHE("Network, then cache fallback", OnlineCacheMode.NETWORK_THEN_CACHE),
+        CACHE_ONLY("Cache only (offline)", OnlineCacheMode.CACHE_ONLY),
+        ;
+
+        override fun toString(): String = label
+
+        companion object {
+            fun fromPreference(value: String): CacheSelection = entries.firstOrNull {
+                it.mode.name.equals(value, ignoreCase = true)
+            } ?: NETWORK_ONLY
+        }
+    }
 
     private fun tableModel(vararg columns: String): DefaultTableModel = object : DefaultTableModel(columns, 0) {
         override fun isCellEditable(row: Int, column: Int): Boolean = false

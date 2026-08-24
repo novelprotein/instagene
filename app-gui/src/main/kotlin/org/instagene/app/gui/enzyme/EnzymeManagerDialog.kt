@@ -5,16 +5,20 @@ import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.installRowContextMenu
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.Enzyme
+import org.instagene.core.LabLibraryFiles
+import org.instagene.core.LibraryImportMode
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Frame
+import java.io.File
 import javax.swing.BorderFactory
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JDialog
 import javax.swing.JLabel
+import javax.swing.JFileChooser
 import javax.swing.JPopupMenu
 import javax.swing.JOptionPane
 import javax.swing.JPanel
@@ -91,6 +95,14 @@ class EnzymeManagerDialog(
     }
 
     private fun buildButtons(): JPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 6)).apply {
+        add(JButton("Import set…").apply {
+            toolTipText = "Import a versioned, self-contained enzyme-set JSON file into this working catalog."
+            addActionListener { importSet() }
+        })
+        add(JButton("Export active set…").apply {
+            toolTipText = "Export the currently enabled enzymes as a versioned JSON lab set."
+            addActionListener { exportSet() }
+        })
         add(JButton("Remove selected").apply {
             addActionListener { removeSelected() }
         })
@@ -100,6 +112,54 @@ class EnzymeManagerDialog(
                 dispose()
             }
         })
+    }
+
+    private fun importSet() {
+        val chooser = JFileChooser().apply { dialogTitle = "Import enzyme set" }
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return
+        runCatching { LabLibraryFiles.readEnzymeSet(chooser.selectedFile) }.onSuccess { imported ->
+            val choice = JOptionPane.showOptionDialog(
+                this,
+                "Import '${imported.name}' (${imported.enzymes.size} enzyme(s)).\nMerge keeps the active set; replace changes only which enzymes are active.",
+                "Import enzyme set",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                arrayOf("Merge active set", "Replace active set", "Cancel"),
+                "Merge active set",
+            )
+            val mode = when (choice) {
+                0 -> LibraryImportMode.MERGE
+                1 -> LibraryImportMode.REPLACE
+                else -> return@onSuccess
+            }
+            val error = model.importSet(imported, mode)
+            if (error == null) {
+                validationLabel.foreground = Color(0x2E, 0x7D, 0x32)
+                validationLabel.text = "Imported ${imported.enzymes.size} enzyme(s) from ${imported.name}."
+            } else {
+                validationLabel.foreground = Color(0xC0, 0x39, 0x2B)
+                validationLabel.text = error
+            }
+        }.onFailure { error ->
+            JOptionPane.showMessageDialog(this, error.message ?: "Unable to import enzyme set.", "Import enzyme set", JOptionPane.ERROR_MESSAGE)
+        }
+    }
+
+    private fun exportSet() {
+        val chooser = JFileChooser().apply {
+            dialogTitle = "Export active enzyme set"
+            selectedFile = File("enzyme-set${LabLibraryFiles.ENZYME_SET_SUFFIX}")
+        }
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return
+        val destination = chooser.selectedFile
+        val name = destination.name.removeSuffix(LabLibraryFiles.ENZYME_SET_SUFFIX).removeSuffix(".json")
+        runCatching { LabLibraryFiles.write(destination, model.exportSet(name)) }.onSuccess {
+            validationLabel.foreground = Color(0x2E, 0x7D, 0x32)
+            validationLabel.text = "Exported ${model.activeEnzymes().size} active enzyme(s) to ${destination.name}."
+        }.onFailure { error ->
+            JOptionPane.showMessageDialog(this, error.message ?: "Unable to export enzyme set.", "Export enzyme set", JOptionPane.ERROR_MESSAGE)
+        }
     }
 
     private fun addFromForm() {

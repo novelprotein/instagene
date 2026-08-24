@@ -2,23 +2,29 @@ package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.installRowContextMenu
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.ChromatogramReader
+import org.instagene.core.PrimerQualityContext
+import org.instagene.core.QualityRegions
 import org.instagene.core.SangerAlignment
 import org.instagene.core.SangerOptions
+import java.awt.BasicStroke
 import java.awt.BorderLayout
+import java.awt.Color
 import java.io.File
 import javax.swing.*
 import javax.swing.table.DefaultTableModel
 import org.jfree.chart.ChartFactory
 import org.jfree.chart.ChartPanel
 import org.jfree.chart.plot.PlotOrientation
+import org.jfree.chart.plot.ValueMarker
 import org.jfree.data.xy.XYSeries
 import org.jfree.data.xy.XYSeriesCollection
 
-internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
+internal class SangerAlignmentAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel() {
     private val queryFiles = JTextField(30)
-    private val minQuality = JSpinner(SpinnerNumberModel(20, 0, 99, 1))
-    private val model = DefaultTableModel(arrayOf("Read name", "Identity", "Mismatches", "Aligned length", "Confidence"), 0)
+    private val minQuality = JSpinner(SpinnerNumberModel(prefs.value.analysisDefaults.sangerMinimumQuality.coerceIn(0, 99), 0, 99, 1))
+    private val model = DefaultTableModel(arrayOf("Read name", "Identity", "Mismatches", "Aligned length", "Worst Q", "Confidence"), 0)
     private val table = JTable(model)
     private val output = output()
     private val traceDataset = XYSeriesCollection()
@@ -32,6 +38,7 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
     }
     private var lastResult: org.instagene.core.SangerAlignmentResult? = null
     private var lastChromatograms: List<org.instagene.core.ChromatogramRecord> = emptyList()
+    private var lastQualityContext: PrimerQualityContext? = null
 
     init {
         val choose = JButton("Choose trace files...")
@@ -76,6 +83,7 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
                     append("${read.readName}: ${read.alignedLength} aligned bases\n")
                     append("Identity: ${"%.2f".format(read.identity * 100)}%  Confidence: ${read.confidence()}\n")
                     append("Low-quality bases: ${read.lowQualityBases}\n\n")
+                    read.qualityObservations.minOfOrNull { it.phred }?.let { append("Worst aligned Phred: Q$it\n\n") }
                     if (read.mismatches.isEmpty()) append("No mismatches.")
                     else read.mismatches.forEach { mismatch ->
                         append("Reference ${mismatch.refPos + 1}, read ${mismatch.readPos + 1}: ")
@@ -113,40 +121,69 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
                     }
                 }.onFailure { error -> failures += "${File(path).name}: ${error.message ?: "unable to read chromatogram"}" }.getOrNull()
             }
-            if (reads.isEmpty()) error("No readable ABI/SCF chromatograms were selected.")
-            lastChromatograms = reads
-            val result = SangerAlignment.alignChromatograms(
-                doc.seq,
-                reads,
-                SangerOptions(minQuality = (minQuality.value as Number).toInt(), trimQuality = (minQuality.value as Number).toInt()),
-            )
-            lastResult = result
-            model.rowCount = 0
-            result.reads.forEach { r ->
-                model.addRow(arrayOf<Any?>(
-                    r.readName, "%.2f%%".format(r.identity * 100), r.mismatches.size, r.alignedLength,
-                    r.confidence().name,
-                ))
-            }
-            output.text = buildString {
-                append("Aligned ${result.summary.totalReads} read(s)\n")
-                append("Average identity: ${"%.2f".format(result.summary.averageIdentity * 100)}%\n")
-                val allMismatches = result.reads.flatMap { it.mismatches }
-                if (allMismatches.isNotEmpty()) {
-                    append("\nMismatch details:\n")
-                    allMismatches.groupBy { it.refPos }.forEach { (pos, mm) ->
-                        append("  Position ${pos + 1}: ${mm.first().refBase} -> ${mm.first().readBase} (${mm.size} read(s))\n")
-                    }
-                }
-                if (result.summary.uncoveredReferenceBases > 0) {
-                    append("Uncovered reference bases: ${result.summary.uncoveredReferenceBases}\n")
-                }
-                if (failures.isNotEmpty()) {
-                    append("\nSkipped ${failures.size} unreadable file(s):\n")
-                    failures.forEach { append("  - $it\n") }
-                }
-            }
+            alignReads(reads, failures)
         }.onFailure { output.text = it.message ?: "Sanger alignment failed" }
+    }
+
+    /** Receives ABI/SCF reads dropped onto the active reference without rereading them on the EDT. */
+    internal fun showDroppedReads(records: List<org.instagene.core.ChromatogramRecord>, sourceFiles: List<File>) {
+        queryFiles.text = sourceFiles.joinToString(", ") { it.absolutePath }
+        queryFiles.toolTipText = sourceFiles.joinToString("\n") { it.absolutePath }
+        runCatching { alignReads(records) }
+            .onFailure { output.text = it.message ?: "Sanger alignment failed" }
+    }
+
+    private fun alignReads(reads: List<org.instagene.core.ChromatogramRecord>, failures: List<String> = emptyList()) {
+        require(reads.isNotEmpty()) { "No readable ABI/SCF chromatograms were selected." }
+        val qualityThreshold = (minQuality.value as Number).toInt()
+        prefs.update { current ->
+            current.copy(analysisDefaults = current.analysisDefaults.copy(sangerMinimumQuality = qualityThreshold))
+        }
+        lastChromatograms = reads
+        val result = SangerAlignment.alignChromatograms(
+            doc.seq,
+            reads,
+            SangerOptions(minQuality = qualityThreshold, trimQuality = qualityThreshold),
+        )
+        lastResult = result
+        lastQualityContext = PrimerQualityContext.fromSangerAlignment(
+            templateLength = doc.seq.length,
+            result = result,
+            minimumPhred = qualityThreshold,
+        )
+        model.rowCount = 0
+        result.reads.forEach { r ->
+            model.addRow(arrayOf<Any?>(
+                r.readName, "%.2f%%".format(r.identity * 100), r.mismatches.size, r.alignedLength,
+                r.qualityObservations.minOfOrNull { it.phred }?.let { "Q$it" } ?: "—",
+                r.confidence().name,
+            ))
+        }
+        output.text = buildString {
+            append("Aligned ${result.summary.totalReads} read(s)\n")
+            append("Average identity: ${"%.2f".format(result.summary.averageIdentity * 100)}%\n")
+            val allMismatches = result.reads.flatMap { it.mismatches }
+            if (allMismatches.isNotEmpty()) {
+                append("\nMismatch details:\n")
+                allMismatches.groupBy { it.refPos }.forEach { (pos, mm) ->
+                    append("  Position ${pos + 1}: ${mm.first().refBase} -> ${mm.first().readBase} (${mm.size} read(s))\n")
+                }
+            }
+            if (result.summary.uncoveredReferenceBases > 0) {
+                append("Uncovered reference bases: ${result.summary.uncoveredReferenceBases}\n")
+            }
+            lastQualityContext?.let { quality ->
+                append(
+                    "Quality overlay: Q${quality.minimumPhred}; low-quality reference regions " +
+                        "${QualityRegions.oneBased(quality.lowQualityRegions).ifBlank { "none" }}; " +
+                        "uncovered ${QualityRegions.oneBased(quality.uncoveredRegions).ifBlank { "none" }}\n",
+                )
+            }
+            if (failures.isNotEmpty()) {
+                append("\nSkipped ${failures.size} unreadable file(s):\n")
+                failures.forEach { append("  - $it\n") }
+            }
+        }
     }
 
     private fun traceFiles(file: File): List<File> = when {
@@ -157,6 +194,8 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
 
     private fun showTrace(chromatogram: org.instagene.core.ChromatogramRecord?, read: org.instagene.core.AlignedRead) {
         traceDataset.removeAllSeries()
+        val plot = traceChart.xyPlot
+        plot.clearDomainMarkers()
         val trace = chromatogram?.trace
         val mismatch = read.mismatches.firstOrNull()
         if (trace == null || mismatch == null || !trace.hasSignal()) {
@@ -175,7 +214,17 @@ internal class SangerAlignmentAnalysisPanel : BoundAnalysisPanel() {
             for (index in start until minOf(end, signal.size)) series.add(index, signal[index])
             traceDataset.addSeries(series)
         }
-        traceChart.title.text = "${chromatogram.name}: reference ${mismatch.refPos + 1}, read ${mismatch.readPos + 1} (${mismatch.kind})"
+        val threshold = (minQuality.value as Number).toInt()
+        val markerCount = read.qualityObservations.count { observation ->
+            if (observation.phred >= threshold) return@count false
+            val lowQualityPeak = trace.peakPositions.getOrNull(observation.readPosition) ?: return@count false
+            plot.addDomainMarker(ValueMarker(lowQualityPeak.toDouble(), Color(220, 130, 35), BasicStroke(1.5f)))
+            true
+        }
+        traceChart.title.text = buildString {
+            append("${chromatogram.name}: reference ${mismatch.refPos + 1}, read ${mismatch.readPos + 1} (${mismatch.kind})")
+            if (markerCount > 0) append(" — orange markers: Q<$threshold")
+        }
     }
 
     private fun sangerPopup(row: Int?): JPopupMenu = JPopupMenu().apply {

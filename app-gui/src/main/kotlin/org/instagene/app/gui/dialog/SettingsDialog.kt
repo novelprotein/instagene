@@ -3,6 +3,8 @@ package org.instagene.app.gui.dialog
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.theme.ThemeManager
 import org.instagene.core.ExternalTools
+import org.instagene.core.ToolHealth
+import org.instagene.core.ToolHealthStatus
 import org.instagene.core.io.FormatSupport
 import org.instagene.core.io.SequenceFormatCatalog
 import java.awt.BorderLayout
@@ -95,7 +97,7 @@ object SettingsDialog {
     fun show(frame: JFrame?, prefs: Prefs) = showPreferences(frame, prefs)
 
     fun externalToolsPanel(): JPanel {
-        val toolModel = object : DefaultTableModel(arrayOf("Tool", "Status", "Install / Built-in"), 0) {
+        val toolModel = object : DefaultTableModel(arrayOf("Tool", "Status", "Version / path", "Action"), 0) {
             override fun isCellEditable(row: Int, column: Int): Boolean = false
         }
         val converterModel = object : DefaultTableModel(arrayOf("Format", "Extensions", "Converter variable"), 0) {
@@ -103,22 +105,54 @@ object SettingsDialog {
         }
         val toolTable = JTable(toolModel).apply {
             rowHeight = 22
-            toolTipText = "Optional command-line tools used by alignment and structure workflows."
+            autoResizeMode = JTable.AUTO_RESIZE_LAST_COLUMN
+            toolTipText = "Optional command-line tools. Version checks run in the background and always show an install or fallback action."
         }
         val converterTable = JTable(converterModel).apply {
             rowHeight = 22
             toolTipText = "Converter-backed sequence formats require an environment variable command."
         }
 
+        var healthWorker: SwingWorker<List<ToolHealth>, Unit>? = null
+
+        fun statusText(health: ToolHealth): String = when (health.status) {
+            ToolHealthStatus.AVAILABLE -> "Ready"
+            ToolHealthStatus.MISSING -> "Missing"
+            ToolHealthStatus.VERSION_CHECK_FAILED -> "Version check failed"
+            ToolHealthStatus.INCOMPATIBLE -> "Update required"
+        }
+
         fun reloadTools() {
+            healthWorker?.cancel(true)
             ExternalTools.rescan()
             toolModel.rowCount = 0
             ExternalTools.CATALOG.forEach { tool ->
                 val path = ExternalTools.locate(tool.executable)
-                val status = if (path == null) "Missing" else "Available: $path"
-                val hint = if (path == null) tool.installHint else tool.builtinEquivalent
-                toolModel.addRow(arrayOf(tool.displayName, status, hint))
+                if (path == null) {
+                    val health = ToolHealth(tool, available = false, error = "${tool.executable} is not on PATH", status = ToolHealthStatus.MISSING)
+                    toolModel.addRow(arrayOf(tool.displayName, "Missing", "Not on PATH", health.recommendedAction))
+                } else {
+                    toolModel.addRow(arrayOf(tool.displayName, "Checking version…", path, "Checking ${tool.versionArgs.joinToString(" ")}…"))
+                }
             }
+            healthWorker = object : SwingWorker<List<ToolHealth>, Unit>() {
+                override fun doInBackground(): List<ToolHealth> = ExternalTools.healthChecks()
+
+                override fun done() {
+                    if (isCancelled) return
+                    runCatching { get() }.onSuccess { checks ->
+                        checks.forEachIndexed { row, health ->
+                            toolModel.setValueAt(statusText(health), row, 1)
+                            toolModel.setValueAt(
+                                listOfNotNull(health.version, health.path).joinToString("\n").ifBlank { "—" },
+                                row,
+                                2,
+                            )
+                            toolModel.setValueAt(health.recommendedAction, row, 3)
+                        }
+                    }
+                }
+            }.also { it.execute() }
         }
 
         converterModel.rowCount = 0
@@ -129,19 +163,19 @@ object SettingsDialog {
             }
         reloadTools()
 
-        val rescan = JButton("Rescan").apply {
-            toolTipText = "Rescan PATH for optional external tools."
+        val rescan = JButton("Rescan & check versions").apply {
+            toolTipText = "Rescan PATH and run each optional tool's safe version probe in the background."
             addActionListener { reloadTools() }
         }
 
         return JPanel(BorderLayout(8, 8)).apply {
             border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
             add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
-                add(JLabel("Optional tools and converter-backed formats"))
+                add(JLabel("Optional tools, versions, and converter-backed formats"))
                 add(rescan)
             }, BorderLayout.NORTH)
             add(JTabbedPane().apply {
-                addTab("Tools", JScrollPane(toolTable).apply { preferredSize = Dimension(720, 220) })
+                addTab("Tools", JScrollPane(toolTable).apply { preferredSize = Dimension(900, 260) })
                 addTab("Converters", JScrollPane(converterTable).apply { preferredSize = Dimension(720, 220) })
             }, BorderLayout.CENTER)
         }

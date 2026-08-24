@@ -111,6 +111,35 @@ class CoreWorkflowTest {
     }
 
     @Test
+    fun featureLibraryCancellablePreviewReportsDefinitionProgressAndCanStop() {
+        val seq = Seq(name = "x", bases = "GGATCC".repeat(100))
+        val defs = listOf(
+            FeatureDefinition("first", "GGATCC"),
+            FeatureDefinition("second", "GGATCC"),
+            FeatureDefinition("third", "GGATCC"),
+        )
+        val progress = ArrayList<FeatureScanProgress>()
+
+        val matches = FeatureLibrary.previewMatchesCancellable(seq, defs, progress = { progress += it })
+
+        assertEquals(FeatureLibrary.previewMatches(seq, defs), matches)
+        assertEquals(0, progress.first().completedDefinitions)
+        assertEquals(defs.size, progress.last().completedDefinitions)
+        assertEquals(defs.size, progress.last().totalDefinitions)
+        assertEquals(matches.size, progress.last().matches)
+
+        var updates = 0
+        assertFailsWith<java.util.concurrent.CancellationException> {
+            FeatureLibrary.previewMatchesCancellable(
+                seq,
+                defs,
+                cancellationRequested = { updates >= 2 },
+                progress = { updates++ },
+            )
+        }
+    }
+
+    @Test
     fun featureLibraryPresetsAreNonEmpty() {
         assertTrue(FeatureLibrary.BUILTIN_PRESETS.isNotEmpty())
         FeatureLibrary.BUILTIN_PRESETS.values.forEach { presets ->

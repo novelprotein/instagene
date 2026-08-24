@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "license": "MIT",
+  "originPolicy": "All fixtures are synthetic, authored by InstaGene contributors, and contain no patient, proprietary, or downloaded biological data.",
+  "fixtures": [
+    {
+      "id": "synthetic-clustal-blocks",
+      "path": "alignments/synthetic.aln",
+      "format": "clustal",
+      "license": "MIT",
+      "origin": "Synthetic alignment authored for InstaGene tests",
+      "sha256": "fa57ade1c99a3c146d6c13f52130f7aa85b73e9f5dab85a771f7479d8e642d0a"
+    },
+    {
+      "id": "synthetic-stockholm-blocks",
+      "path": "alignments/synthetic.sto",
+      "format": "stockholm",
+      "license": "MIT",
+      "origin": "Synthetic alignment authored for InstaGene tests",
+      "sha256": "4edd28792c3297caacd66157bd021686d1e945c2ea5bf201f8e829ab947b6d67"
+    },
+    {
+      "id": "synthetic-phylip-interleaved",
+      "path": "alignments/synthetic.phy",
+      "format": "phylip",
+      "license": "MIT",
+      "origin": "Synthetic alignment authored for InstaGene tests",
+      "sha256": "2221fbcb9746dc1beec3bd0f0eaf0e9494eac2f6ccd557b711bff8004decd566"
+    },
+    {
+      "id": "workflow-recipe-v1-restriction",
+      "path": "workflows/restriction-v1.json",
+      "format": "workflow-recipe",
+      "license": "MIT",
+      "origin": "Synthetic recipe authored for InstaGene migration tests",
+      "sha256": "3ff423357a224f4fcccb0cd8143effe57a8fb02075d74f8f445d3165f23c0def"
+    }
+  ]
+}

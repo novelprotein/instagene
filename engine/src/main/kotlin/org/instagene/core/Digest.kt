@@ -107,9 +107,16 @@ object Digest {
      * The number of times [enzyme] cuts [seq], without building any [CutSite]
      * objects, so whole catalogs of enzymes can be scanned cheaply.
      */
-    fun countSites(seq: Seq, enzyme: Enzyme): Int {
+    fun countSites(
+        seq: Seq,
+        enzyme: Enzyme,
+        /** Checked in bounded intervals, making large catalog scans cancellable without affecting small scans. */
+        cancellationRequested: () -> Boolean = { false },
+        /** Receives scanned and total candidate positions at bounded intervals. */
+        progress: ((scanned: Int, total: Int) -> Unit)? = null,
+    ): Int {
         var count = 0
-        scanSites(seq, enzyme) { _, _, _, _ -> count++ }
+        scanSites(seq, enzyme, cancellationRequested, progress) { _, _, _, _ -> count++ }
         return count
     }
 
@@ -123,6 +130,8 @@ object Digest {
     private inline fun scanSites(
         seq: Seq,
         enzyme: Enzyme,
+        crossinline cancellationRequested: () -> Boolean = { false },
+        noinline progress: ((scanned: Int, total: Int) -> Unit)? = null,
         body: (i: Int, forward: Boolean, topCut: Int, bottomCut: Int) -> Unit
     ) {
         val len = seq.length
@@ -134,6 +143,11 @@ object Digest {
         // one is scanned all the way round the origin.
         val limit = if (seq.isCircular) len else len - siteLen + 1
         if (limit <= 0) return
+        // Check frequently enough for a crowded genome to react promptly, but
+        // not at every base: this is a tight, allocation-free hot path.
+        val checkEvery = minOf(16_384, maxOf(1, limit / 100))
+        var nextCheck = 0
+        var lastReported = -1
         // Bitmaps let the scan check every site position with a single array read,
         // avoiding per-char map lookups, uppercasing and string searches. The
         // palindromic flag and the reverse-complement are evaluated once up front
@@ -147,6 +161,15 @@ object Digest {
 
         if (seq.isCircular) {
             for (i in 0 until len) {
+                if (i >= nextCheck) {
+                    if (cancellationRequested()) throw java.util.concurrent.CancellationException("Restriction-site scan cancelled")
+                    progress?.invoke(i.coerceAtMost(limit), limit)
+                    lastReported = i.coerceAtMost(limit)
+                    // Avoid wrapping around when an unusually large input is
+                    // close to Int.MAX_VALUE. The final progress update below
+                    // still reports the exact endpoint in that case.
+                    nextCheck = if (i > limit - checkEvery) Int.MAX_VALUE else i + checkEvery
+                }
                 val base = bases[i]
                 if (!bitmapsHit(firstBitmap, base)) continue
                 if (matchesAtCircular(bases, len, i, siteBitmaps)) {
@@ -157,6 +180,12 @@ object Digest {
             }
         } else {
             for (i in 0 until limit) {
+                if (i >= nextCheck) {
+                    if (cancellationRequested()) throw java.util.concurrent.CancellationException("Restriction-site scan cancelled")
+                    progress?.invoke(i.coerceAtMost(limit), limit)
+                    lastReported = i.coerceAtMost(limit)
+                    nextCheck = if (i > limit - checkEvery) Int.MAX_VALUE else i + checkEvery
+                }
                 val base = bases[i]
                 if (!bitmapsHit(firstBitmap, base)) continue
                 if (matchesAt(bases, i, siteBitmaps)) {
@@ -165,6 +194,10 @@ object Digest {
                     body(i, false, i + siteLen - enzyme.bottomCut, i + siteLen - enzyme.topCut)
                 }
             }
+        }
+        if (lastReported != limit) {
+            if (cancellationRequested()) throw java.util.concurrent.CancellationException("Restriction-site scan cancelled")
+            progress?.invoke(limit, limit)
         }
     }
 

@@ -116,4 +116,24 @@ class WelcomePanelTest {
         assertEquals(listOf(root.absolutePath), prefs.value.recentProjects, "opening a project must record it as recent")
     }
 
+    @Test
+    fun bundledExamplesAreVisibleAndInvokeTheirTypedCallbacks() {
+        val opened = mutableListOf<WelcomeExample>()
+        val panel = onEdt {
+            WelcomePanel(
+                Prefs(),
+                onOpenFile = {},
+                onOpenProject = {},
+                onNewDocument = {},
+                onOpenExample = { opened += it },
+            )
+        }
+
+        assertEquals(WelcomeExample.entries.map { it.label }, panel.exampleButtons().map { it.text })
+        assertTrue(panel.exampleButtons().all { it.toolTipText.contains("example.") })
+        assertTrue(panel.exampleButtons().any { it.toolTipText.contains("J01749.1") })
+        onEdt { panel.exampleButtons().forEach { it.doClick() } }
+        assertEquals(WelcomeExample.entries.toList(), opened)
+    }
+
 }

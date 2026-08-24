@@ -72,54 +72,63 @@ class LargeGenomeLoadTest {
         val totalBases = contigs.toLong() * basesPerContig
         println("generating $contigs x $basesPerContig bp FASTA (${totalBases} bp total)...")
         val file = fasta(contigs, basesPerContig)
-        println("generated ${file.length() / (1024.0 * 1024.0)} MB FASTA")
-        assertTrue(file.length() > 2L * 1024 * 1024 * 1024, "file should exceed 2 GB to hit the old Int-overflow path")
-
-        var engineSeq: Seq? = null
-        val readMs = kotlin.system.measureTimeMillis {
-            try {
-                engineSeq = SeqIO.read(file)
-            } catch (t: Throwable) {
-                println("engine read FAILED: ${t.javaClass.simpleName}: ${t.message}")
-                t.printStackTrace()
-            }
-        }
-        println("engine read: ${engineSeq?.length} bp, name=${engineSeq?.name} (${readMs}ms)")
-        assertEquals(basesPerContig, engineSeq?.length, "engine should load only the first contig")
-        assertEquals("chr1", engineSeq?.name)
-
         var content: InstaGeneContent? = null
-        SwingUtilities.invokeAndWait { content = InstaGeneContent(null) }
-        val menu = FileMenu(null, content!!.doc)
+        try {
+            println("generated ${file.length() / (1024.0 * 1024.0)} MB FASTA")
+            assertTrue(file.length() > 2L * 1024 * 1024 * 1024, "file should exceed 2 GB to hit the old Int-overflow path")
 
-        val loadStart = System.currentTimeMillis()
-        menu.loadFromFile(file)
-        var landed = false
-        while (System.currentTimeMillis() - loadStart < 120_000) {
-            SwingUtilities.invokeAndWait { }
-            Thread.sleep(50)
-            if (content.doc.seq.length == basesPerContig) {
-                landed = true
-                break
+            var engineSeq: Seq? = null
+            val readMs = kotlin.system.measureTimeMillis {
+                try {
+                    engineSeq = SeqIO.read(file)
+                } catch (t: Throwable) {
+                    println("engine read FAILED: ${t.javaClass.simpleName}: ${t.message}")
+                    t.printStackTrace()
+                }
             }
-        }
-        val loadMs = System.currentTimeMillis() - loadStart
-        println("GUI load landed=$landed in ${loadMs}ms, doc.length=${content.doc.seq.length}")
-        assertTrue(landed, "first contig never landed in the document")
-        assertEquals(basesPerContig, content.doc.seq.length)
-        assertEquals("chr1", content.doc.seq.name)
+            println("engine read: ${engineSeq?.length} bp, name=${engineSeq?.name} (${readMs}ms)")
+            assertEquals(basesPerContig, engineSeq?.length, "engine should load only the first contig")
+            assertEquals("chr1", engineSeq?.name)
 
-        synchronized(workerErrors) {
-            assertTrue(
-                workerErrors.isEmpty(),
-                "worker thread errors: ${workerErrors.map { it.javaClass.simpleName + ": " + it.message }}"
-            )
-        }
-        synchronized(edtErrors) {
-            assertTrue(
-                edtErrors.isEmpty(),
-                "EDT errors: ${edtErrors.map { it.javaClass.simpleName + ": " + it.message }}"
-            )
+            SwingUtilities.invokeAndWait { content = InstaGeneContent(null) }
+            val loadedContent = requireNotNull(content)
+            val menu = FileMenu(null, loadedContent.doc)
+
+            val loadStart = System.currentTimeMillis()
+            menu.loadFromFile(file)
+            var landed = false
+            while (System.currentTimeMillis() - loadStart < 120_000) {
+                SwingUtilities.invokeAndWait { }
+                Thread.sleep(50)
+                if (loadedContent.doc.seq.length == basesPerContig) {
+                    landed = true
+                    break
+                }
+            }
+            val loadMs = System.currentTimeMillis() - loadStart
+            println("GUI load landed=$landed in ${loadMs}ms, doc.length=${loadedContent.doc.seq.length}")
+            assertTrue(landed, "first contig never landed in the document")
+            assertEquals(basesPerContig, loadedContent.doc.seq.length)
+            assertEquals("chr1", loadedContent.doc.seq.name)
+
+            synchronized(workerErrors) {
+                assertTrue(
+                    workerErrors.isEmpty(),
+                    "worker thread errors: ${workerErrors.map { it.javaClass.simpleName + ": " + it.message }}"
+                )
+            }
+            synchronized(edtErrors) {
+                assertTrue(
+                    edtErrors.isEmpty(),
+                    "EDT errors: ${edtErrors.map { it.javaClass.simpleName + ": " + it.message }}"
+                )
+            }
+        } finally {
+            content?.let { opened ->
+                if (SwingUtilities.isEventDispatchThread()) opened.dispose()
+                else SwingUtilities.invokeAndWait { opened.dispose() }
+            }
+            file.delete()
         }
     }
 }

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "operation": "RESTRICTION",
+  "inputs": [
+    {"name": "vector", "cdseguid": "cdseguid-vector"},
+    {"name": "insert", "cdseguid": "cdseguid-insert"}
+  ],
+  "parameters": {
+    "enzymeNames": "EcoRI,HindIII",
+    "productName": "synthetic_clone"
+  },
+  "outputName": "synthetic_clone",
+  "outputCdseguid": "cdseguid-product"
+}

@@ -21,6 +21,7 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
     private val output = output()
     private var product: Seq? = null
     private var lastWorkflow: MolecularWorkflowResult? = null
+    private var lastInputs: List<Seq> = emptyList()
 
     init {
         mode.selectedIndex = 2
@@ -43,13 +44,38 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
             }
         }
         val saveReport = JButton("Save report")
-        saveReport.toolTipText = "Export the reproducible workflow summary as Markdown or JSON."
+        saveReport.toolTipText = "Export the reproducible workflow summary as Markdown, JSON, HTML, or PDF."
         saveReport.addActionListener { saveWorkflowReport() }
-        add(row(JLabel("Workflow"), mode, choose, parts), BorderLayout.NORTH)
+        val saveRecipe = JButton("Save recipe")
+        saveRecipe.toolTipText = "Save the typed, identity-matched workflow recipe as JSON."
+        saveRecipe.addActionListener { saveWorkflowRecipe() }
+        val replayRecipe = JButton("Replay recipe…").apply {
+            toolTipText = "Choose a workflow recipe and identity-matched inputs to reproduce its product."
+            addActionListener {
+                WorkflowRecipeReplayDialog(SwingUtilities.getWindowAncestor(this@AssemblyAnalysisPanel), onOpenSequence).isVisible = true
+            }
+        }
+        val pcrCloning = JButton("PCR-cloning wizard…").apply {
+            toolTipText = "Design PCR primers for an insert, validate restriction cloning, and save a report or recipe."
+            addActionListener {
+                if (!doc.seq.isCircular) {
+                    JOptionPane.showMessageDialog(
+                        this@AssemblyAnalysisPanel,
+                        "Open or select a circular plasmid backbone before starting PCR cloning.",
+                        "PCR-cloning wizard",
+                        JOptionPane.INFORMATION_MESSAGE,
+                    )
+                } else {
+                    PcrCloningWizardDialog(SwingUtilities.getWindowAncestor(this@AssemblyAnalysisPanel), doc.seq, onOpenSequence)
+                        .isVisible = true
+                }
+            }
+        }
+        add(row(JLabel("Workflow"), mode, choose, parts, pcrCloning, replayRecipe), BorderLayout.NORTH)
         add(JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             add(row(JLabel("Enzymes"), enzymes, JLabel("Overhangs"), overhangs, JLabel("Homology arm"), arm))
-            add(row(JLabel("Gateway left,right"), gatewaySites, JLabel("Name"), productName, circular, run, open, save, saveReport))
+            add(row(JLabel("Gateway left,right"), gatewaySites, JLabel("Name"), productName, circular, run, open, save, saveReport, saveRecipe))
         }, BorderLayout.SOUTH)
         add(JScrollPane(output), BorderLayout.CENTER)
     }
@@ -61,39 +87,37 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
             val orderedParts = if (doc.seq.bases.isBlank()) loaded else listOf(doc.seq) + loaded
             fun firstInsert(): Seq = loaded.firstOrNull() ?: error("Choose at least one insert sequence")
             when (mode.selectedIndex) {
-                0 -> CloningWorkflows.restriction(doc.seq, firstInsert(), Enzymes.parseList(enzymes.text), productName.text)
+                0 -> firstInsert().let { insert ->
+                    CloningWorkflows.restriction(doc.seq, insert, Enzymes.parseList(enzymes.text), productName.text) to listOf(doc.seq, insert)
+                }
                 1 -> gatewaySites.text.split(',').map(String::trim).let { sites ->
                     require(sites.size == 2) { "Enter left and right Gateway recombination sites" }
-                    CloningWorkflows.gateway(doc.seq, firstInsert(), sites[0], sites[1], productName.text)
+                    firstInsert().let { insert ->
+                        CloningWorkflows.gateway(doc.seq, insert, sites[0], sites[1], productName.text) to listOf(doc.seq, insert)
+                    }
                 }
-                2 -> CloningWorkflows.overlapAssembly(CloningMethod.GIBSON, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt())
-                3 -> CloningWorkflows.overlapAssembly(CloningMethod.NEBUILDER_HIFI, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt())
-                4 -> CloningWorkflows.overlapAssembly(CloningMethod.IN_FUSION, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt())
-                5 -> CloningWorkflows.terminalClone(CloningMethod.TA, doc.seq, firstInsert(), productName.text)
-                6 -> CloningWorkflows.terminalClone(CloningMethod.GC, doc.seq, firstInsert(), productName.text)
-                7 -> CloningWorkflows.terminalClone(CloningMethod.TOPO_TA, doc.seq, firstInsert(), productName.text)
-                8 -> CloningWorkflows.terminalClone(CloningMethod.TOPO_DIRECTIONAL, doc.seq, firstInsert(), productName.text)
-                9 -> CloningWorkflows.terminalClone(CloningMethod.TOPO_BLUNT, doc.seq, firstInsert(), productName.text)
+                2 -> CloningWorkflows.overlapAssembly(CloningMethod.GIBSON, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt()) to orderedParts
+                3 -> CloningWorkflows.overlapAssembly(CloningMethod.NEBUILDER_HIFI, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt()) to orderedParts
+                4 -> CloningWorkflows.overlapAssembly(CloningMethod.IN_FUSION, orderedParts, productName.text, circular.isSelected, (arm.value as Number).toInt()) to orderedParts
+                5 -> firstInsert().let { insert -> CloningWorkflows.terminalClone(CloningMethod.TA, doc.seq, insert, productName.text) to listOf(doc.seq, insert) }
+                6 -> firstInsert().let { insert -> CloningWorkflows.terminalClone(CloningMethod.GC, doc.seq, insert, productName.text) to listOf(doc.seq, insert) }
+                7 -> firstInsert().let { insert -> CloningWorkflows.terminalClone(CloningMethod.TOPO_TA, doc.seq, insert, productName.text) to listOf(doc.seq, insert) }
+                8 -> firstInsert().let { insert -> CloningWorkflows.terminalClone(CloningMethod.TOPO_DIRECTIONAL, doc.seq, insert, productName.text) to listOf(doc.seq, insert) }
+                9 -> firstInsert().let { insert -> CloningWorkflows.terminalClone(CloningMethod.TOPO_BLUNT, doc.seq, insert, productName.text) to listOf(doc.seq, insert) }
                 10 -> CloningWorkflows.goldenGate(
                     orderedParts,
                     overhangs.text.split(',').map(String::trim),
                     productName.text,
                     circular.isSelected,
-                )
+                ) to orderedParts
                 else -> {
                     val donor = firstInsert()
-                    val candidates = Recombination.candidates(doc.seq, donor, (arm.value as Number).toInt())
-                    require(candidates.isNotEmpty()) { "No matching homology-arm candidate found" }
-                    val raw = Recombination.recombine(doc.seq, donor, candidates.first(), productName.text).product
-                    MolecularWorkflowResult(
-                        CloningMethod.GATEWAY,
-                        raw.withProcedure(ProcedureRecord("HOMOLOGY_RECOMBINATION", "Recombined ${donor.name} into ${doc.seq.name}", listOf(doc.seq.name, donor.name), timestamp = System.currentTimeMillis())),
-                        listOf(ProtocolStep("Homology recombination", "Used ${(arm.value as Number).toInt()} bp arms")),
-                    )
+                    CloningWorkflows.homologyRecombination(doc.seq, donor, (arm.value as Number).toInt(), name = productName.text) to listOf(doc.seq, donor)
                 }
             }
-        }.onSuccess { result ->
+        }.onSuccess { (result, inputs) ->
             lastWorkflow = result
+            lastInputs = inputs
             product = result.product
             output.text = buildString {
                 append("Product: ${result.product.name}\nLength: ${result.product.length}\nTopology: ${result.product.topology}\n")
@@ -118,7 +142,7 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
                     }
                 }
             }
-        }.onFailure { lastWorkflow = null; product = null; output.text = it.message ?: "Assembly failed" }
+        }.onFailure { lastWorkflow = null; lastInputs = emptyList(); product = null; output.text = it.message ?: "Assembly failed" }
     }
 
     private fun saveWorkflowReport() {
@@ -132,18 +156,36 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
         runCatching {
             val report = Reports.workflowReport(
                 result,
-                inputs = listOfNotNull(doc.seq.takeIf { it.bases.isNotBlank() }) +
-                    parts.text.split(',').map(String::trim).filter(String::isNotEmpty).map { SeqIO.read(File(it)) },
+                inputs = lastInputs,
                 parameters = mapOf(
                     "workflow" to mode.selectedItem.toString(),
                     "circular" to circular.isSelected.toString(),
                     "minimum overlap" to arm.value.toString(),
                 ),
             )
-            if (file.extension.equals("json", true)) file.writeText(Reports.workflowJson(report))
-            else file.writeText(Reports.workflowMarkdown(report))
+            when (file.extension.lowercase()) {
+                "json" -> file.writeText(Reports.workflowJson(report))
+                "html", "htm" -> file.writeText(Reports.workflowHtml(report))
+                "pdf" -> file.writeBytes(Reports.workflowPdf(report))
+                else -> file.writeText(Reports.workflowMarkdown(report))
+            }
         }.onFailure {
             JOptionPane.showMessageDialog(this, it.message ?: "Unable to save report", "Assembly report", JOptionPane.ERROR_MESSAGE)
+        }
+    }
+
+    private fun saveWorkflowRecipe() {
+        val result = lastWorkflow ?: run {
+            JOptionPane.showMessageDialog(this, "Run a workflow before saving its recipe.", "Assembly recipe", JOptionPane.INFORMATION_MESSAGE)
+            return
+        }
+        val chooser = JFileChooser().apply { dialogTitle = "Save assembly recipe" }
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return
+        runCatching {
+            val recipe = Reports.workflowRecipe(result.method.name, result.product, lastInputs, result.parameters)
+            chooser.selectedFile.writeText(WorkflowRecipes.encode(recipe))
+        }.onFailure {
+            JOptionPane.showMessageDialog(this, it.message ?: "Unable to save recipe", "Assembly recipe", JOptionPane.ERROR_MESSAGE)
         }
     }
 }

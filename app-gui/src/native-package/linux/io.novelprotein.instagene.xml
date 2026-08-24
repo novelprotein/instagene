@@ -32,8 +32,23 @@
   </mime-type>
   <mime-type type="text/x-fasta-alignment">
     <comment>FASTA alignment</comment>
-    <glob pattern="*.aln"/>
     <glob pattern="*.afa"/>
     <glob pattern="*.msa"/>
+  </mime-type>
+  <mime-type type="text/x-clustal-alignment">
+    <comment>Clustal alignment</comment>
+    <glob pattern="*.aln"/>
+    <glob pattern="*.clustal"/>
+  </mime-type>
+  <mime-type type="text/x-stockholm-alignment">
+    <comment>Stockholm alignment</comment>
+    <glob pattern="*.sto"/>
+    <glob pattern="*.stockholm"/>
+  </mime-type>
+  <mime-type type="text/x-phylip-alignment">
+    <comment>PHYLIP alignment</comment>
+    <glob pattern="*.phy"/>
+    <glob pattern="*.phylip"/>
+    <glob pattern="*.ph"/>
   </mime-type>
 </mime-info>

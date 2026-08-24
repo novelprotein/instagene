@@ -1,5 +1,6 @@
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JvmVendorSpec
+import org.instagene.build.GenerateMacIconTask
 import org.instagene.build.VerifyNativeFileAssociationsTask
 import org.panteleyev.jpackage.ImageType
 import org.panteleyev.jpackage.JPackageTask
@@ -30,6 +31,15 @@ tasks.register<JavaExec>("runGui") {
         ?: providers.systemProperty("instagene.heap").orNull
         ?: "8g"
     jvmArgs("-Xmx$heap")
+}
+
+/** Emits GUI-relevant viewport timings in the same format as the CLI benchmark dashboard. */
+tasks.register<JavaExec>("desktopBench") {
+    group = "application"
+    description = "Runs headless desktop viewport benchmarks for the performance dashboard."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("org.instagene.app.gui.DesktopBenchmark")
+    jvmArgs("-Djava.awt.headless=true")
 }
 
 // ------------------------------------------------------------------ packaging
@@ -156,9 +166,18 @@ fun macCompatibleJpackageVersion(version: String): String {
 val nativeAssociationDirectory = layout.projectDirectory.dir("src/native-package/associations")
 val windowsIcon = layout.projectDirectory.file("src/native-package/icons/instagene.ico")
 val linuxIcon = layout.projectDirectory.file("src/native-package/icons/instagene.png")
+val generatedMacIcon = layout.buildDirectory.file("native-package/instagene.icns")
 val nativeAssociationManifest = rootProject.layout.projectDirectory.file(
     "engine/src/main/resources/org/instagene/core/io/native-file-associations.tsv"
 )
+
+/** Packages a multi-resolution ICNS from the reviewed PNG source on any build host. */
+val generateMacIcon = tasks.register<GenerateMacIconTask>("generateMacIcon") {
+    group = "distribution"
+    description = "Generates the multi-resolution macOS ICNS application icon."
+    sourceIcon.set(linuxIcon)
+    outputIcon.set(generatedMacIcon)
+}
 
 val verifyNativeFileAssociations = tasks.register<VerifyNativeFileAssociationsTask>("verifyNativeFileAssociations") {
     group = "verification"
@@ -168,7 +187,7 @@ val verifyNativeFileAssociations = tasks.register<VerifyNativeFileAssociationsTa
 }
 
 fun JPackageTask.configureInstaGenePackage() {
-    dependsOn(verifyJpackageInput, verifyNativeFileAssociations, tasks.jar)
+    dependsOn(verifyJpackageInput, verifyNativeFileAssociations, generateMacIcon, tasks.jar)
 
     // jpackage links a runtime image with the JDK it runs on; pin it to the
     // same toolchain as the rest of the build so it cannot fall back to a
@@ -248,6 +267,7 @@ tasks.jpackage {
         linuxMenuGroup = useLinuxCommonOpts.map { if (it) "Science" else null }
     }
     mac {
+        icon = generatedMacIcon
         macAppCategory = useMacOpts.map { if (it) "public.app-category.education" else null }
     }
 

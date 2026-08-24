@@ -5,6 +5,9 @@ import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.core.Feature
+import org.instagene.core.FeatureDefinition
+import org.instagene.core.LabLibraryFiles
+import org.instagene.core.LibraryImportMode
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
@@ -201,5 +204,44 @@ class FeaturesPanelTest {
         assertFalse(panel.isSaveFeatureEnabled())
         assertFalse(panel.saveSelectedFeature())
         assertTrue(prefs.value.library.isEmpty())
+    }
+
+    @Test
+    fun versionedFeatureLibrariesRoundTripThroughThePanelAndRetainExclusionRules() {
+        val sourcePrefs = Prefs()
+        val source = FeaturesPanel(SeqDocument(Seq(bases = "ACGTACGT")), sourcePrefs) { _, _ -> }
+        val file = LabLibraryFiles.featureLibrary(
+            "Lab annotations",
+            listOf(
+                FeatureDefinition("promoter", "TATAAA", "promoter", color = "#1E88E5"),
+                FeatureDefinition("mask", "AAAAAAAA", "misc_feature", exclude = true),
+            ),
+        )
+
+        assertEquals(2, source.importFeatureLibrary(file, LibraryImportMode.REPLACE))
+        val exported = source.exportFeatureLibrary("Lab annotations")
+        val restored = FeaturesPanel(SeqDocument(Seq(bases = "ACGTACGT")), Prefs()) { _, _ -> }
+        assertEquals(2, restored.importFeatureLibrary(exported, LibraryImportMode.REPLACE))
+
+        assertEquals(listOf("mask", "promoter"), restored.featureLibraryDefinitions().map { it.name })
+        assertTrue(restored.featureLibraryDefinitions().single { it.name == "mask" }.exclude)
+        assertEquals("#1E88E5", restored.featureLibraryDefinitions().single { it.name == "promoter" }.color)
+    }
+
+    @Test
+    fun selectedFeatureCanRunCoordinateLinkedReadingFrameValidation() {
+        val doc = SeqDocument(
+            Seq(
+                bases = "CCCCATGAAATAAGGGG",
+                features = listOf(Feature("cds", "CDS", 4, 13)),
+            ),
+        )
+        val panel = FeaturesPanel(doc) { _, _ -> }
+
+        val result = panel.validateFeatureTranslation(0)
+
+        assertEquals("MK*", result?.protein)
+        assertEquals(listOf(4, 5, 6), result?.codons?.first()?.sourcePositions)
+        assertTrue(result?.isInFrame == true)
     }
 }

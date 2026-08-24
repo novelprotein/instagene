@@ -88,6 +88,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
     private var featureLanes = 0
     private val laneOf = HashMap<Feature, Int>()
     private var runBuffer = CharArray(0)
+    private var lastPaintedRowCount = 0
 
     private fun runBuffer(): CharArray {
         if (runBuffer.size < basesPerLine) runBuffer = CharArray(basesPerLine)
@@ -129,6 +130,13 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
             doc.addListener(docListener!!)
         }
         relayout()
+    }
+
+    /** Stops the caret timer and releases the document listener for a closed editor. */
+    fun dispose() {
+        caretBlinkTimer.stop()
+        docListener?.let { doc.removeListener(it) }
+        docListener = null
     }
 
     /** Refreshes the background after a look-and-feel change. */
@@ -212,6 +220,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
 
         val seq = doc.seq
         if (seq.length == 0) {
+            lastPaintedRowCount = 0
             g2.color = Palette.MUTED
             g2.font = baseFont
             g2.drawString("Empty sequence - type bases, or use File > Open.", padding + 4, padding + lineHeight)
@@ -222,9 +231,13 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         val firstRow = ((clip.y - padding) / rowHeight()).coerceAtLeast(0)
         val lastRow = ((clip.y + clip.height - padding) / rowHeight()).coerceAtMost(rowCount() - 1)
 
+        lastPaintedRowCount = if (lastRow >= firstRow) lastRow - firstRow + 1 else 0
         for (row in firstRow..lastRow) paintRow(g2, row)
         paintCaret(g2)
     }
+
+    /** Number of sequence rows painted for the most recent viewport, useful for large-file diagnostics. */
+    fun lastViewportPaintedRowCount(): Int = lastPaintedRowCount
 
     private fun paintRow(g2: Graphics2D, row: Int) {
         val seq = doc.seq

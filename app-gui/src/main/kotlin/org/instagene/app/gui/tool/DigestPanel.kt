@@ -25,6 +25,7 @@ import java.awt.FlowLayout
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.BorderFactory
 import javax.swing.Box
@@ -72,6 +73,13 @@ class DigestPanel(
     private val uniqueOnly = JCheckBox("Only unique cutters", false)
     private val editElementButton = JButton("Edit Element...")
     private val summary = JLabel(" ")
+    private val countScanProgress = JLabel(" ").apply { name = "digestScanProgress" }
+    private val cancelCountScanButton = JButton("Cancel scan").apply {
+        name = "cancelDigestScan"
+        isEnabled = false
+        toolTipText = "Stop the current full-catalog restriction-site scan; completed results are discarded."
+        addActionListener { cancelCutCountScan() }
+    }
     private val extractButton = JButton("Open fragment as new sequence")
     private val saveFragmentButton = JButton("Save fragment to library")
     private val exportCsvButton = JButton("Export CSV")
@@ -104,6 +112,9 @@ class DigestPanel(
     /** Bumped on every recompute so stale background results are discarded. */
     private var countsVersion = 0
 
+    /** Set for an active catalog scan so a document change or Cancel can stop it promptly. */
+    private var activeCountCancellation: AtomicBoolean? = null
+
     /** Bumped on every selection change so stale background digests are discarded. */
     private var digestVersion = 0
 
@@ -119,6 +130,9 @@ class DigestPanel(
         // one use every CPU would exhaust threads on high-core workstations, while
         // four workers are enough to keep the independent enzyme scans responsive.
         private val countThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
+        private val COMMON_SCAN_PRIORITY = listOf(
+            "ecori", "bamhi", "hindiii", "xhoi", "noti", "kpni", "psti", "saci", "spei", "xbai", "ndei",
+        )
         private const val SEQUENCE_DEBOUNCE_MS = 150
         private const val FILTER_DEBOUNCE_MS = 100
     }
@@ -135,6 +149,8 @@ class DigestPanel(
 
     /** Releases the background cut-count workers owned by this panel. */
     fun dispose() {
+        activeCountCancellation?.set(true)
+        activeCountCancellation = null
         sequenceDebounceTimer.stop()
         filterDebounceTimer.stop()
         countPool.shutdownNow()
@@ -279,6 +295,8 @@ class DigestPanel(
             doc.addListener(docListener!!)
         }
         if (switched) {
+            activeCountCancellation?.set(true)
+            activeCountCancellation = null
             countsVersion++ // invalidate any in-flight scan against the old sequence
             digestVersion++
             countsCache = null
@@ -304,6 +322,8 @@ class DigestPanel(
         val selectedNames = prefs.value.selectedEnzymes.mapTo(HashSet()) { it.lowercase() }
         checked.clear()
         checked += enabledPool.filter { it.name.lowercase() in selectedNames }
+        activeCountCancellation?.set(true)
+        activeCountCancellation = null
         countsVersion++ // invalidate any in-flight scan against the old pool
         countsCache = null
         cutSitesCache.clear()
@@ -334,6 +354,10 @@ class DigestPanel(
                 }
             })
         })
+        add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+            add(countScanProgress)
+            add(cancelCountScanButton)
+        })
     }
 
     private fun buildFragmentButtons(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
@@ -361,6 +385,10 @@ class DigestPanel(
         val dnaOnly = seq.kind == SeqKind.DNA
         setInteractive(dnaOnly)
         if (!dnaOnly) {
+            activeCountCancellation?.set(true)
+            activeCountCancellation = null
+            cancelCountScanButton.isEnabled = false
+            countScanProgress.text = ""
             if (checked.isNotEmpty()) {
                 checked.clear()
                 doc.setMappedEnzymes(emptyList())
@@ -382,6 +410,9 @@ class DigestPanel(
             return
         }
         countsStale = true
+        // Do not expose counts from the previous sequence as if they applied
+        // to the new one. The scan below repopulates this map incrementally.
+        countsCache = null
         overhangCache = emptyMap()
         cutSitesCache.clear()
         rebuildEnzymeTable()
@@ -562,29 +593,50 @@ class DigestPanel(
 
     /** Scans [seq] on background threads; stale results for an older sequence are dropped. */
     private fun scheduleCutCounts(seq: Seq) {
+        activeCountCancellation?.set(true)
         val version = ++countsVersion
-        val enzymes = pool.toList()
+        val cancellation = AtomicBoolean(false)
+        activeCountCancellation = cancellation
+        val enzymes = prioritizedScanOrder(pool)
         if (enzymes.isEmpty()) {
             SwingUtilities.invokeLater {
-                if (version != countsVersion) return@invokeLater
+                if (version != countsVersion || cancellation.get() || activeCountCancellation !== cancellation) return@invokeLater
                 countsCache = emptyMap()
                 overhangCache = emptyMap()
                 countsStale = false
+                activeCountCancellation = null
+                countScanProgress.text = "No enzymes enabled for restriction-site scanning."
+                cancelCountScanButton.isEnabled = false
                 rebuildEnzymeTable()
             }
             return
         }
+        countScanProgress.text = "Scanning restriction sites: 0/${enzymes.size} enzymes…"
+        cancelCountScanButton.isEnabled = true
         // The per-enzyme scans are independent, so they run on a shared pool and
         // the partial maps are merged on the event thread after every chunk completes.
         val perTask = (enzymes.size + countThreads - 1) / countThreads
         val partial = ConcurrentHashMap<Enzyme, Int>(enzymes.size)
         val partialOverhangs = ConcurrentHashMap<Enzyme, List<String>>(enzymes.size)
         val pending = AtomicInteger(enzymes.chunked(perTask).size)
+        val completed = AtomicInteger(0)
         for (chunk in enzymes.chunked(perTask)) {
             countPool.submit {
                 try {
                     for (enzyme in chunk) {
-                        val count = runCatching { Digest.countSites(seq, enzyme) }.getOrDefault(0)
+                        if (cancellation.get() || Thread.currentThread().isInterrupted) break
+                        val count = try {
+                            Digest.countSites(
+                                seq,
+                                enzyme,
+                                cancellationRequested = { cancellation.get() || Thread.currentThread().isInterrupted },
+                            )
+                        } catch (_: java.util.concurrent.CancellationException) {
+                            break
+                        } catch (_: Exception) {
+                            0
+                        }
+                        if (cancellation.get()) break
                         partial[enzyme] = count
                         // For manageable sequences, also cache cut sites so the
                         // enzyme-selection handler can serve from cache instead of
@@ -597,20 +649,56 @@ class DigestPanel(
                                 .filter { it.isNotBlank() }
                                 .distinct()
                         }
+                        val done = completed.incrementAndGet()
+                        SwingUtilities.invokeLater {
+                            if (version != countsVersion || cancellation.get() || activeCountCancellation !== cancellation) return@invokeLater
+                            // Publish completed enzyme rows while the rest of
+                            // the catalog is still scanning. This makes a
+                            // common cutter usable on a large genome without
+                            // waiting for unrelated enzymes to finish, while
+                            // [computedCutCounts] continues to mean a complete
+                            // catalog result.
+                            countsCache = partial.toMap()
+                            overhangCache = partialOverhangs.toMap()
+                            rebuildEnzymeTable()
+                            countScanProgress.text = "Scanning restriction sites: $done/${enzymes.size} enzymes…"
+                        }
                     }
                 } finally {
                     if (pending.decrementAndGet() == 0) {
                         SwingUtilities.invokeLater {
-                            if (version != countsVersion) return@invokeLater
+                            if (version != countsVersion || cancellation.get() || activeCountCancellation !== cancellation) return@invokeLater
                             countsCache = partial
                             overhangCache = partialOverhangs
                             countsStale = false
+                            activeCountCancellation = null
+                            countScanProgress.text = "Restriction-site scan complete: ${completed.get()}/${enzymes.size} enzymes."
+                            cancelCountScanButton.isEnabled = false
                             rebuildEnzymeTable()
                         }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Put explicitly selected and common cloning enzymes at the front of a
+     * long catalog scan. Their partial counts can then appear while uncommon
+     * enzymes continue in the background instead of making the table look
+     * empty for a large construct.
+     */
+    private fun prioritizedScanOrder(enzymes: List<Enzyme>): List<Enzyme> {
+        val names = buildList {
+            addAll(checked.map { it.name.lowercase() })
+            addAll(COMMON_SCAN_PRIORITY)
+        }
+        val priority = LinkedHashMap<String, Int>()
+        names.forEachIndexed { index, name -> priority.putIfAbsent(name, index) }
+        return enzymes.sortedWith(
+            compareBy<Enzyme> { priority[it.name.lowercase()] ?: Int.MAX_VALUE }
+                .thenBy { it.name.lowercase() },
+        )
     }
 
     private fun setInteractive(enabled: Boolean) {
@@ -628,6 +716,33 @@ class DigestPanel(
 
     /** Exposed for tests: the cut counts for the current sequence, or null while stale/unknown. */
     fun computedCutCounts(): Map<Enzyme, Int>? = if (countsStale) null else countsCache
+
+    /**
+     * Counts that have completed for the current scan, including a partial map
+     * while the full catalog is still running. Values are never carried over
+     * from a previous sequence and the map is cleared on cancellation.
+     */
+    fun observedCutCounts(): Map<Enzyme, Int>? = countsCache
+
+    /** Whether a full-catalog restriction scan is currently running. */
+    fun isCutCountScanRunning(): Boolean = countsStale && activeCountCancellation?.get() == false
+
+    /** Cancels the active catalog scan and discards its partial results. */
+    fun cancelCutCountScan() {
+        val cancellation = activeCountCancellation ?: return
+        cancellation.set(true)
+        activeCountCancellation = null
+        countsVersion++
+        countsStale = false
+        countsCache = null
+        overhangCache = emptyMap()
+        cancelCountScanButton.isEnabled = false
+        countScanProgress.text = "Restriction-site scan cancelled."
+        rebuildEnzymeTable()
+    }
+
+    /** Current scan status, exposed for progress/cancellation regression tests. */
+    fun cutCountScanStatus(): String = countScanProgress.text
 
     /** Exposed for tests: the enzymes currently ticked in the table, in order. */
     fun selectedEnzymes(): List<Enzyme> = checked.toList()

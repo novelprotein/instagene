@@ -43,6 +43,77 @@ class SeqIOTest {
     }
 
     @Test
+    fun bundledSamplesCoverPlasmidGeneAlignmentAndChromatogramWorkflows() {
+        val samples = SeqIO.Samples
+        assertEquals(Topology.CIRCULAR, samples.PLASMID_DEMO.topology)
+        assertTrue(samples.PLASMID_DEMO.features.isNotEmpty())
+        assertTrue(samples.GFP_CDS.length > 100)
+        assertEquals(3, samples.ALIGNMENT_DEMO.size)
+        assertEquals(1, samples.ALIGNMENT_DEMO.map { it.length }.toSet().size)
+        assertTrue(samples.CHROMATOGRAM_DEMO.trace?.hasSignal() == true)
+        assertTrue("pInstaGene_demo" in samples.ALL.map { it.name })
+    }
+
+    @Test
+    fun bundledExamplesCarryExplicitSourceCitations() {
+        val samples = SeqIO.Samples.ALL + SeqIO.Samples.ALIGNMENT_DEMO
+        samples.forEach { sample ->
+            val source = sample.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()
+            assertTrue(source.isNotBlank(), "${sample.name} is missing a source citation")
+        }
+        (listOf(SeqIO.Samples.PUC19_MCS, SeqIO.Samples.GFP_CDS, SeqIO.Samples.PLASMID_DEMO) + SeqIO.Samples.ALIGNMENT_DEMO)
+            .forEach { sample ->
+                val source = sample.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()
+                assertTrue(source.contains("InstaGene"), "${sample.name} is missing an InstaGene source citation")
+                assertTrue(!source.contains("NCBI", ignoreCase = true), "${sample.name} must not imply an external accession")
+                assertTrue(sample.metadata[SeqIO.Samples.LICENSE_METADATA_KEY].orEmpty().contains("MIT"))
+                assertEquals(source, sample.description, "${sample.name} must put the citation in the file description")
+            }
+        assertTrue(SeqIO.Samples.PBR322_NCBI.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty().contains("J01749.1"))
+        assertTrue(SeqIO.Samples.CHROMATOGRAM_DEMO.source.contains("Generated synthetic chromatogram"))
+    }
+
+    @Test
+    fun realPbr322SampleComesFromNcbiGenBankWithFeatures() {
+        val sample = SeqIO.Samples.PBR322_NCBI
+        assertEquals("pBR322_NCBI", sample.name)
+        assertEquals(4361, sample.length)
+        assertEquals(Topology.CIRCULAR, sample.topology)
+        assertEquals("J01749.1", sample.metadata["VERSION"])
+        assertEquals("J01749.1", sample.metadata["ONLINE_ACCESSION"])
+        assertTrue(sample.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty().contains("NCBI GenBank"))
+        assertEquals("J01749.1", sample.metadata["BLAST_SELECTED_ACCESSION"])
+        assertTrue(sample.metadata["BLAST_VERIFICATION"].orEmpty().contains("NCBI BLASTN"))
+        assertTrue(sample.metadata["ANNOTATION_SOURCE"].orEmpty().contains("GenBank feature table"))
+        assertTrue(sample.features.size >= 50)
+        val types = sample.features.map { it.type }.toSet()
+        assertTrue("CDS" in types)
+        assertTrue("gene" in types)
+        assertTrue("rep_origin" in types)
+        assertTrue("regulatory" in types)
+    }
+
+    @Test
+    fun realPbr322DocsExplainBlastAndGenBankAnnotationRoles() {
+        val docs = sequenceOf(File("docs/examples.md"), File("../docs/examples.md"))
+            .first(File::isFile)
+            .readText()
+            .replace(Regex("\\s+"), " ")
+        assertTrue(docs.contains("BLAST is used as the record-selection check"))
+        assertTrue(docs.contains("feature annotations come from the selected GenBank record"))
+        assertTrue(docs.contains("BLAST reports alignments rather than complete feature tables"))
+    }
+
+    @Test
+    fun bundledExampleCitationsAreWrittenInFastaHeadersAndGenBankDefinitions() {
+        val fasta = Fasta.write(SeqIO.Samples.GFP_CDS)
+        assertTrue(fasta.lineSequence().first().contains(SeqIO.Samples.GFP_CDS.description))
+
+        val genBank = GenBank.write(SeqIO.Samples.PLASMID_DEMO)
+        assertTrue(genBank.contains("DEFINITION  ${SeqIO.Samples.PLASMID_DEMO.description}"))
+    }
+
+    @Test
     fun fileRoundTrip() {
         val dir = createTempDirectory("instagene-test").toFile()
         try {
@@ -105,7 +176,7 @@ class SeqIOTest {
         assertEquals("pUC19_MCS", SeqIO.Samples.PUC19_MCS.name)
         assertTrue(SeqIO.Samples.GFP_CDS.length > 100)
         assertEquals("GFP_CDS", SeqIO.Samples.GFP_CDS.name)
-        assertEquals(2, SeqIO.Samples.ALL.size)
+        assertEquals(4, SeqIO.Samples.ALL.size)
         assertTrue(SeqIO.Samples.PUC19_MCS.bases.startsWith("GAATTC"))
         assertTrue(SeqIO.Samples.PUC19_MCS.bases.endsWith("AAGCTT"))
     }

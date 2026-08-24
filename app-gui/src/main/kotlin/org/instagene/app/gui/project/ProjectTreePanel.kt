@@ -35,12 +35,16 @@ class ProjectTreePanel(
     private val onOpenInFolder: (File) -> Unit,
     private val onOpenWithSystem: (File) -> Unit,
     private val openFiles: () -> List<File>,
+    private val onExternalProjectChange: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
 
     private var project: SeqProject? = null
     private val root = DefaultMutableTreeNode("No project open")
     private val model = DefaultTreeModel(root)
-    private val fileWatcher = ProjectFileWatcher { refresh() }
+    private val fileWatcher = ProjectFileWatcher {
+        refresh()
+        onExternalProjectChange()
+    }
 
     /** The underlying tree; public so callers (and tests) can inspect selection and the model. */
     val tree = JTree(model)

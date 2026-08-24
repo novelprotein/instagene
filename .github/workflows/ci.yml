@@ -74,7 +74,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Run benchmarks
-        run: ./gradlew :app-cli:bench --console=plain 2>&1 | tee bench-results.txt
+        run: ./gradlew :app-cli:bench :app-gui:desktopBench --console=plain 2>&1 | tee bench-results.txt
 
       - name: Parse results to JSON
         run: |
@@ -394,6 +394,9 @@ jobs:
           app="$mount_point/InstaGene.app"
           test -d "$app" || { echo "Missing InstaGene.app in DMG"; exit 1; }
           test -f "$app/Contents/MacOS/InstaGene"
+          test -n "$(find "$app/Contents/Resources" -maxdepth 1 -name '*.icns' -print -quit)" || {
+            echo "Missing packaged macOS application icon"; exit 1;
+          }
           plutil -extract CFBundleDocumentTypes xml1 -o /dev/null "$app/Contents/Info.plist"
           plutil -p "$app/Contents/Info.plist" > "$RUNNER_TEMP/instagene-info-plist.txt"
           grep -q 'fa' "$RUNNER_TEMP/instagene-info-plist.txt"
@@ -440,7 +443,7 @@ jobs:
           if (-not (Test-Path $executable)) { throw "Missing installed executable: $executable" }
           $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\InstaGene\InstaGene.lnk'
           if (-not (Test-Path $shortcut)) { throw "Missing Start Menu shortcut: $shortcut" }
-          $extensions = @('.fa', '.fasta', '.fna', '.fas', '.seq', '.gb', '.gbk', '.genbank', '.ape', '.gff', '.gff3', '.embl', '.ena', '.swiss', '.sprot', '.dat', '.aln', '.afa', '.msa')
+          $extensions = @('.fa', '.fasta', '.fna', '.fas', '.seq', '.gb', '.gbk', '.genbank', '.ape', '.gff', '.gff3', '.embl', '.ena', '.swiss', '.sprot', '.dat', '.aln', '.clustal', '.afa', '.msa', '.sto', '.stockholm', '.phy', '.phylip', '.ph')
           foreach ($extension in $extensions) {
             $association = Get-ItemProperty "Registry::HKEY_CURRENT_USER\Software\Classes\$extension" -ErrorAction SilentlyContinue
             if ($null -eq $association -or [string]::IsNullOrWhiteSpace($association.'(default)')) {

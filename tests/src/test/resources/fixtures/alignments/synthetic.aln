@@ -1,0 +1,9 @@
+CLUSTAL W synthetic fixture
+
+reference  AC-G
+sample     ATAG
+           ** *
+
+reference  TT
+sample     TT
+           **

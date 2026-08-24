@@ -58,6 +58,17 @@ class PrefsStoreTest {
             selectedEnzymes = listOf("EcoRI"),
             primerDefaultTm = 62.5,
             activeTab = 3,
+            analysisDefaults = AnalysisDefaults(
+                lastTool = "Repeats / Dot Plot",
+                alignmentAlgorithm = "MAFFT",
+                alignmentMismatchPenalty = 0.25,
+                repeatWordSize = 15,
+                repeatMinimumLength = 20,
+                repeatMaxPoints = 40_000,
+                repeatIncludeInverted = false,
+                sangerMinimumQuality = 28,
+            ),
+            onlineCacheMode = "CACHE_ONLY",
             library = listOf(
                 SavedItem(
                     kind = SavedKind.PRIMER,
@@ -103,6 +114,11 @@ class PrefsStoreTest {
         assertEquals(Strand.REVERSE, reloaded.library[2].feature?.strand)
         assertEquals("gene", reloaded.library[2].feature?.type)
         assertEquals(listOf("revA"), reloaded.library[2].feature?.qualifiers?.get("gene"))
+        assertEquals("Repeats / Dot Plot", reloaded.analysisDefaults.lastTool)
+        assertEquals("MAFFT", reloaded.analysisDefaults.alignmentAlgorithm)
+        assertEquals(15, reloaded.analysisDefaults.repeatWordSize)
+        assertTrue(!reloaded.analysisDefaults.repeatIncludeInverted)
+        assertEquals("CACHE_ONLY", reloaded.onlineCacheMode)
     }
 
     @Test
@@ -154,5 +170,29 @@ class PrefsStoreTest {
         val store = PrefsStore(file)
         assertEquals(12, store.load().windowX)
         assertEquals(emptyList(), store.load().library)
+    }
+
+    @Test
+    fun cacheDirectoryUsesThePlatformCacheConvention() {
+        assertEquals(
+            AppDirs.cacheDir(osName = "Mac OS X", userHome = "/tmp/home"),
+            File("/tmp/home/Library/Caches/instagene"),
+        )
+        assertEquals(
+            File("/tmp/cache-home/instagene"),
+            AppDirs.cacheDir(
+                osName = "Linux",
+                env = { key -> if (key == "XDG_CACHE_HOME") "/tmp/cache-home" else null },
+                userHome = "/tmp/home",
+            ),
+        )
+        assertEquals(
+            File("C:/Users/test/AppData/Local/instagene/cache"),
+            AppDirs.cacheDir(
+                osName = "Windows 11",
+                env = { key -> if (key == "LOCALAPPDATA") "C:/Users/test/AppData/Local" else null },
+                userHome = "C:/Users/test",
+            ),
+        )
     }
 }

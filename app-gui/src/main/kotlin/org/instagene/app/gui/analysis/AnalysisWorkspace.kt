@@ -2,9 +2,11 @@ package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.core.ChromatogramRecord
 import org.instagene.core.NcbiClient
 import org.instagene.core.Seq
 import java.awt.BorderLayout
+import java.io.File
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JTabbedPane
@@ -35,7 +37,7 @@ internal class AnalysisWorkspace(
 
     private val categories: LinkedHashMap<ToolCategory, List<String>> = linkedMapOf(
         ToolCategory.SEARCH to listOf("Search", "NCBI / BLAST"),
-        ToolCategory.SEQUENCE to listOf("Alignment", "CpG Methylation", "Statistics / Graphs", "Translation / Structure"),
+        ToolCategory.SEQUENCE to listOf("Alignment", "Repeats / Dot Plot", "CpG Methylation", "Statistics / Graphs", "Translation / Structure"),
         ToolCategory.CLONING to listOf("Enzymes", "Assembly", "Site Domestication", "CRISPR / gRNA"),
         ToolCategory.PCR to listOf("PCR / Mutagenesis", "Virtual Gel", "Chromatogram", "Sanger Alignment"),
         ToolCategory.UTILITIES to listOf("Calculators", "Primer Thermo", "Plasmid DB"),
@@ -44,7 +46,8 @@ internal class AnalysisWorkspace(
     init {
         panelFactories = mapOf(
             "Search" to { SearchAnalysisPanel(onReveal) },
-            "Alignment" to { AlignmentAnalysisPanel() },
+            "Alignment" to { AlignmentAnalysisPanel(prefs) },
+            "Repeats / Dot Plot" to { RepeatAnalysisPanel(prefs) },
             "Enzymes" to { EnzymeAnalysisPanel() },
             "CpG Methylation" to { CpGAnalysisPanel() },
             "Assembly" to { AssemblyAnalysisPanel(onOpenSequence) },
@@ -52,10 +55,10 @@ internal class AnalysisWorkspace(
             "Translation / Structure" to { TranslationAnalysisPanel(onOpenSequence) },
             "Virtual Gel" to { GelAnalysisPanel() },
             "Calculators" to { CalculatorAnalysisPanel() },
-            "NCBI / BLAST" to { NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis) },
+            "NCBI / BLAST" to { NcbiAnalysisPanel(onOpenSequence, ncbiClient, ncbiPollIntervalMillis, prefs) },
             "Chromatogram" to { ChromatogramAnalysisPanel() },
             "CRISPR / gRNA" to { CrisprDesignAnalysisPanel() },
-            "Sanger Alignment" to { SangerAlignmentAnalysisPanel() },
+            "Sanger Alignment" to { SangerAlignmentAnalysisPanel(prefs) },
             "Primer Thermo" to { PrimerThermodynamicsAnalysisPanel() },
             "Plasmid DB" to { PlasmidDatabaseAnalysisPanel(onOpenSequence) },
             "Site Domestication" to { SiteDomesticationAnalysisPanel() },
@@ -79,7 +82,7 @@ internal class AnalysisWorkspace(
         categoryTabs.addChangeListener { activeCategory()?.let(::activateSelectedTool) }
         add(categoryTabs, BorderLayout.CENTER)
 
-        selectTool("Search")
+        selectTool(prefs.value.analysisDefaults.lastTool.takeIf { it in toolNames() } ?: "Search")
     }
 
     fun bindDocument(newDoc: SeqDocument) {
@@ -104,6 +107,27 @@ internal class AnalysisWorkspace(
         activateTool(name)
     }
 
+    /** Routes a trace opened from the common file chooser into its inspector. */
+    fun showChromatogram(record: ChromatogramRecord, sourceFile: File? = null) {
+        activateTool("Chromatogram")
+        (activePanels["Chromatogram"] as? ChromatogramAnalysisPanel)
+            ?.showChromatogram(record, sourceFile)
+    }
+
+    /** Routes an aligned multi-record file into the alignment viewer. */
+    fun showAlignment(sequences: List<Seq>, sourceFile: File? = null) {
+        activateTool("Alignment")
+        (activePanels["Alignment"] as? AlignmentAnalysisPanel)
+            ?.showImportedAlignment(sequences, sourceFile)
+    }
+
+    /** Routes already-parsed chromatogram reads to Sanger verification for the currently bound reference. */
+    fun showSangerVerification(records: List<ChromatogramRecord>, sourceFiles: List<File>) {
+        activateTool("Sanger Alignment")
+        (activePanels["Sanger Alignment"] as? SangerAlignmentAnalysisPanel)
+            ?.showDroppedReads(records, sourceFiles)
+    }
+
     private fun activeCategory(): ToolCategory? = categories.keys.elementAtOrNull(categoryTabs.selectedIndex)
 
     private fun activateSelectedTool(category: ToolCategory) {
@@ -124,6 +148,9 @@ internal class AnalysisWorkspace(
             host.repaint()
         }
         activeToolName = name
+        if (prefs.value.analysisDefaults.lastTool != name) {
+            prefs.update { current -> current.copy(analysisDefaults = current.analysisDefaults.copy(lastTool = name)) }
+        }
     }
 
     /**
@@ -138,7 +165,7 @@ internal class AnalysisWorkspace(
     }
 
     fun toolNames(): List<String> = listOf(
-        "Search", "Alignment", "Enzymes", "CpG Methylation", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
+        "Search", "Alignment", "Repeats / Dot Plot", "Enzymes", "CpG Methylation", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
         "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram",
         "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication",
         "Statistics / Graphs",

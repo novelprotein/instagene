@@ -2,7 +2,10 @@ package org.instagene.app.gui.enzyme
 
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.Enzyme
+import org.instagene.core.EnzymeSetFile
 import org.instagene.core.Enzymes
+import org.instagene.core.LabLibraryFiles
+import org.instagene.core.LibraryImportMode
 import org.instagene.app.gui.prefs.UserPrefs
 
 /**
@@ -34,6 +37,46 @@ class EnzymeManagerModel(private val prefs: Prefs) {
     fun isEnabled(enzyme: Enzyme): Boolean {
         val enabled = working.enabledEnzymes.map { it.lowercase() }
         return enabled.isEmpty() || enzyme.name.lowercase() in enabled
+    }
+
+    /** The currently active enzymes in stable catalog order, ready for a portable lab set. */
+    fun activeEnzymes(): List<Enzyme> = pool.filter(::isEnabled)
+
+    /** Creates a self-contained, versioned file model for the active enzyme set. */
+    fun exportSet(name: String = "Enzyme set", description: String = ""): EnzymeSetFile =
+        LabLibraryFiles.enzymeSet(name, activeEnzymes(), description)
+
+    /**
+     * Imports a portable enzyme set into the working model. New definitions are
+     * added as custom enzymes; the replace mode changes the active set but never
+     * silently deletes a user's unrelated custom enzyme definitions.
+     */
+    fun importSet(file: EnzymeSetFile, mode: LibraryImportMode = LibraryImportMode.MERGE): String? {
+        var next = working
+        file.enzymes.forEach { imported ->
+            Enzymes.validateNew(imported.name, imported.site, imported.topCut, imported.bottomCut)?.let { return it }
+            val existing = next.enzymePool().firstOrNull { it.name.equals(imported.name, ignoreCase = true) }
+            when {
+                existing == null -> next = next.copy(customEnzymes = next.customEnzymes + imported)
+                sameDefinition(existing, imported) -> Unit
+                else -> return "Imported enzyme '${imported.name}' conflicts with an existing definition. Rename it before importing."
+            }
+        }
+        val all = next.enzymePool()
+        val current = if (next.enabledEnzymes.isEmpty()) all.map { it.name.lowercase() }.toSet()
+        else next.enabledEnzymes.map { it.lowercase() }.toSet()
+        val importedNames = file.enzymes.map { it.name.lowercase() }.toSet()
+        val active = when (mode) {
+            LibraryImportMode.MERGE -> current + importedNames
+            LibraryImportMode.REPLACE -> importedNames
+        }
+        val normalizedEnabled = all.filter { it.name.lowercase() in active }.map { it.name }
+        next = next.copy(
+            enabledEnzymes = if (normalizedEnabled.size == all.size) emptyList() else normalizedEnabled,
+        )
+        working = next
+        notifyChanged()
+        return null
     }
 
     /** Adds or removes [enzyme] from the active working set. */
@@ -162,4 +205,10 @@ class EnzymeManagerModel(private val prefs: Prefs) {
     fun commit() {
         prefs.update { working }
     }
+
+    private fun sameDefinition(first: Enzyme, second: Enzyme): Boolean =
+        first.name.equals(second.name, ignoreCase = true) &&
+            first.site.equals(second.site, ignoreCase = true) &&
+            first.topCut == second.topCut &&
+            first.bottomCut == second.bottomCut
 }

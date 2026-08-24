@@ -16,7 +16,10 @@ data class SequenceFormatDescriptor(
 /** Import families supported natively or through configured external converters. */
 object SequenceFormatCatalog {
     val FORMATS = listOf(
-        SequenceFormatDescriptor("alignment", "Alignment formats", setOf("aln", "afa", "msa"), FormatSupport.NATIVE),
+        SequenceFormatDescriptor("alignment-fasta", "Aligned FASTA", setOf("afa", "msa"), FormatSupport.NATIVE),
+        SequenceFormatDescriptor("alignment-clustal", "Clustal alignment", setOf("aln", "clustal"), FormatSupport.NATIVE),
+        SequenceFormatDescriptor("alignment-stockholm", "Stockholm alignment", setOf("sto", "stockholm"), FormatSupport.NATIVE),
+        SequenceFormatDescriptor("alignment-phylip", "PHYLIP alignment", setOf("phy", "phylip", "ph"), FormatSupport.NATIVE),
         SequenceFormatDescriptor("ape", "ApE", setOf("ape"), FormatSupport.NATIVE),
         SequenceFormatDescriptor("embl", "EMBL / ENA", setOf("embl", "ena"), FormatSupport.NATIVE),
         SequenceFormatDescriptor("genbank", "GenBank / DDBJ", setOf("gb", "gbk", "genbank"), FormatSupport.NATIVE),

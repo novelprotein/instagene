@@ -1,5 +1,8 @@
 package org.instagene.core
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class EnzymeSetDefinition(
     val name: String,
     val enzymeNames: List<String>,

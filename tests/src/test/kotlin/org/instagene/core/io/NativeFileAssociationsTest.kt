@@ -21,6 +21,10 @@ class NativeFileAssociationsTest {
         assertFalse(NativeFileAssociations.extensions.contains("txt"))
         assertFalse(NativeFileAssociations.extensions.contains("ab1"))
         assertFalse(NativeFileAssociations.extensions.contains("geneious"))
-        assertTrue(NativeFileAssociations.extensions.containsAll(setOf("fasta", "gb", "gff3", "embl", "msa")))
+        assertTrue(
+            NativeFileAssociations.extensions.containsAll(
+                setOf("fasta", "gb", "gff3", "embl", "msa", "aln", "clustal", "sto", "stockholm", "phy", "phylip", "ph"),
+            ),
+        )
     }
 }

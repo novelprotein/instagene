@@ -2,6 +2,8 @@ package org.instagene.app.gui.file
 
 import org.instagene.core.Alphabet
 import org.instagene.core.io.NativeFileAssociations
+import org.instagene.core.io.SeqFormat
+import org.instagene.core.project.SeqProject
 import java.io.File
 import javax.swing.filechooser.FileNameExtensionFilter
 
@@ -9,6 +11,9 @@ import javax.swing.filechooser.FileNameExtensionFilter
 enum class FileType {
     /** A FASTA/GenBank/bare-bases molecule, opened as a sequence tab. */
     SEQUENCE,
+
+    /** A multi-record, already aligned FASTA-style file. */
+    ALIGNMENT,
 
     /** A plain-text notes file, opened in the in-app text editor. */
     TEXT,
@@ -22,6 +27,9 @@ enum class FileType {
     /** ABI/SCF sequencing data, opened with a chromatogram viewer. */
     CHROMATOGRAM,
 
+    /** A folder containing InstaGene's project manifest. */
+    PROJECT,
+
     /** Binary or unrecognized content, opened with the system app as a last resort. */
     UNKNOWN,
 }
@@ -34,19 +42,30 @@ object FileTypes {
 
     /** Extensions that make a file eligible for the open-file dialog. */
     val sequenceExtensions = NativeFileAssociations.extensions
+    private val alignmentExtensions = SeqFormat.entries.filter(SeqFormat::isAlignment).flatMap(SeqFormat::extensions).toSet()
     private val textExtensions = setOf("md", "markdown", "notes", "log")
     private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "tif", "tiff")
     private val pdfExtensions = setOf("pdf")
     private val chromatogramExtensions = setOf("ab1", "abi", "scf")
 
-    /** The file filter for the open-file dialog: only sequence files are shown. */
+    /** The file filter retained for sequence-only callers. */
     fun sequenceFileFilter(): FileNameExtensionFilter =
         FileNameExtensionFilter("Sequence files", *sequenceExtensions.toTypedArray())
 
+    /** Every regular file that the unified File → Open flow can route. */
+    val supportedOpenExtensions: Set<String> =
+        (sequenceExtensions + alignmentExtensions + chromatogramExtensions + textExtensions + imageExtensions + pdfExtensions).toSortedSet()
+
+    /** The file filter for the unified open dialog. Directories remain selectable for projects. */
+    fun supportedOpenFileFilter(): FileNameExtensionFilter =
+        FileNameExtensionFilter("Supported research files", *supportedOpenExtensions.toTypedArray())
+
     /** The dominant file type of [file], determined from a small sample. */
     fun classify(file: File): FileType {
+        if (file.isDirectory) return if (SeqProject.isProjectRoot(file)) FileType.PROJECT else FileType.UNKNOWN
         val ext = file.extension.lowercase()
         when {
+            ext in alignmentExtensions -> return FileType.ALIGNMENT
             ext in sequenceExtensions -> return FileType.SEQUENCE
             ext in textExtensions -> return FileType.TEXT
             ext in imageExtensions -> return FileType.IMAGE

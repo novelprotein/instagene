@@ -5,10 +5,12 @@ import com.sun.net.httpserver.HttpServer
 import org.instagene.core.io.SeqIOException
 import java.net.InetSocketAddress
 import java.net.http.HttpClient
+import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class NcbiClientTest {
     @Test
@@ -129,6 +131,37 @@ class NcbiClientTest {
             assertEquals(8, hit.alignmentLength)
             assertEquals(1e-10, hit.eValue)
             assertEquals(16.5, hit.bitScore)
+        }
+    }
+
+    @Test
+    fun recordsNcbiFetchProvenanceAndCanReuseAnExplicitOfflineCache() {
+        val directory = Files.createTempDirectory("instagene-ncbi-cache-").toFile()
+        try {
+            withServer { base ->
+                val cache = OnlineCache(directory)
+                val online = NcbiClient(
+                    http = HttpClient.newHttpClient(),
+                    baseUrl = "$base/entrez/eutils",
+                    blastBaseUrl = "$base/Blast.cgi",
+                    onlineCache = cache,
+                    onlineCacheMode = OnlineCacheMode.PREFER_CACHE,
+                )
+
+                val fetched = online.fetchGenBank("J01636.1")
+                assertEquals("NCBI", fetched.metadata["ONLINE_SOURCE"])
+                assertEquals("network", fetched.metadata["ONLINE_ORIGIN"])
+                assertEquals("J01636.1", fetched.metadata["ONLINE_ACCESSION"])
+                assertTrue(fetched.metadata["ONLINE_RESPONSE_SHA256"].orEmpty().matches(Regex("[0-9a-f]{64}")))
+                assertEquals("ncbi-fetch", fetched.provenance.single().operation)
+
+                val offline = online.withOnlineCache(cache, OnlineCacheMode.CACHE_ONLY).fetchGenBank("J01636.1")
+                assertEquals("ACGTACGT", offline.bases)
+                assertEquals("cache", offline.metadata["ONLINE_ORIGIN"])
+                assertEquals("cache", offline.metadata["ONLINE_ORIGINS"])
+            }
+        } finally {
+            directory.deleteRecursively()
         }
     }
 

@@ -77,6 +77,9 @@ On Windows, use `gradlew.bat` in place of `./gradlew`.
 The welcome screen provides the starting actions for the desktop application.
 Open a sequence file, open an existing project, create a new document, or
 choose an available recent file or project.
+Bundled examples are synthetic teaching data; see
+[bundled example provenance](examples.md) for the source statement behind each
+sequence, alignment, and chromatogram.
 
 1. Start InstaGene.
 2. Choose **Open File...** on the welcome screen, or use **File → Open**.
@@ -98,13 +101,22 @@ choose an available recent file or project.
 | GFF3 | `.gff`, `.gff3` | Read and write annotations with sequence data |
 | EMBL / ENA | `.embl`, `.ena` | Read and write flat-file sequence records |
 | Swiss-Prot | `.swiss`, `.sprot`, `.dat` | Read and write protein-style flat-file records |
-| FASTA alignment | `.aln`, `.afa`, `.msa` | Read as multi-record FASTA alignment input |
+| FASTA alignment | `.afa`, `.msa` | Read and write multi-record FASTA alignment input |
+| Clustal alignment | `.aln`, `.clustal` | Read and write Clustal alignment input |
+| Stockholm alignment | `.sto`, `.stockholm` | Read and write Stockholm alignment input |
+| PHYLIP alignment | `.phy`, `.phylip`, `.ph` | Read and write sequential PHYLIP alignment input |
 | Chromatograms | `.ab1`, `.abi`, `.scf` | Read sequencing trace calls where supported |
 | Notes and documents | `.md`, `.markdown`, `.notes`, `.log`, images, PDF | Edit text in-app or open with the operating system |
 
 For a proprietary or legacy sequence file, configure an external converter if
 one is available. A converter must emit FASTA, GenBank, EMBL, or GFF3; it is
-not included with the application.
+not included with the application. Direct SnapGene `.dna` import is deferred
+pending legal and format review. Export the record as GenBank and open that
+file instead.
+
+The [format matrix](formats.md) lists the exact built-in, converter-backed, and
+deferred families. The [migration guide](migration.md) gives a safe review
+sequence for moving work from another application or ELN.
 
 ## Build and packaging tasks
 
@@ -129,9 +141,10 @@ Installed Windows, macOS, and Linux packages register InstaGene as an available
 handler for FASTA (`.fa`, `.fasta`, `.fna`, `.fas`, `.seq`), GenBank (`.gb`,
 `.gbk`, `.genbank`, `.ape`), GFF3 (`.gff`, `.gff3`), EMBL/ENA (`.embl`, `.ena`),
 Swiss-Prot (`.swiss`, `.sprot`, `.dat`), and FASTA alignment (`.aln`, `.afa`,
-`.msa`) files. The installer does not force a new default application; choose
-InstaGene from the operating system's **Open With** or **Default Apps** UI when
-needed.
+`.msa`), Clustal (`.clustal`), Stockholm (`.sto`, `.stockholm`), and PHYLIP
+(`.phy`, `.phylip`, `.ph`) files. The installer does not force a new default
+application; choose InstaGene from the operating system's **Open With** or
+**Default Apps** UI when needed.
 
 Portable JAR and app-image downloads do not modify operating-system file
 associations. Open files from InstaGene, drag them onto the window, or create a

@@ -31,6 +31,7 @@ distributions {
 
 dependencies {
     implementation(project(":engine"))
+    implementation(libs.kotlinxSerialization)
 }
 
 tasks.register<JavaExec>("runCli") {

@@ -8,6 +8,8 @@ import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.UserPrefs
 import org.instagene.app.gui.prefs.EnzymeOverride
 import org.instagene.core.Enzyme
+import org.instagene.core.LabLibraryFiles
+import org.instagene.core.LibraryImportMode
 import org.instagene.core.Enzymes
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -93,5 +95,26 @@ class EnzymeManagerModelTest {
             edited.enzymeDescriptionFor(edited.findEnzyme("EcoEdited")!!),
         )
         assertEquals("", UserPrefs().enzymeDescriptionFor(Enzyme("CustomI", "GATC", 1, 3)))
+    }
+
+    @Test
+    fun portableLabSetsMergeDefinitionsAndCanReplaceOnlyTheActiveSet() {
+        val prefs = Prefs()
+        val model = EnzymeManagerModel(prefs)
+        val imported = LabLibraryFiles.enzymeSet(
+            "Lab restriction set",
+            listOf(Enzyme("LabI", "GATC", 1, 3)),
+            "Custom enzyme used by this lab",
+        )
+
+        assertNull(model.importSet(imported, LibraryImportMode.REPLACE))
+        assertEquals(listOf("LabI"), model.activeEnzymes().map { it.name })
+        assertEquals(Enzyme("LabI", "GATC", 1, 3), model.working.customEnzymes.single())
+
+        val exported = model.exportSet("Exported lab set")
+        assertEquals("Exported lab set", exported.name)
+        assertEquals(listOf("LabI"), exported.enzymes.map { it.name })
+        assertNull(model.importSet(LabLibraryFiles.enzymeSet("EcoRI", listOf(Enzymes.require("EcoRI"))), LibraryImportMode.MERGE))
+        assertTrue(model.activeEnzymes().map { it.name }.containsAll(listOf("EcoRI", "LabI")))
     }
 }

@@ -1,23 +1,16 @@
 package org.instagene.app.gui.menu
 
 import org.instagene.app.gui.dialog.SettingsDialog
-import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.Doc
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.document.TextDocument
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.core.Seq
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
-import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import java.io.File
-import javax.swing.JFileChooser
-import javax.swing.JFrame
-import javax.swing.JMenu
-import javax.swing.JMenuItem
-import javax.swing.JOptionPane
-import javax.swing.KeyStroke
-import javax.swing.SwingUtilities
+import javax.swing.*
 import javax.swing.filechooser.FileNameExtensionFilter
 
 /**
@@ -73,24 +66,21 @@ class FileMenu(
 
     private fun createNewItem(): JMenuItem {
         return JMenuItem("New", KeyEvent.VK_N).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_N, InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_N)
             addActionListener { onNewDocument() }
         }
     }
 
     private fun createNewTextItem(): JMenuItem {
         return JMenuItem("New Text File", KeyEvent.VK_T).apply {
-            accelerator = KeyStroke.getKeyStroke(
-                KeyEvent.VK_T,
-                InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK,
-            )
+            accelerator = menuShortcutWithShift(KeyEvent.VK_T)
             addActionListener { onNewTextDocument() }
         }
     }
 
     private fun createOpenItem(): JMenuItem {
         return JMenuItem("Open...", KeyEvent.VK_O).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_O)
             addActionListener { onOpenDocument() }
         }
     }
@@ -103,31 +93,28 @@ class FileMenu(
 
     private fun createOpenProjectItem(): JMenuItem {
         return JMenuItem("Open Project...", KeyEvent.VK_P).apply {
-            accelerator = KeyStroke.getKeyStroke(
-                KeyEvent.VK_P,
-                InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK,
-            )
+            accelerator = menuShortcutWithShift(KeyEvent.VK_P)
             addActionListener { onOpenProject() }
         }
     }
 
     private fun createCloseTabItem(): JMenuItem {
         return JMenuItem("Close Tab", KeyEvent.VK_W).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_W)
             addActionListener { onCloseTab() }
         }
     }
 
     private fun createSaveItem(): JMenuItem {
         return JMenuItem("Save", KeyEvent.VK_S).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK)
+            accelerator = menuShortcut(KeyEvent.VK_S)
             addActionListener { saveFile() }
         }
     }
 
     private fun createSaveAsItem(): JMenuItem {
         return JMenuItem("Save As...", KeyEvent.VK_A).apply {
-            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK)
+            accelerator = menuShortcutWithShift(KeyEvent.VK_S)
             addActionListener { saveFileAs() }
         }
     }

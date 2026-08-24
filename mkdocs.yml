@@ -45,10 +45,15 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Bundled Examples: examples.md
   - CLI Reference: cli.md
   - GUI Reference: gui.md
+  - Researcher Tasks: tasks.md
+  - Format Matrix: formats.md
+  - Migration and Exchange: migration.md
   - Reproducible Workflows: workflows.md
   - Engine API: engine-api.md
   - Release and Packaging: releasing.md
+  - Native Installer Verification: platform-verification.md
   - Benchmarks: benchmarks/info.md
   - Contributing: contributing.md

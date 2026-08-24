@@ -89,10 +89,12 @@ class ThemeManagerTest {
             onEdt {
                 val prefs = Prefs(PrefsStore(file))
                 val content = InstaGeneContent(prefs = prefs)
-                val viewMenu = content.menuBar.getMenu(2)
+                val menus = (0 until content.menuBar.menuCount).mapNotNull(content.menuBar::getMenu)
+                val viewMenu = menus.first { it.text == "View" }
                 assertFalse(viewMenu.menuComponents.any { it is javax.swing.JMenu && it.text == "Theme" })
-                val fileMenu = content.menuBar.getMenu(0)
+                val fileMenu = menus.first { it.text == "File" }
                 assertTrue(fileMenu.menuComponents.filterIsInstance<javax.swing.JMenuItem>().any { it.text == "Preferences..." })
+                content.dispose()
             }
         } finally {
             ThemeManager.apply(ThemeManager.DEFAULT_THEME)

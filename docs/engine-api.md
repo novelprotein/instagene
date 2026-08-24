@@ -49,9 +49,10 @@ Validate the resulting features when an edit crosses an annotation boundary.
 
 ## Sequence I/O
 
-`SeqIO` detects and reads FASTA, GenBank, GFF3, EMBL, Swiss-Prot, alignments,
-and supported ABI/SCF chromatograms. It can read records and write native
-formats through `SeqFormat`.
+`SeqIO` detects and reads FASTA, GenBank, GFF3, EMBL, Swiss-Prot, FASTA,
+Clustal, Stockholm, and PHYLIP alignments, and supported ABI/SCF
+chromatograms. It can read records and write native formats through
+`SeqFormat`.
 
 ~~~kotlin
 val seq = SeqIO.read(File("plasmid.gb"))
@@ -63,7 +64,8 @@ val genbank = SeqIO.write(seq, SeqFormat.GENBANK)
 Use `preferredSaveFormat(seq)` when preserving annotations, topology, primers,
 or molecule properties. Legacy proprietary format support is converter-backed:
 register a command containing `{in}` and ensure that it emits FASTA, GenBank,
-EMBL, or GFF3.
+EMBL, or GFF3. Direct SnapGene `.dna` import is intentionally deferred pending
+legal and format review; export a supported GenBank record before loading it.
 
 ## Analysis and design
 
@@ -78,7 +80,7 @@ The main engine services include:
 | Primer design | PrimerDesign, PrimerThermodynamics, PcrWorkflows |
 | Assembly | Assembly, AssemblyWorkflows, CloningWorkflows, Recombination |
 | Other workflows | CrisprDesign, VirtualGel, SecondaryStructure, MolecularCalculators |
-| Remote | NcbiClient for NCBI search, fetch, and BLAST polling |
+| Remote | NcbiClient, OnlineCache, and OnlineCacheMode for explicit NCBI retrieval and BLAST polling |
 
 Examples:
 
@@ -98,12 +100,74 @@ large or remote operations on appropriate background workers and for deciding
 how to present errors and cancellation. The internal `Parallel` helper is not a
 public scheduling contract.
 
+### Responsive long-running scans
+
+`PerformanceTargets` records the workload classes used by desktop regressions:
+10 kb plasmids, 100 kb constructs, and progressive multi-megabase work.
+`Digest.countSites` accepts optional cancellation and bounded progress callbacks.
+For large feature libraries, use `FeatureLibrary.previewMatchesCancellable` or
+`annotateCancellable`; their `FeatureScanProgress` callback advances once per
+definition and throws `CancellationException` when the supplied cancellation
+predicate becomes true.
+
+### Explicit remote retrieval
+
+`NcbiClient` is network-only by default. Pass an `OnlineCache` and an explicit
+policy when a workflow should retain response data. `PREFER_CACHE` reuses a
+verified matching response, `NETWORK_THEN_CACHE` uses a verified response only
+after a network failure, and `CACHE_ONLY` is safe for offline replay. Every
+`fetchGenBank` result records NCBI request, response hash, retrieval timestamp,
+and origin in `Seq.metadata` and a `ProcedureRecord`.
+
+~~~kotlin
+val cache = OnlineCache(File(".instagene-cache"))
+val client = NcbiClient(onlineCache = cache, onlineCacheMode = OnlineCacheMode.PREFER_CACHE)
+val record = client.fetchGenBank("J01636.1")
+~~~
+
 ## Reports and reproducibility
 
 `Reports` produces text reports for selected workflows. Sequence records also
 carry procedure records that capture a workflow's inputs, warnings, and
 summary. Reports support review, but they do not replace source-record checks
 or laboratory documentation.
+
+## Generic ELN/LIMS exchange
+
+`GenericZipElnAdapter` is the built-in local-first handoff adapter. It writes a
+versioned ZIP with a manifest, SHA-256 hashes, standard FASTA/GenBank/primer
+attachments for a sequence, optional reports and attachments, and embedded
+procedure provenance. It does not perform network I/O or use an ELN vendor
+credential.
+
+~~~kotlin
+val destination = File("plasmid-handoff.zip")
+val manifest = GenericZipElnAdapter.export(
+    destination,
+    ElnBundleRequest(
+        title = "pExample handoff",
+        sequence = plasmid,
+        reports = listOf(ElnReport("reports/review.md", "# Review\n\nReady for review.")),
+        attachments = listOf(
+            ElnAttachment(
+                path = "maps/pexample.svg",
+                bytes = File("pexample.svg").readBytes(),
+                mediaType = "image/svg+xml",
+                role = ElnArtifactRole.MAP_SVG,
+            ),
+        ),
+        provenance = mapOf("projectFile" to "constructs/pexample.gb"),
+    ),
+)
+
+check(GenericZipElnAdapter.verify(destination).valid)
+println(manifest.artifacts.map { it.path })
+~~~
+
+Attachment paths are normalized and must be relative, unique bundle paths.
+`ElnAdapters.AVAILABLE` currently contains only this generic adapter. Live
+vendor adapters are intentionally deferred until an approved integration has
+credentials, authorization, documented field mapping, and API terms.
 
 ## Compatibility expectations
 

@@ -59,13 +59,17 @@ class ProjectFeatureGuiTest {
         onEdt { content.openProjectAt(root) }
 
         val menus = onEdt { (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text } }
-        assertEquals(listOf("File", "Edit", "View", "Project", "Actions", "Tools", "Help"), menus)
-        val projectMenu = onEdt { content.menuBar.getMenu(3)!! }
+        assertEquals(listOf("Command", "File", "Edit", "View", "Project", "Actions", "Tools", "Help"), menus)
+        val projectMenu = onEdt { content.menuBar.getMenu(4)!! }
         assertTrue(projectMenu.isEnabled, "Project menu must be enabled for project-only features without document tabs.")
-        assertFalse(onEdt { content.menuBar.getMenu(4)!!.isEnabled }, "Sequence Actions stay disabled without a sequence tab.")
+        assertFalse(onEdt { content.menuBar.getMenu(5)!!.isEnabled }, "Sequence Actions stay disabled without a sequence tab.")
         assertEquals(
-            listOf("New Project...", "Open Project...", "Close Project", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
+            listOf("New Project...", "Open Project...", "Close Project", "Reload Project from Disk", "ELN / Lab Notebook", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
             menuItemTexts(projectMenu),
+        )
+        assertFalse(
+            onEdt { projectMenu.menuComponents.filterIsInstance<JMenu>().single { it.text == "ELN / Lab Notebook" }.isEnabled },
+            "ELN actions require an active sequence document.",
         )
     }
 
@@ -108,7 +112,9 @@ class ProjectFeatureGuiTest {
         assertEquals(listOf("Tools", "Converters"), (0 until tabs.tabCount).map { tabs.getTitleAt(it) })
 
         val tables = descendants(panel, JTable::class.java)
-        assertTrue(tables.any { it.rowCount >= ExternalTools.CATALOG.size }, "External tool catalog must be visible.")
+        val toolTable = tables.firstOrNull { it.rowCount >= ExternalTools.CATALOG.size }
+            ?: fail("External tool catalog must be visible.")
+        assertEquals(listOf("Tool", "Status", "Version / path", "Action"), (0 until toolTable.columnCount).map(toolTable::getColumnName))
         assertTrue(
             tables.any { table ->
                 (0 until table.rowCount).any { row ->

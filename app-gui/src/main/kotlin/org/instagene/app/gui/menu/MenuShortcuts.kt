@@ -14,3 +14,9 @@ internal fun menuShortcut(keyCode: Int): KeyStroke {
         .getOrDefault(InputEvent.CTRL_DOWN_MASK)
     return KeyStroke.getKeyStroke(keyCode, mask)
 }
+
+/** Command+Shift on macOS and Control+Shift elsewhere. */
+internal fun menuShortcutWithShift(keyCode: Int): KeyStroke {
+    val base = menuShortcut(keyCode)
+    return KeyStroke.getKeyStroke(keyCode, base.modifiers or InputEvent.SHIFT_DOWN_MASK)
+}

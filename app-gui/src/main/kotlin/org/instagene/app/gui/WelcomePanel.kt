@@ -3,6 +3,7 @@ package org.instagene.app.gui
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.theme.Palette
 import org.instagene.core.Version
+import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Font
@@ -13,6 +14,15 @@ import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
+
+/** Bundled tutorial inputs available from the welcome screen. */
+enum class WelcomeExample(val label: String) {
+    PLASMID("Plasmid"),
+    REAL_PLASMID("Real plasmid"),
+    GENE("Gene"),
+    CHROMATOGRAM("Chromatogram"),
+    ALIGNMENT("Alignment"),
+}
 
 /**
  * The empty state shown when no documents are open: a short welcome heading,
@@ -27,6 +37,7 @@ class WelcomePanel(
     onNewDocument: () -> Unit,
     private val onOpenRecentFile: (File) -> Unit = {},
     private val onOpenRecentProject: (File) -> Unit = {},
+    private val onOpenExample: (WelcomeExample) -> Unit = {},
 ) : JPanel(BorderLayout()) {
 
     /** "Open File..." button, exposed for tests. */
@@ -43,8 +54,10 @@ class WelcomePanel(
 
     private val recentFilesLabel = JLabel("Recent Files")
     private val recentProjectsLabel = JLabel("Recent Projects")
+    private val examplesLabel = JLabel("Try a bundled example")
     private val recentFilesBox = JPanel()
     private val recentProjectsBox = JPanel()
+    private val examplesBox = JPanel()
 
     /** The recent files currently shown, most recent first, missing entries skipped. */
     var recentFiles: List<File> = emptyList()
@@ -63,6 +76,13 @@ class WelcomePanel(
         recentFilesBox.isOpaque = false
         recentProjectsBox.layout = BoxLayout(recentProjectsBox, BoxLayout.Y_AXIS)
         recentProjectsBox.isOpaque = false
+        examplesBox.isOpaque = false
+        WelcomeExample.entries.forEach { example ->
+            examplesBox.add(JButton(example.label).apply {
+                toolTipText = "Open the bundled ${example.label.lowercase()} example. ${example.sourceStatement()}"
+                addActionListener { onOpenExample(example) }
+            })
+        }
 
         val column = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -86,6 +106,9 @@ class WelcomePanel(
                 add(newDocumentButton)
             })
             add(Box.createVerticalStrut(24))
+            add(examplesLabel.also { it.alignmentX = CENTER_ALIGNMENT })
+            add(examplesBox.also { it.alignmentX = CENTER_ALIGNMENT })
+            add(Box.createVerticalStrut(20))
             add(recentFilesLabel.also { it.alignmentX = CENTER_ALIGNMENT })
             add(recentFilesBox.also { it.alignmentX = CENTER_ALIGNMENT })
             add(Box.createVerticalStrut(12))
@@ -104,6 +127,9 @@ class WelcomePanel(
 
     /** The "open recent project" buttons currently shown, most recent first. */
     fun recentProjectButtons(): List<JButton> = recentProjectsBox.components.filterIsInstance<JButton>()
+
+    /** Buttons for the four bundled tutorial inputs, in [WelcomeExample] order. */
+    fun exampleButtons(): List<JButton> = examplesBox.components.filterIsInstance<JButton>()
 
     private fun rebuildRecents() {
         recentFiles = existing(prefs.value.recentFiles)
@@ -139,3 +165,11 @@ class WelcomePanel(
             addActionListener { onClick() }
         }
 }
+
+private fun WelcomeExample.sourceStatement(): String = when (this) {
+    WelcomeExample.PLASMID -> SeqIO.Samples.sourceFor(SeqIO.Samples.PLASMID_DEMO.name)
+    WelcomeExample.REAL_PLASMID -> SeqIO.Samples.sourceFor(SeqIO.Samples.PBR322_NCBI.name)
+    WelcomeExample.GENE -> SeqIO.Samples.sourceFor(SeqIO.Samples.GFP_CDS.name)
+    WelcomeExample.CHROMATOGRAM -> SeqIO.Samples.CHROMATOGRAM_DEMO.source
+    WelcomeExample.ALIGNMENT -> SeqIO.Samples.ALIGNMENT_DEMO_SOURCE
+}.orEmpty()

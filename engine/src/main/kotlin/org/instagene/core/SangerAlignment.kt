@@ -8,6 +8,13 @@ data class AlignmentMismatch(
     val kind: MismatchKind = MismatchKind.SUBSTITUTION,
 )
 
+/** A called-base Phred score mapped from a read onto a reference coordinate. */
+data class ReferenceQualityObservation(
+    val referencePosition: Int,
+    val readPosition: Int,
+    val phred: Int,
+)
+
 enum class MismatchKind { SUBSTITUTION, LOW_QUALITY, INSERTION, DELETION }
 
 data class SangerOptions(
@@ -48,6 +55,8 @@ data class AlignedRead(
     val minAlignedLengthThreshold: Int = 20,
     /** Number of reference bases consumed by the local alignment (excludes read insertions). */
     val referenceLength: Int = alignedLength,
+    /** Per-base Phred observations that can be reused by quality-aware design workflows. */
+    val qualityObservations: List<ReferenceQualityObservation> = emptyList(),
 ) {
     val insertionCount: Int get() = mismatches.count { it.kind == MismatchKind.INSERTION }
     val deletionCount: Int get() = mismatches.count { it.kind == MismatchKind.DELETION }
@@ -129,6 +138,7 @@ object SangerAlignment {
             previous = current
         }
         val mismatches = mutableListOf<AlignmentMismatch>()
+        val qualityObservations = mutableListOf<ReferenceQualityObservation>()
         var matches = 0
         var columns = 0
         var referenceLength = 0
@@ -142,8 +152,15 @@ object SangerAlignment {
                     val readBase = seq[readIndex - 1]
                     columns++
                     referenceLength++
+                    val quality = read.qualities.getOrNull(readIndex - 1)
+                    quality?.let {
+                        qualityObservations += ReferenceQualityObservation(
+                            referencePosition = refIndex - 1,
+                            readPosition = read.sourceOffset + readIndex - 1,
+                            phred = it,
+                        )
+                    }
                     if (refBase == readBase) matches++ else {
-                        val quality = read.qualities.getOrNull(readIndex - 1)
                         mismatches += AlignmentMismatch(
                             refIndex - 1, read.sourceOffset + readIndex - 1, refBase, readBase,
                             if (quality != null && quality < options.minQuality) MismatchKind.LOW_QUALITY else MismatchKind.SUBSTITUTION,
@@ -166,11 +183,12 @@ object SangerAlignment {
             }
         }
         mismatches.reverse()
+        qualityObservations.reverse()
         val identity = if (columns > 0) matches.toDouble() / columns else 0.0
         val lowQuality = read.qualities.count { it < options.minQuality }
         return AlignedRead(
             read.name, identity, mismatches, columns, refIndex, read.sourceOffset + readIndex,
-            lowQuality, trimmedBases, options.minIdentity, options.minAlignedLength, referenceLength,
+            lowQuality, trimmedBases, options.minIdentity, options.minAlignedLength, referenceLength, qualityObservations,
         )
     }
 }

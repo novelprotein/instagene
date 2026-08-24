@@ -2,6 +2,10 @@ package org.instagene.app.gui
 
 import com.sun.net.httpserver.HttpServer
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.prefs.AnalysisDefaults
+import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.prefs.PrefsStore
+import org.instagene.app.gui.prefs.UserPrefs
 import org.instagene.app.gui.tool.AnalysisPanel
 import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.core.NcbiClient
@@ -13,6 +17,7 @@ import java.awt.event.MouseEvent
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.net.http.HttpClient
+import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -33,7 +38,7 @@ class AnalysisPanelTest {
         val panel = AnalysisPanel(SeqDocument(Seq("sample", "GAATTCATGGCCTAAGCTT")), {}, { _, _ -> })
         assertEquals(
             listOf(
-                "Search", "Alignment", "Enzymes", "CpG Methylation", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
+                "Search", "Alignment", "Repeats / Dot Plot", "Enzymes", "CpG Methylation", "Assembly", "PCR / Mutagenesis", "Translation / Structure",
                 "Virtual Gel", "Calculators", "NCBI / BLAST", "Chromatogram",
                 "CRISPR / gRNA", "Sanger Alignment", "Primer Thermo", "Plasmid DB", "Site Domestication",
                 "Statistics / Graphs",
@@ -53,6 +58,63 @@ class AnalysisPanelTest {
     }
 
     @Test
+    fun assemblyWorkspaceExposesThePcrCloningWizard() = onEdt {
+        val panel = AnalysisPanel(
+            SeqDocument(Seq("circular_backbone", "GAATTCACGTACGTAAGCTT", topology = org.instagene.core.Topology.CIRCULAR)),
+            {},
+            { _, _ -> },
+        )
+
+        panel.selectTool("Assembly")
+
+        val wizard = descendants(panel, JButton::class.java).firstOrNull { it.text == "PCR-cloning wizard…" }
+        assertTrue(wizard != null, "Assembly tools must expose the guided PCR-cloning workflow")
+        assertTrue(wizard.toolTipText.orEmpty().contains("validate restriction cloning", ignoreCase = true))
+        val replay = descendants(panel, JButton::class.java).firstOrNull { it.text == "Replay recipe…" }
+        assertTrue(replay != null, "Assembly tools must expose identity-checked recipe replay")
+    }
+
+    @Test
+    fun translationWorkspaceExposesCdsFrameValidation() = onEdt {
+        val panel = AnalysisPanel(
+            SeqDocument(Seq("cds", "ATGAAATAA", features = listOf(org.instagene.core.Feature("gene", "CDS", 0, 9)))),
+            {},
+            { _, _ -> },
+        )
+
+        panel.selectTool("Translation / Structure")
+
+        val operation = descendants(panel, JComboBox::class.java).firstOrNull { combo ->
+            (0 until combo.itemCount).any { combo.getItemAt(it) == "Validate CDS features" }
+        }
+        assertTrue(operation != null, "Translation tools must offer coordinate-linked CDS validation")
+    }
+
+    @Test
+    fun repeatWorkspaceExposesDotPlotAndRepeatExports() = onEdt {
+        val panel = AnalysisPanel(SeqDocument(Seq("repeat", "AAAAATGCAAAAGCATTTT")), {}, { _, _ -> })
+
+        panel.selectTool("Repeats / Dot Plot")
+
+        val labels = descendants(panel, JButton::class.java).map { it.text }
+        assertTrue("Analyze" in labels)
+        assertTrue("Export plot" in labels)
+        assertTrue("Export repeats" in labels)
+    }
+
+    @Test
+    fun alignmentWorkspaceOffersInterchangeAndImageExport() = onEdt {
+        val panel = AnalysisPanel(SeqDocument(Seq("alignment", "ACGTACGT")), {}, { _, _ -> })
+
+        panel.selectTool("Alignment")
+
+        val export = descendants(panel, JButton::class.java).firstOrNull { it.text == "Export alignment…" }
+        assertTrue(export != null, "Alignment tools must offer a researcher-readable export action")
+        assertTrue(export.toolTipText.orEmpty().contains("Stockholm"))
+        assertTrue(export.toolTipText.orEmpty().contains("PNG"))
+    }
+
+    @Test
     fun analysisWorkspaceRebindsWithoutReconstruction() = onEdt {
         val first = SeqDocument(Seq("first", "ACGT"))
         val panel = AnalysisPanel(first, {}, { _, _ -> })
@@ -60,6 +122,18 @@ class AnalysisPanelTest {
         panel.bindDocument(second)
         panel.selectTool("Search")
         assertEquals("Search", panel.selectedTool())
+    }
+
+    @Test
+    fun analysisWorkspaceRestoresAndPersistsTheLastSelectedTool() = onEdt {
+        val prefsFile = Files.createTempDirectory("instagene-analysis-defaults").resolve("prefs.json").toFile()
+        PrefsStore(prefsFile).save(UserPrefs(analysisDefaults = AnalysisDefaults(lastTool = "Repeats / Dot Plot", repeatWordSize = 17)))
+        val prefs = Prefs(PrefsStore(prefsFile))
+        val panel = AnalysisPanel(SeqDocument(Seq("sample", "ACGTACGT")), {}, { _, _ -> }, prefs = prefs)
+
+        assertEquals("Repeats / Dot Plot", panel.selectedTool())
+        panel.selectTool("Alignment")
+        assertEquals("Alignment", prefs.value.analysisDefaults.lastTool)
     }
 
     @Test
@@ -736,6 +810,24 @@ class AnalysisPanelTest {
         assertEquals("ncbiSharedQuery", ncbiQueryField(panel).name)
         assertEquals(runButton.parent, fetchButton.parent)
         assertTrue(descendants(panel, JButton::class.java).none { it.text == "Cancel BLAST" || it.text == "Open BLAST Hit" })
+    }
+
+    @Test
+    fun ncbiCacheModeIsExplicitAndPersistsTheResearcherChoice() = onEdt {
+        val prefs = Prefs()
+        val panel = AnalysisPanel(SeqDocument(Seq("query", "ACGTACGT")), {}, { _, _ -> }, prefs = prefs)
+            .also { it.selectTool("NCBI / BLAST") }
+
+        val cache = descendants(panel, JComboBox::class.java).single { it.name == "ncbiCacheMode" }
+        assertEquals("Network only", cache.selectedItem.toString())
+
+        cache.selectedIndex = (0 until cache.itemCount).first { cache.getItemAt(it).toString() == "Cache only (offline)" }
+        assertEquals("CACHE_ONLY", prefs.value.onlineCacheMode)
+
+        val reopened = AnalysisPanel(SeqDocument(Seq("query", "ACGTACGT")), {}, { _, _ -> }, prefs = prefs)
+            .also { it.selectTool("NCBI / BLAST") }
+        val reopenedCache = descendants(reopened, JComboBox::class.java).single { it.name == "ncbiCacheMode" }
+        assertEquals("Cache only (offline)", reopenedCache.selectedItem.toString())
     }
 
     private fun nucleotideTable(panel: AnalysisPanel): JTable = descendants(panel, JTable::class.java).single {

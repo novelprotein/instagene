@@ -40,3 +40,7 @@ Production signing is intentionally credential-gated:
 The repository currently validates unsigned installer structure and behavior.
 Enabling production signing requires the project owner to supply those
 credentials and choose the unsigned-release policy.
+
+The [native installer verification guide](platform-verification.md) separates
+the CI structural checks from the remaining release-owner Windows/macOS visual,
+DPI/Retina, signing, and screenshot evidence steps.

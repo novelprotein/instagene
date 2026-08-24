@@ -1,9 +1,11 @@
 package org.instagene.app.gui.tool
 
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
+import org.instagene.core.SequenceIdentity
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.GridBagConstraints
@@ -70,12 +72,21 @@ class InfoPanel(
     val historyLabel = JLabel("-")
     val fileLabel = JLabel("-")
     val openFileButton = JButton("Open File...")
+    /** Stable biological identity, available even when it has not been saved into record metadata. */
+    val identityLabel = JLabel("-")
+    val copyIdentityButton = JButton("Copy")
+    val applyIdentityButton = JButton("Apply")
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
         nameApply.addActionListener { rename() }
         openFileButton.addActionListener { onOpen() }
+        copyIdentityButton.addActionListener { ContextMenus.copyToClipboard(SequenceIdentity.cdseguid(doc.seq)) }
+        applyIdentityButton.addActionListener {
+            val identity = SequenceIdentity.cdseguid(doc.seq)
+            if (doc.seq.uniqueIdentifier != identity) doc.mutate("apply sequence identity") { it.withUniqueIdentifier(identity) }
+        }
 
         val properties = JPanel(GridBagLayout()).apply {
             border = BorderFactory.createTitledBorder("Properties")
@@ -96,6 +107,14 @@ class InfoPanel(
             labelRow("Methylation", methylationLabel)
             labelRow("End chemistry", phosphorylationLabel)
             labelRow("Length", lengthLabel)
+            labelRow("CD-SEGUID", JPanel(BorderLayout(6, 0)).apply {
+                identityLabel.toolTipText = "Stable content identity computed from the molecule type and sequence bases."
+                add(identityLabel, BorderLayout.CENTER)
+                add(JPanel(java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 3, 0)).apply {
+                    add(copyIdentityButton)
+                    add(applyIdentityButton)
+                }, BorderLayout.EAST)
+            })
             labelRow("File", JPanel(BorderLayout(6, 0)).apply {
                 add(fileLabel, BorderLayout.CENTER)
                 add(openFileButton, BorderLayout.EAST)
@@ -161,6 +180,9 @@ class InfoPanel(
         }.joinToString(", ").ifBlank { "none" }
         val unit = if (seq.kind == SeqKind.PROTEIN) "aa" else "bp"
         lengthLabel.text = "${seq.length} $unit"
+        val identity = SequenceIdentity.cdseguid(seq)
+        identityLabel.text = "$identity (${if (SequenceIdentity.verify(seq)) "stored" else "computed"})"
+        applyIdentityButton.isEnabled = seq.uniqueIdentifier != identity
         val hasFile = doc.file != null
         fileLabel.text = doc.file?.absolutePath ?: ""
         fileLabel.isVisible = hasFile

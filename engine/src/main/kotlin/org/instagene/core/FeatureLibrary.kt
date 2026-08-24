@@ -1,5 +1,8 @@
 package org.instagene.core
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class FeatureDefinition(
     val name: String,
     val pattern: String,
@@ -19,6 +22,14 @@ data class MatchInfo(
     val strand: Strand,
     val matchedSequence: String,
     val definition: FeatureDefinition,
+)
+
+/** A bounded, definition-level progress update from a feature-library scan. */
+data class FeatureScanProgress(
+    val completedDefinitions: Int,
+    val totalDefinitions: Int,
+    /** Matches found so far, including exclusion rules so callers can explain their result. */
+    val matches: Int,
 )
 
 /** Pattern-backed automatic annotation, including IUPAC, variable-length wildcards, exclusion, and bidirectional search. */
@@ -182,6 +193,29 @@ object FeatureLibrary {
         searchBothStrands: Boolean = false,
     ): Seq {
         val matchInfo = previewMatches(seq, definitions, searchBothStrands)
+        return annotateMatches(seq, matchInfo, includeExisting)
+    }
+
+    /**
+     * Applies annotations while reporting progress and checking cancellation
+     * between definitions. This deliberately keeps the normal [annotate]
+     * fast/parallel for small desktop inputs while giving front ends a safe
+     * path for crowded genomes and large lab libraries.
+     */
+    fun annotateCancellable(
+        seq: Seq,
+        definitions: Collection<FeatureDefinition>,
+        includeExisting: Boolean = true,
+        searchBothStrands: Boolean = false,
+        cancellationRequested: () -> Boolean = { false },
+        progress: (FeatureScanProgress) -> Unit = {},
+    ): Seq = annotateMatches(
+        seq,
+        previewMatchesCancellable(seq, definitions, searchBothStrands, cancellationRequested, progress),
+        includeExisting,
+    )
+
+    private fun annotateMatches(seq: Seq, matchInfo: List<MatchInfo>, includeExisting: Boolean): Seq {
         val exclusions = matchInfo.filter { it.definition.exclude }
         val additions = matchInfo.filter { !it.definition.exclude }.filter { m ->
             exclusions.none { e -> rangesOverlap(m.start, m.end, e.start, e.end) }
@@ -209,23 +243,63 @@ object FeatureLibrary {
             }
         }
         return Parallel.flatMap(defs) { definition ->
-            if (searchBothStrands) {
-                findOnStrand(seq, definition, Strand.FORWARD) + findOnStrand(seq, definition, Strand.REVERSE)
-            } else {
-                findOnStrand(seq, definition, definition.strand)
-            }
+            matchesForDefinition(seq, definition, searchBothStrands)
         }
+    }
+
+    /**
+     * Sequential, cancellable counterpart to [previewMatches]. Progress is
+     * deliberately reported once per definition, rather than for every base or
+     * match, so the hot regex path stays allocation-light and the UI has a
+     * useful, stable unit of work to display.
+     */
+    fun previewMatchesCancellable(
+        seq: Seq,
+        definitions: Collection<FeatureDefinition>,
+        searchBothStrands: Boolean = false,
+        cancellationRequested: () -> Boolean = { false },
+        progress: (FeatureScanProgress) -> Unit = {},
+    ): List<MatchInfo> {
+        val defs = definitions.toList()
+        val out = ArrayList<MatchInfo>()
+        progress(FeatureScanProgress(0, defs.size, 0))
+        for ((index, definition) in defs.withIndex()) {
+            checkCancelled(cancellationRequested)
+            out += matchesForDefinition(seq, definition, searchBothStrands, cancellationRequested)
+            checkCancelled(cancellationRequested)
+            progress(FeatureScanProgress(index + 1, defs.size, out.size))
+        }
+        return out
+    }
+
+    private fun matchesForDefinition(
+        seq: Seq,
+        definition: FeatureDefinition,
+        searchBothStrands: Boolean,
+        cancellationRequested: () -> Boolean = { false },
+    ): List<MatchInfo> = if (searchBothStrands) {
+        findOnStrand(seq, definition, Strand.FORWARD, cancellationRequested) +
+                findOnStrand(seq, definition, Strand.REVERSE, cancellationRequested)
+    } else {
+        findOnStrand(seq, definition, definition.strand, cancellationRequested)
     }
 
     fun find(seq: Seq, definition: FeatureDefinition): List<Pair<Int, Int>> =
         findOnStrand(seq, definition, definition.strand).map { it.start to it.end }
 
-    private fun findOnStrand(seq: Seq, definition: FeatureDefinition, strand: Strand): List<MatchInfo> {
+    private fun findOnStrand(
+        seq: Seq,
+        definition: FeatureDefinition,
+        strand: Strand,
+        cancellationRequested: () -> Boolean = { false },
+    ): List<MatchInfo> {
+        checkCancelled(cancellationRequested)
         if (definition.pattern.isBlank()) return emptyList()
         val regex = Regex(patternRegex(definition.pattern), setOf(RegexOption.IGNORE_CASE))
         val out = ArrayList<MatchInfo>()
         val source = if (strand == Strand.FORWARD) seq.bases else seq.reverseComplement().bases
         regex.findAll(source).forEach { match ->
+            checkCancelled(cancellationRequested)
             val start = if (strand == Strand.FORWARD) match.range.first else seq.length - match.range.last - 1
             val end = if (strand == Strand.FORWARD) match.range.last + 1 else seq.length - match.range.first
             val matchedSeq = source.substring(match.range)
@@ -234,6 +308,12 @@ object FeatureLibrary {
             }
         }
         return out
+    }
+
+    private fun checkCancelled(cancellationRequested: () -> Boolean) {
+        if (cancellationRequested()) {
+            throw java.util.concurrent.CancellationException("Feature-library scan cancelled")
+        }
     }
 
     fun patternRegex(pattern: String): String {

@@ -13,6 +13,7 @@ enum class CloningMethod {
     TOPO_DIRECTIONAL,
     TOPO_BLUNT,
     GOLDEN_GATE,
+    HOMOLOGY_RECOMBINATION,
 }
 
 enum class DiagnosticSeverity { INFO, WARNING, ERROR }
@@ -32,6 +33,8 @@ data class MolecularWorkflowResult(
     val steps: List<ProtocolStep>,
     val diagnostics: List<WorkflowDiagnostic> = emptyList(),
     val primers: List<PrimerAnnotation> = emptyList(),
+    /** Normalized invocation values retained independently from display-oriented protocol text. */
+    val parameters: Map<String, String> = emptyMap(),
 )
 
 /** Cloning workflows built on the shared assembly primitives. */
@@ -49,6 +52,10 @@ object CloningWorkflows {
             built.plasmid,
             built.log.map { ProtocolStep("Restriction cloning", it) },
             inputs = listOf(backbone.name, insert.name),
+            parameters = mapOf(
+                "enzymeNames" to enzymes.joinToString(",") { it.name },
+                "productName" to name,
+            ),
         )
     }
 
@@ -75,7 +82,12 @@ object CloningWorkflows {
             assembled.product,
             assembled.log.map { ProtocolStep(method.displayName(), it) },
             diagnostics,
-            parts.map { it.name },
+            inputs = parts.map { it.name },
+            parameters = mapOf(
+                "circular" to circular.toString(),
+                "minimumOverlap" to minOverlap.toString(),
+                "productName" to name,
+            ),
         )
     }
 
@@ -106,6 +118,11 @@ object CloningWorkflows {
                 ProtocolStep("Exchange cassette", "Replaced ${vectorRight - vectorLeft - left.length} bp with ${payload.length} bp."),
             ),
             inputs = listOf(destination.name, insert.name),
+            parameters = mapOf(
+                "leftSite" to left,
+                "productName" to name,
+                "rightSite" to right,
+            ),
         )
     }
 
@@ -132,7 +149,12 @@ object CloningWorkflows {
             assembled.product,
             assembled.log.map { ProtocolStep("Golden Gate assembly", it) },
             diagnostics,
-            parts.map { it.name },
+            inputs = parts.map { it.name },
+            parameters = mapOf(
+                "circular" to circular.toString(),
+                "overhangs" to normalized.joinToString(","),
+                "productName" to name,
+            ),
         )
     }
 
@@ -174,7 +196,39 @@ object CloningWorkflows {
                 ProtocolStep("Circularize", "Product length ${product.length} bp."),
             ),
             diagnostics,
-            listOf(vector.name, insert.name),
+            inputs = listOf(vector.name, insert.name),
+            parameters = mapOf("productName" to name),
+        )
+    }
+
+    /** Replaces a target interval with a donor bounded by matching homology arms. */
+    fun homologyRecombination(
+        target: Seq,
+        donor: Seq,
+        armLength: Int = 20,
+        candidateIndex: Int = 0,
+        name: String = "${target.name}_recombined",
+    ): MolecularWorkflowResult {
+        val candidates = Recombination.candidates(target, donor, armLength)
+        val selected = candidates.getOrNull(candidateIndex)
+            ?: throw IllegalArgumentException(
+                "No matching recombination candidate found at index ${candidateIndex + 1}; " +
+                    "${candidates.size} candidate(s) are available.",
+            )
+        val recombined = Recombination.recombine(target, donor, selected, name)
+        return result(
+            CloningMethod.HOMOLOGY_RECOMBINATION,
+            recombined.product,
+            listOf(
+                ProtocolStep("Find homology arms", "Selected candidate ${candidateIndex + 1} with $armLength bp left and right arms."),
+                ProtocolStep("Replace target interval", "Recombined ${donor.name} into ${target.name} at ${selected.targetLeft + 1}..${selected.targetRight + armLength}."),
+            ),
+            inputs = listOf(target.name, donor.name),
+            parameters = mapOf(
+                "armLength" to armLength.toString(),
+                "candidateIndex" to candidateIndex.toString(),
+                "productName" to name,
+            ),
         )
     }
 
@@ -184,6 +238,7 @@ object CloningWorkflows {
         steps: List<ProtocolStep>,
         diagnostics: List<WorkflowDiagnostic> = emptyList(),
         inputs: List<String>,
+        parameters: Map<String, String> = emptyMap(),
     ): MolecularWorkflowResult {
         val product = rawProduct.withProcedure(
             ProcedureRecord(
@@ -194,7 +249,7 @@ object CloningWorkflows {
                 timestamp = System.currentTimeMillis(),
             )
         )
-        return MolecularWorkflowResult(method, product, steps, diagnostics)
+        return MolecularWorkflowResult(method, product, steps, diagnostics, parameters = parameters.toSortedMap())
     }
 
     private fun uniqueSite(seq: Seq, site: String, label: String): Int {

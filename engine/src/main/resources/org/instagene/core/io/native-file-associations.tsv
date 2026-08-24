@@ -15,6 +15,12 @@ ena	text/x-embl	EMBL sequence
 swiss	chemical/x-swiss-prot	Swiss-Prot sequence
 sprot	chemical/x-swiss-prot	Swiss-Prot sequence
 dat	chemical/x-swiss-prot	Swiss-Prot sequence
-aln	text/x-fasta-alignment	FASTA alignment
+aln	text/x-clustal-alignment	Clustal alignment
+clustal	text/x-clustal-alignment	Clustal alignment
 afa	text/x-fasta-alignment	FASTA alignment
 msa	text/x-fasta-alignment	FASTA alignment
+sto	text/x-stockholm-alignment	Stockholm alignment
+stockholm	text/x-stockholm-alignment	Stockholm alignment
+phy	text/x-phylip-alignment	PHYLIP alignment
+phylip	text/x-phylip-alignment	PHYLIP alignment
+ph	text/x-phylip-alignment	PHYLIP alignment

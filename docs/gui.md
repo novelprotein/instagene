@@ -75,8 +75,9 @@ The Enzyme tab lists the enabled restriction-enzyme catalog and the cut count
 for the active sequence. Select an enzyme to inspect individual sites, check
 enzymes for a working digest, and review the resulting fragments. The panel
 also supports custom enzyme definitions and catalog preferences. Large-sequence
-cut counts arrive asynchronously so the editor remains usable while a scan is
-running.
+cut counts arrive asynchronously; completed enzyme rows surface as the catalog
+scan progresses, with a completed-enzyme counter and **Cancel scan** control,
+so the editor remains usable while a scan is running.
 
 ### Analysis
 
@@ -97,6 +98,15 @@ contains them. The report distinguishes substitutions, low-quality calls,
 insertions, deletions, and uncovered reference bases. Unreadable files are
 summarized without discarding valid reads; export the completed verification as
 Markdown or JSON.
+
+The **NCBI / BLAST** workspace makes remote actions explicit. Its **Result
+cache** control starts at **Network only** and does not write responses until a
+researcher selects a cache mode. The other choices reuse a local,
+integrity-checked NCBI cache, prefer a fresh response with an offline fallback,
+or work cache-only. When a GenBank record is opened, its Info metadata records
+the request, response SHA-256, retrieval time, and whether the result came from
+the network or cache. BLAST jobs remain live, remote requests and are not
+silently replayed from a response cache.
 
 ### Features
 
@@ -119,7 +129,9 @@ library.
    settings, and annotations. Save recurring annotations to the Feature Library
    for reuse.
 4. **Auto-annotate** scans using bundled presets and saved definitions. Search
-   both strands when appropriate, then review each match before saving.
+   both strands when appropriate, then review each match before saving. Its
+   preview reports definitions completed and can be cancelled; applying a large
+   library also continues in the background.
 
 Use GenBank for annotated or circular records. FASTA cannot retain features,
 qualifiers, colors, or circular topology. The same short guide is available in
@@ -176,7 +188,18 @@ Projects keep a folder of sequence and supporting files together. The project
 browser can open files in tabs, search project content, manage collections, and
 run supported batch operations. Project manifests and edit history are stored
 inside the project folder; keep them with the project when moving it between
-machines.
+machines. **Reload Project from Disk** refreshes clean externally changed tabs,
+preserves dirty buffers as local conflicts, keeps missing-file tabs available,
+and can open newly declared supported manifest files. It does not silently
+close work or overwrite an unsaved edit.
+
+With a sequence tab active, **Project → ELN / Lab Notebook** copies a Markdown
+summary or exports individual sequence, primer CSV, map SVG, and report
+attachments. **Export Generic ELN/LIMS Bundle** writes a local vendor-neutral
+ZIP containing a versioned integrity manifest, standard sequence attachments,
+primer CSV, provenance summary, and a map SVG when the sequence is non-empty.
+It never uploads data or contacts a vendor. See the
+[researcher handoff guide](tasks.md#hand-off-a-record-to-an-eln-or-lims).
 
 ### Tools and Actions
 
@@ -194,11 +217,17 @@ associated sequence before use.
 
 ## Responsiveness and large files
 
-File parsing and large digest scans are designed to run away from the Swing
-event thread. Some workflows continue in the background and apply results only
-when they still match the active document. Loading a very large genome can
-still require substantial memory and time; use a machine with enough RAM and
-avoid opening multiple copies unnecessarily.
+File parsing and large digest/feature-library scans are designed to run away
+from the Swing event thread. Some workflows continue in the background and
+apply results only when they still match the active document. The practical
+workload targets are a 10 kb plasmid opening and rendering within roughly two
+seconds on a typical desktop, a 100 kb construct with responsive scrolling,
+and multi-megabase files with visible background work and cancellation where a
+workflow supports it. Sequence rendering paints only rows in the viewport;
+tables use Swing's viewport rendering rather than creating cells for every
+record. Loading a very large genome can still require substantial memory and
+time, so use a machine with enough RAM and avoid opening multiple copies
+unnecessarily.
 
 ## Troubleshooting
 

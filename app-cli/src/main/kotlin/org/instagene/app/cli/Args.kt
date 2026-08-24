@@ -7,8 +7,9 @@ package org.instagene.app.cli
 class Args(argv: List<String>) {
 
     private val booleanFlags = setOf(
-        "all-frames", "circular", "cutters-only", "delete", "forward-only",
-        "json", "linear", "no-colors", "quiet", "revcomp", "stop-at-stop",
+        "advanced", "all-frames", "allow-external", "allow-online", "circular", "cutters-only", "delete",
+        "direct-only", "exclude-uncovered", "forward-only", "health", "inverted", "inverted-only", "json", "linear",
+        "linear-backbone", "no-colors", "quiet", "rescan", "revcomp", "stop-at-stop",
     )
 
     private val options = LinkedHashMap<String, String>()

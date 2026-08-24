@@ -14,6 +14,9 @@ files and projects are listed beneath these actions when available.
 
 - [Install and open your first file](getting-started.md)
 - [Learn the desktop workspace](gui.md)
+- [Follow researcher task guides](tasks.md)
+- [Check format support before import or export](formats.md)
+- [Migrate from another sequence tool or ELN](migration.md)
 - [Automate analyses with the CLI](cli.md)
 - [Use the Kotlin engine](engine-api.md)
 
@@ -53,11 +56,11 @@ to choose the Java installation yourself or cannot install applications.
 
 ### Native sequence formats
 
-FASTA, GenBank/ApE, GFF3, EMBL/ENA, Swiss-Prot, and FASTA alignments are
-handled by the built-in sequence I/O layer. ABI/AB1 and SCF chromatograms are
-read as sequencing data. A file with an unknown extension is inspected by
-content where possible, so a text file containing bare bases can still open as
-a sequence.
+FASTA, GenBank/ApE, GFF3, EMBL/ENA, Swiss-Prot, and FASTA, Clustal,
+Stockholm, and PHYLIP alignments are handled by the built-in sequence I/O
+layer. ABI/AB1 and SCF chromatograms are read as sequencing data. A file with
+an unknown extension is inspected by content where possible, so a text file
+containing bare bases can still open as a sequence.
 
 Installed desktop packages register these native sequence formats with the
 host operating system. Portable distributions remain association-neutral.
@@ -68,6 +71,14 @@ The project catalogues several legacy or proprietary sequence formats, but
 those formats require a separately configured converter. They are not bundled
 parsers and should not be treated as native support. See the GUI settings and
 the [Engine API](engine-api.md) for the converter contract.
+
+SnapGene `.dna` files are deliberately not imported directly while their
+license and format compatibility are under review. Export the record as
+GenBank from SnapGene, then open the `.gb`/`.gbk` file in InstaGene. This
+preserves the supported, inspectable conversion path without implying native
+SnapGene compatibility. The [format matrix](formats.md) and
+[migration guide](migration.md) distinguish built-in support from
+converter-backed and deferred routes.
 
 ## Project status
 

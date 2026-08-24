@@ -4,6 +4,7 @@ import org.instagene.core.io.SeqIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class DigestTest {
@@ -101,6 +102,41 @@ class DigestTest {
         val counts = Digest.cutCounts(seq, listOf(Enzymes.require("EcoRI"), Enzymes.require("NotI")))
         assertEquals(1, counts[Enzymes.require("EcoRI")])
         assertEquals(0, counts[Enzymes.require("NotI")])
+    }
+
+    @Test
+    fun countSitesReportsBoundedProgressAndHonorsCancellation() {
+        val seq = Seq(bases = "A".repeat(100_000))
+        val progress = ArrayList<Pair<Int, Int>>()
+        var checks = 0
+
+        assertFailsWith<java.util.concurrent.CancellationException> {
+            Digest.countSites(
+                seq,
+                Enzymes.require("EcoRI"),
+                cancellationRequested = { checks >= 2 },
+                progress = { scanned, total ->
+                    progress += scanned to total
+                    checks++
+                },
+            )
+        }
+
+        assertTrue(progress.isNotEmpty())
+        assertEquals(seq.length - Enzymes.require("EcoRI").siteLength + 1, progress.first().second)
+        assertTrue(progress.zipWithNext().all { (before, after) -> before.first < after.first })
+    }
+
+    @Test
+    fun countSitesReportsTheFinalPositionWhenItCompletes() {
+        val seq = Seq(bases = "A".repeat(100_003))
+        val progress = ArrayList<Pair<Int, Int>>()
+
+        assertEquals(0, Digest.countSites(seq, Enzymes.require("EcoRI"), progress = { scanned, total -> progress += scanned to total }))
+
+        val total = seq.length - Enzymes.require("EcoRI").siteLength + 1
+        assertEquals(total to total, progress.last())
+        assertTrue(progress.zipWithNext().all { (before, after) -> before.first < after.first })
     }
 
     @Test
