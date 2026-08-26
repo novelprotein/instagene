@@ -233,7 +233,7 @@ class ProjectTreePanel(
         popup.add(ContextMenus.item(
             "Open in Folder",
             "Reveal this item in its containing folder.",
-        ) { onOpenInFolder(if (file.isDirectory) file else file.parentFile!!) })
+        ) { onOpenInFolder(if (file.isDirectory) file else file.parentFile ?: file) })
         tree.componentPopupMenu = popup
         if (tree.isShowing) popup.show(tree, e.x, e.y)
     }

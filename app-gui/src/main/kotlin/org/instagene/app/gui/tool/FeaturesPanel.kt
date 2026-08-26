@@ -126,11 +126,12 @@ class FeaturesPanel(
             autoAnnotationWorker = null
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
-            if (docListener != null) doc.addListener(docListener!!)
+            docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            docListener = listenerFor()
-            doc.addListener(docListener!!)
+            val listener = listenerFor()
+            docListener = listener
+            doc.addListener(listener)
         }
         refresh()
     }

@@ -25,10 +25,11 @@ class StatusBar(initial: SeqDocument, private val sequenceView: SequenceView) : 
         add(statusLabel, BorderLayout.CENTER)
         border = BorderFactory.createEtchedBorder()
 
-        docListener = SeqDocument.Listener { _, _ ->
+        val listener = SeqDocument.Listener { _, _ ->
             statusLabel.text = sequenceView.statusText()
         }
-        doc.addListener(docListener!!)
+        docListener = listener
+        doc.addListener(listener)
         statusLabel.text = sequenceView.statusText()
     }
 
@@ -37,13 +38,14 @@ class StatusBar(initial: SeqDocument, private val sequenceView: SequenceView) : 
         if (newDoc !== doc) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
-            if (docListener != null) doc.addListener(docListener!!)
+            docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            docListener = SeqDocument.Listener { _, _ ->
+            val listener = SeqDocument.Listener { _, _ ->
                 statusLabel.text = sequenceView.statusText()
             }
-            doc.addListener(docListener!!)
+            docListener = listener
+            doc.addListener(listener)
         }
         statusLabel.text = sequenceView.statusText()
     }

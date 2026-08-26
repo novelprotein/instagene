@@ -7,6 +7,7 @@ import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.Topology
+import org.instagene.core.io.SeqIO
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
@@ -77,6 +78,11 @@ class PlasmidMapPanelTest {
         canvas.dispatchEvent(
             MouseEvent(canvas, MouseEvent.MOUSE_RELEASED, 0, InputEvent.BUTTON1_DOWN_MASK, p.first, p.second, 1, false, MouseEvent.BUTTON1)
         )
+    }
+
+    private fun click(canvas: JPanel, p: Pair<Int, Int>) {
+        press(canvas, p)
+        release(canvas, p)
     }
 
     private fun renderMap(seq: Seq, width: Int, height: Int): BufferedImage {
@@ -189,6 +195,92 @@ class PlasmidMapPanelTest {
     }
 
     @Test
+    fun clickOnRealPlasmidFeatureLabelSelectsTheWholeFeature() {
+        SwingUtilities.invokeAndWait {
+            val content = InstaGeneContent()
+            val seq = SeqIO.Samples.PBR322_NCBI
+            val feature = seq.features.first { it.visible && it.name == "ROP protein" }
+            content.doc.loadSequence(seq)
+            val map = content.plasmidMapPanel
+            map.setSize(800, 700)
+            map.doLayout()
+            map.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
+            val canvas = map.getComponent(1) as JPanel
+            val hit = map.featureLabelHitCenterForTest(feature.name)
+
+            assertTrue(hit != null, "expected a painted label hit target for ${feature.name}")
+            click(canvas, hit)
+
+            assertEquals(feature.start, content.doc.selectionStart)
+            assertEquals(feature.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun clickOnRealPlasmidFeatureArcSelectsTheWholeFeature() {
+        SwingUtilities.invokeAndWait {
+            val content = InstaGeneContent()
+            val seq = SeqIO.Samples.PBR322_NCBI
+            val feature = seq.features.first { it.visible && it.name.isNotBlank() && it.length > 100 }
+            content.doc.loadSequence(seq)
+            val map = content.plasmidMapPanel
+            map.setSize(800, 700)
+            map.doLayout()
+            map.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
+            val canvas = map.getComponent(1) as JPanel
+            val hit = map.featureArcHitCenterForTest(feature.name)
+
+            assertTrue(hit != null, "expected a painted arc hit target for ${feature.name}")
+            click(canvas, hit)
+
+            assertEquals(feature.start, content.doc.selectionStart)
+            assertEquals(feature.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun realPlasmidFeatureLabelsUseNonOverlappingPackedCallouts() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(SeqIO.Samples.PBR322_NCBI))
+            map.setSize(800, 700)
+            map.doLayout()
+            map.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
+            val bounds = map.featureLabelBoundsForTest()
+
+            assertTrue(bounds.size > 6, "expected multiple packed labels for the real plasmid")
+            bounds.forEachIndexed { index, first ->
+                bounds.drop(index + 1).forEach { second ->
+                    assertFalse(first.intersects(second), "feature labels overlap: $first and $second")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun clickOnCrowdedCircularCalloutSelectsTheWholeFeature() {
+        SwingUtilities.invokeAndWait {
+            val content = InstaGeneContent()
+            val features = (0 until 18).map { index ->
+                Feature("feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            content.doc.loadSequence(circular.copy(features = features))
+            val map = content.plasmidMapPanel
+            map.setSize(340, 300)
+            map.doLayout()
+            map.paint(BufferedImage(340, 300, BufferedImage.TYPE_INT_ARGB).graphics)
+            val canvas = map.getComponent(1) as JPanel
+            val target = features.last()
+            val hit = map.featureLabelHitCenterForTest(target.name)
+
+            assertTrue(hit != null, "expected a painted callout hit target for ${target.name}")
+            click(canvas, hit)
+
+            assertEquals(target.start, content.doc.selectionStart)
+            assertEquals(target.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
     fun clickOnBareBackboneSelectsASingleBase() {
         SwingUtilities.invokeAndWait {
             val content = InstaGeneContent()
@@ -244,6 +336,8 @@ class PlasmidMapPanelTest {
             assertTrue(svg.contains("Paper map"))
             assertFalse(svg.contains(">feature</text>"))
             assertTrue(svg.contains("width=\"900\""))
+            assertTrue(svg.contains("stroke-linecap=\"round\""))
+            assertTrue(svg.contains("<rect"))
         }
     }
 

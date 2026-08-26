@@ -88,6 +88,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         val angle: Double,
         val ring: Int,
         val arcLength: Double,
+        val colorIndex: Int,
+        val feature: Feature,
     )
 
     private data class LinearLabel(
@@ -95,12 +97,24 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         val anchorX: Int,
         val lane: Int,
         val colorIndex: Int,
+        val feature: Feature,
     )
 
     private data class PlacedLinearLabel(
         val label: LinearLabel,
         val x: Int,
         val row: Int,
+    )
+
+    private data class LabelHitRegion(
+        val bounds: Rectangle,
+        val start: Int,
+        val end: Int,
+    )
+
+    private data class ArcHitRegion(
+        val feature: Feature,
+        val ring: Int,
     )
 
     private val mapCanvas = MapCanvas()
@@ -119,11 +133,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 it.withTopology(target)
             }
         }
-        docListener = SeqDocument.Listener { _, reason ->
+        val initialListener = SeqDocument.Listener { _, reason ->
             mapCanvas.repaint()
             if (reason == SeqDocument.Reason.SEQUENCE) syncTopologyControl()
         }
-        doc.addListener(docListener!!)
+        docListener = initialListener
+        doc.addListener(initialListener)
         syncTopologyControl()
 
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
@@ -163,14 +178,15 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         if (newDoc !== doc) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
-            if (docListener != null) doc.addListener(docListener!!)
+            docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            docListener = SeqDocument.Listener { _, reason ->
+            val listener = SeqDocument.Listener { _, reason ->
                 mapCanvas.repaint()
                 if (reason == SeqDocument.Reason.SEQUENCE) syncTopologyControl()
             }
-            doc.addListener(docListener!!)
+            docListener = listener
+            doc.addListener(listener)
         }
         syncTopologyControl()
         mapCanvas.repaint()
@@ -230,20 +246,27 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val end = feature.end.toDouble() / seq.length * 360.0 - 90.0
             val color = svgColor(feature, index)
             val lane = laneOf[feature] ?: 0
-            "<path d=\"${svgArc(cx, cy, radius + lane * options.featureLaneSpacing, start, end)}\" fill=\"none\" stroke=\"$color\" stroke-width=\"10\"/>"
+            val path = svgArc(cx, cy, radius + lane * options.featureLaneSpacing, start, end)
+            """
+              <path d="$path" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+              <path d="$path" fill="none" stroke="$color" stroke-width="10" stroke-linecap="round"/>
+            """.trimIndent()
         }.joinToString("\n")
         val labelSvg = if (options.showFeatureLabels) svgFeatureLabels(features, laneOf, cx, cy, radius, width, height, options.featureLaneSpacing) else ""
         val siteSvg = if (options.showRestrictionSites) doc.cutSites.joinToString("\n") { (enzyme, recognitionStart) ->
             val angle = Math.toRadians(recognitionStart.toDouble() / seq.length * 360.0 - 90.0)
             val x = cx + cos(angle) * (radius + 22)
             val y = cy + sin(angle) * (radius + 22)
-            "<circle cx=\"$x\" cy=\"$y\" r=\"3\" fill=\"#8a4baf\"/><text x=\"${x + 5}\" y=\"$y\" font-size=\"10\">${escapeSvg(enzyme.name)}</text>"
+            val label = escapeSvg(enzyme.name)
+            val labelWidth = label.length * 6 + 8
+            "<circle cx=\"$x\" cy=\"$y\" r=\"3\" fill=\"#8a4baf\"/><rect x=\"${x + 5}\" y=\"${y - 11}\" width=\"$labelWidth\" height=\"14\" rx=\"4\" fill=\"#ffffff\" stroke=\"#c6cfd9\"/><text x=\"${x + 9}\" y=\"$y\" font-size=\"10\">$label</text>"
         } else ""
         val title = options.title?.takeIf { it.isNotBlank() } ?: "${seq.name} (${seq.length} bp)"
         file.writeText("""
             <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">
               <rect width="100%" height="100%" fill="#ffffff"/>
-              <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#9aa3ad" stroke-width="8"/>
+              <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#d8dee6" stroke-width="10"/>
+              <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#f7f9fb" stroke-width="2"/>
               <text x="$cx" y="${cy + 5}" text-anchor="middle" font-size="16">${escapeSvg(title)}</text>
               $featureSvg
               $labelSvg
@@ -321,6 +344,18 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         circularCheckbox.isEnabled = doc.seq.kind != SeqKind.PROTEIN
     }
 
+    /** Exposed for GUI regression tests: center of the latest painted feature label target. */
+    fun featureLabelHitCenterForTest(name: String): Pair<Int, Int>? =
+        mapCanvas.featureLabelHitCenterForTest(name)
+
+    /** Exposed for GUI regression tests: center of the latest painted feature arc target. */
+    fun featureArcHitCenterForTest(name: String): Pair<Int, Int>? =
+        mapCanvas.featureArcHitCenterForTest(name)
+
+    /** Exposed for GUI regression tests: latest painted feature label boxes. */
+    fun featureLabelBoundsForTest(): List<Rectangle> =
+        mapCanvas.featureLabelBoundsForTest()
+
     private inner class MapCanvas : JPanel() {
 
         var onSelect: ((Int, Int) -> Unit)? = null
@@ -336,6 +371,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         private var ringCount = 0
         private val laneOf = HashMap<Feature, Int>()
         private var laneCount = 0
+        private val labelHitRegions = ArrayList<LabelHitRegion>()
+        private val arcHitRegions = ArrayList<ArcHitRegion>()
+        private val featureLabelHitRegions = LinkedHashMap<String, Rectangle>()
 
         private var pressPosition: Int? = null
         private var dragged = false
@@ -358,7 +396,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                         pressPosition = null
                         dragged = false
                     } else {
-                        if (pressPosition != null) handleClick(e)
+                        handleClick(e)
                         pressPosition = null
                     }
                 }
@@ -402,6 +440,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val g2 = g as Graphics2D
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            labelHitRegions.clear()
+            arcHitRegions.clear()
+            featureLabelHitRegions.clear()
 
             val seq = doc.seq
             if (seq.length == 0) {
@@ -436,17 +477,17 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             backboneRadius = (available - 26).coerceAtLeast(ringBand + 30).coerceAtMost(available - 18)
             val r = backboneRadius
 
-            // Origin marker (base 1) at twelve o'clock.
-            g2.color = Palette.CUT_MARK
-            g2.stroke = BasicStroke(2f)
-            g2.drawLine(pointX(PI / 2, r - 2), pointY(PI / 2, r - 2), pointX(PI / 2, r - 12), pointY(PI / 2, r - 12))
-            g2.font = labelFont
-            g2.color = Palette.TEXT
-            drawStringCentered(g2, "1", pointX(PI / 2, r - 20), pointY(PI / 2, r - 20) + 4)
-
             // Backbone.
-            g2.color = Palette.GRID
-            g2.stroke = BasicStroke(9f)
+            g2.color = Palette.MAP_BACKBONE
+            g2.stroke = BasicStroke(10f)
+            g2.draw(
+                Ellipse2D.Double(
+                    (centerX - r).toDouble(), (centerY - r).toDouble(),
+                    (r * 2).toDouble(), (r * 2).toDouble()
+                )
+            )
+            g2.color = Palette.MAP_BACKBONE_HIGHLIGHT
+            g2.stroke = BasicStroke(2f)
             g2.draw(
                 Ellipse2D.Double(
                     (centerX - r).toDouble(), (centerY - r).toDouble(),
@@ -454,13 +495,24 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 )
             )
 
+            // Origin marker (base 1) at twelve o'clock.
+            g2.color = Palette.CUT_MARK
+            g2.stroke = BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+            g2.drawLine(pointX(PI / 2, r - 2), pointY(PI / 2, r - 2), pointX(PI / 2, r - 16), pointY(PI / 2, r - 16))
+            g2.fill(Ellipse2D.Double((pointX(PI / 2, r) - 3).toDouble(), (pointY(PI / 2, r) - 3).toDouble(), 6.0, 6.0))
+            g2.font = labelFont
+            val originX = pointX(PI / 2, r - 25)
+            val originY = pointY(PI / 2, r - 25) + 4
+            val originBounds = textBounds(g2.fontMetrics, "1", originX - g2.fontMetrics.stringWidth("1") / 2, originY)
+            drawLabelBox(g2, "1", originBounds.x + 3, originY, originBounds, Palette.CUT_MARK)
+
             // Current selection, highlighted as an arc just inside the backbone.
             if (doc.hasSelection) {
                 val s = doc.selectionStart
                 val e = doc.selectionEnd
                 if (e > s) {
-                    g2.color = Palette.translucent(Palette.SELECTION, 0x66)
-                    g2.stroke = BasicStroke(7f)
+                    g2.color = Palette.translucent(Palette.ACCENT, 0x88)
+                    g2.stroke = BasicStroke(8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
                     g2.draw(
                         Arc2D.Double(
                             (centerX - r + 6).toDouble(), (centerY - r + 6).toDouble(),
@@ -480,12 +532,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             var tick = tickStep
             while (tick < seq.length) {
                 val a = angleOf(tick)
-                g2.color = Palette.GUTTER
+                g2.color = Palette.MAP_GUIDE
                 g2.drawLine(
                     pointX(a, r - 8), pointY(a, r - 8),
                     pointX(a, r + 8), pointY(a, r + 8),
                 )
-                drawCentered(g2, "${tick / 1000}k".takeIf { tick >= 1000 } ?: "$tick", a, r - 20)
+                g2.color = Palette.MUTED
+                drawCentered(g2, formatTick(tick), a, r - 20)
                 tick += tickStep
             }
 
@@ -498,15 +551,18 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 val color = featureColor(f, index)
                 val startAngle = 90.0 - f.start * 360.0 / seq.length
                 val extent = -(f.length * 360.0 / seq.length)
-                g2.color = color
-                g2.stroke = BasicStroke(11f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER)
-                g2.draw(
-                    Arc2D.Double(
-                        (centerX - ring).toDouble(), (centerY - ring).toDouble(),
-                        (ring * 2).toDouble(), (ring * 2).toDouble(),
-                        startAngle, extent, Arc2D.OPEN,
-                    )
+                val arc = Arc2D.Double(
+                    (centerX - ring).toDouble(), (centerY - ring).toDouble(),
+                    (ring * 2).toDouble(), (ring * 2).toDouble(),
+                    startAngle, extent, Arc2D.OPEN,
                 )
+                g2.color = Palette.FEATURE_OUTLINE
+                g2.stroke = BasicStroke(14f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                g2.draw(arc)
+                g2.color = color
+                g2.stroke = BasicStroke(11f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                g2.draw(arc)
+                arcHitRegions += ArcHitRegion(f, ring)
                 // Arrowhead showing the direction of transcription.
                 val headAt = if (f.strand == Strand.FORWARD) f.end else f.start
                 drawArrowHead(g2, angleOf(headAt), ring, f.strand)
@@ -517,6 +573,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                     angleOf((f.start + f.end) / 2),
                     ring,
                     arcLength,
+                    index,
+                    f,
                 )
             }
 
@@ -531,7 +589,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                     pointX(a, r + 4), pointY(a, r + 4),
                     pointX(a, r + 16), pointY(a, r + 16),
                 )
-                drawRadialLabel(g2, "${enzyme.name} ${topCut + 1}", a, r + 20)
+                val labelBounds = drawRadialLabel(g2, "${enzyme.name} ${topCut + 1}", a, r + 20)
+                addPositionHit(labelBounds, topCut)
             }
 
             // Centre caption.
@@ -548,7 +607,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             // Draw labels last so restriction marks and the backbone cannot obscure them.
             if (showFeatureLabels.isSelected) drawCircularFeatureLabels(g2, labels, fm, gcPct)
 
-            paintFeatureLegend(g2, seq)
+            if (seq.features.count { it.visible } <= 12) paintFeatureLegend(g2, seq)
         }
 
         /**
@@ -563,14 +622,16 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         ) {
             val occupied = mutableListOf(circularCaptionBounds(g2, gcPct))
             val callouts = ArrayList<CircularLabel>()
+            val crowded = labels.size > 6
 
             for (label in labels) {
                 val baselineX = pointX(label.angle, label.ring - 20) - fm.stringWidth(label.text) / 2
                 val baselineY = pointY(label.angle, label.ring - 20) + fm.ascent / 2
                 val bounds = textBounds(fm, label.text, baselineX, baselineY)
                 val fitsArc = label.arcLength > fm.stringWidth(label.text) + 10
-                if (fitsArc && boundsInsideCanvas(bounds) && occupied.none(bounds::intersects)) {
+                if (!crowded && fitsArc && boundsInsideCanvas(bounds) && occupied.none(bounds::intersects)) {
                     drawLabelBox(g2, label.text, baselineX, baselineY, bounds)
+                    addFeatureHit(label.feature, bounds)
                     occupied += bounds
                 } else {
                     callouts += label
@@ -578,27 +639,60 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             }
 
             val margin = 8
-            val centreGap = 28
-            val columnWidth = (width / 2 - centreGap - margin).coerceAtLeast(24)
+            val columnWidth = (width / 2 - margin * 3).coerceAtLeast(24)
             val sides = callouts.groupBy { cos(it.angle) < 0 }
             for ((onLeft, sideLabels) in sides) {
-                val x = if (onLeft) margin else centerX + centreGap
-                for ((textValue, angle, ring) in sideLabels.sortedBy { pointY(it.angle, it.ring) }) {
-                    val text = fitText(fm, textValue, columnWidth)
-                    val desiredBaseline = pointY(angle, ring) + fm.ascent / 2
-                    val baseline = findFreeBaseline(fm, text, x, desiredBaseline, occupied)
+                val sorted = sideLabels.sortedBy { pointY(it.angle, it.ring) }
+                val baselines = packedCircularCalloutBaselines(fm, sorted)
+                for ((index, label) in sorted.withIndex()) {
+                    val text = fitText(fm, label.text, columnWidth)
+                    val textWidth = fm.stringWidth(text)
+                    val x = if (onLeft) margin else width - margin - textWidth
+                    val baseline = baselines[index]
                     val bounds = textBounds(fm, text, x, baseline)
+                    val angle = label.angle
+                    val ring = label.ring
                     val anchorX = pointX(angle, ring)
                     val anchorY = pointY(angle, ring)
                     val labelEdgeX = if (onLeft) bounds.x + bounds.width else bounds.x
 
-                    g2.color = Palette.MUTED
+                    g2.color = Palette.MAP_GUIDE
                     g2.stroke = BasicStroke(1f)
                     g2.drawLine(anchorX, anchorY, labelEdgeX, bounds.y + bounds.height / 2)
-                    drawLabelBox(g2, text, x, baseline, bounds)
+                    drawLabelBox(g2, text, x, baseline, bounds, Palette.featureColor(label.colorIndex))
+                    addFeatureHit(label.feature, bounds)
                     occupied += bounds
                 }
             }
+        }
+
+        private fun packedCircularCalloutBaselines(fm: java.awt.FontMetrics, labels: List<CircularLabel>): List<Int> {
+            if (labels.isEmpty()) return emptyList()
+            val minBaseline = fm.ascent + 8
+            val maxBaseline = (height - fm.descent - 8).coerceAtLeast(minBaseline)
+            val spacing = fm.height + 15
+            val baselines = labels.map { (pointY(it.angle, it.ring) + fm.ascent / 2).coerceIn(minBaseline, maxBaseline) }.toMutableList()
+            for (index in 1 until baselines.size) {
+                baselines[index] = maxOf(baselines[index], baselines[index - 1] + spacing)
+            }
+            if (baselines.last() > maxBaseline) {
+                baselines[baselines.lastIndex] = maxBaseline
+                for (index in baselines.lastIndex - 1 downTo 0) {
+                    baselines[index] = minOf(baselines[index], baselines[index + 1] - spacing)
+                }
+            }
+            if (baselines.first() < minBaseline || labels.size * spacing > maxBaseline - minBaseline + spacing) {
+                val fallbackSpacing = ((maxBaseline - minBaseline).toDouble() / (labels.size - 1).coerceAtLeast(1))
+                    .coerceAtLeast(spacing.toDouble())
+                labels.indices.forEach { index ->
+                    baselines[index] = if (labels.size == 1) {
+                        (minBaseline + maxBaseline) / 2
+                    } else {
+                        (minBaseline + fallbackSpacing * index).roundToInt()
+                    }
+                }
+            }
+            return baselines
         }
 
         private fun circularCaptionBounds(g2: Graphics2D, gcPct: Double = SeqOps.gcContent(doc.seq)): Rectangle {
@@ -637,7 +731,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 if (featureWidth > fm.stringWidth(text) + 8) {
                     null
                 } else {
-                    LinearLabel(text, x1 + featureWidth / 2, laneOf[feature] ?: 0, index)
+                    LinearLabel(text, x1 + featureWidth / 2, laneOf[feature] ?: 0, index, feature)
                 }
             }
             val placedLabels = placeLinearLabels(fm, calloutLabels, left, right)
@@ -647,8 +741,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val desiredAxisY = maxOf(height / 2 + laneCount * laneH / 2, calloutBottom + featureStack + 10)
             val axisY = desiredAxisY.coerceAtMost((height - 60).coerceAtLeast(70))
 
-            g2.color = Palette.GRID
-            g2.stroke = BasicStroke(8f)
+            g2.color = Palette.MAP_BACKBONE
+            g2.stroke = BasicStroke(9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+            g2.drawLine(left, axisY, right, axisY)
+            g2.color = Palette.MAP_BACKBONE_HIGHLIGHT
+            g2.stroke = BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
             g2.drawLine(left, axisY, right, axisY)
 
             // Current selection, highlighted as a band just above the backbone.
@@ -658,8 +755,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 if (e > s) {
                     val x1 = left + (s.toDouble() / seq.length * span).roundToInt()
                     val x2 = left + (e.toDouble() / seq.length * span).roundToInt()
-                    g2.color = Palette.translucent(Palette.SELECTION, 0x66)
-                    g2.stroke = BasicStroke(5f)
+                    g2.color = Palette.translucent(Palette.ACCENT, 0x88)
+                    g2.stroke = BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
                     g2.drawLine(x1, axisY - 8, maxOf(x1 + 2, x2), axisY - 8)
                 }
             }
@@ -670,9 +767,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             var tick = 0
             while (tick <= seq.length) {
                 val x = left + (tick.toDouble() / seq.length * span).roundToInt()
-                g2.color = Palette.GUTTER
+                g2.color = Palette.MAP_GUIDE
                 g2.drawLine(x, axisY + 6, x, axisY + 12)
-                drawStringCentered(g2, "$tick", x, axisY + 26)
+                g2.color = Palette.MUTED
+                drawStringCentered(g2, formatTick(tick), x, axisY + 26)
                 tick += tickStep
             }
 
@@ -683,14 +781,19 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 val y = axisY - 24 - lane * laneH
                 val w = maxOf(4, x2 - x1)
                 val color = featureColor(f, index)
-                g2.color = Palette.translucent(color, 0x99)
+                g2.color = Palette.FEATURE_OUTLINE
+                g2.fillRoundRect(x1 - 1, y - 1, w + 2, 14, 7, 7)
+                g2.color = Palette.translucent(color, 0xA8)
                 g2.fillRoundRect(x1, y, w, 12, 6, 6)
                 g2.color = color
                 g2.drawRoundRect(x1, y, w, 12, 6, 6)
+                drawLinearArrowHead(g2, x1, y, w, f.strand)
                 val text = featureLabel(f)
                 if (w > fm.stringWidth(text) + 8) {
                     g2.color = Palette.TEXT
-                    g2.drawString(text, x1, y - 2)
+                    val labelBaseline = y - 2
+                    g2.drawString(text, x1, labelBaseline)
+                    addFeatureHit(f, textBounds(fm, text, x1, labelBaseline))
                 }
             }
 
@@ -711,7 +814,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                     while (lane < laneOccupied.size && laneOccupied[lane].any { rangesOverlap(it, interval) }) lane++
                     if (lane >= laneOccupied.size) laneOccupied.add(mutableListOf())
                     laneOccupied[lane].add(interval)
-                    g2.drawString(label, x + 2, axisY + 44 + lane * (fm.height + 2))
+                    val baseline = axisY + 44 + lane * (fm.height + 2)
+                    val bounds = textBounds(fm, label, x + 2, baseline)
+                    drawLabelBox(g2, label, x + 2, baseline, bounds, Palette.CUT_MARK)
+                    addPositionHit(bounds, topCut)
                 }
             }
 
@@ -739,10 +845,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 val label = featureLabel(f)
                 val boxSize = 8
                 legendY -= fm.height + 2
+                g2.color = Palette.FEATURE_OUTLINE
+                g2.fillRoundRect(legendX - 1, legendY - boxSize + 1, boxSize + 2, boxSize + 2, 3, 3)
                 g2.color = color
-                g2.fillRect(legendX, legendY - boxSize + 2, boxSize, boxSize)
+                g2.fillRoundRect(legendX, legendY - boxSize + 2, boxSize, boxSize, 3, 3)
                 g2.color = Palette.TEXT
                 g2.drawString(label, legendX + boxSize + 4, legendY)
+                addFeatureHit(f, Rectangle(legendX - 2, legendY - fm.ascent - 2, boxSize + 6 + fm.stringWidth(label), fm.height + 4))
             }
         }
 
@@ -791,10 +900,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 val baseline = 62 + row * rowHeight
                 val bounds = textBounds(fm, label.text, x, baseline)
                 val featureY = axisY - 18 - label.lane * laneHeight
-                g2.color = Palette.featureColor(label.colorIndex)
+                g2.color = Palette.MAP_GUIDE
                 g2.stroke = BasicStroke(1f)
                 g2.drawLine(label.anchorX, bounds.y + bounds.height, label.anchorX, featureY)
-                drawLabelBox(g2, label.text, x, baseline, bounds)
+                drawLabelBox(g2, label.text, x, baseline, bounds, Palette.featureColor(label.colorIndex))
+                addFeatureHit(label.feature, bounds)
             }
         }
 
@@ -842,13 +952,22 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         private fun boundsInsideCanvas(bounds: Rectangle): Boolean =
             bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width && bounds.y + bounds.height <= height
 
-        private fun drawLabelBox(g2: Graphics2D, text: String, x: Int, baseline: Int, bounds: Rectangle) {
-            g2.color = Palette.translucent(Palette.BACKGROUND, 0xE8)
+        private fun drawLabelBox(g2: Graphics2D, text: String, x: Int, baseline: Int, bounds: Rectangle, stripe: Color? = null) {
+            g2.color = Palette.MAP_LABEL_BACKGROUND
             g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
+            if (stripe != null) {
+                g2.color = stripe
+                g2.fillRoundRect(bounds.x, bounds.y, 4, bounds.height, 5, 5)
+            }
+            g2.color = Palette.MAP_LABEL_BORDER
+            g2.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
             g2.color = Palette.TEXT
             g2.font = labelFont
             g2.drawString(text, x, baseline)
         }
+
+        private fun formatTick(tick: Int): String =
+            if (tick >= 1000 && tick % 1000 == 0) "${tick / 1000} kb" else tick.toString()
 
         private fun tickStep(length: Int): Int {
             val rough = length / 8.0
@@ -872,18 +991,65 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             g2.fillPolygon(xs, ys, 3)
         }
 
+        private fun drawLinearArrowHead(g2: Graphics2D, x: Int, y: Int, width: Int, strand: Strand) {
+            if (width < 8) return
+            if (strand == Strand.FORWARD) {
+                g2.fillPolygon(
+                    intArrayOf(x + width, x + width, x + width + 5),
+                    intArrayOf(y - 1, y + 13, y + 6),
+                    3,
+                )
+            } else if (strand == Strand.REVERSE) {
+                g2.fillPolygon(
+                    intArrayOf(x, x, x - 5),
+                    intArrayOf(y - 1, y + 13, y + 6),
+                    3,
+                )
+            }
+        }
+
         private fun drawCentered(g2: Graphics2D, text: String, angle: Double, radius: Int) {
             drawStringCentered(g2, text, pointX(angle, radius), pointY(angle, radius) + 4)
         }
 
         /** Labels outside the circle are pushed left or right so they never overlap it. */
-        private fun drawRadialLabel(g2: Graphics2D, text: String, angle: Double, radius: Int) {
+        private fun drawRadialLabel(g2: Graphics2D, text: String, angle: Double, radius: Int): Rectangle {
             val x = pointX(angle, radius)
             val y = pointY(angle, radius) + 4
             val fm = g2.fontMetrics
             val onLeft = cos(angle) < 0
-            g2.drawString(text, if (onLeft) x - fm.stringWidth(text) else x, y)
+            val textX = if (onLeft) x - fm.stringWidth(text) else x
+            val bounds = textBounds(fm, text, textX, y)
+            drawLabelBox(g2, text, textX, y, bounds, Palette.CUT_MARK)
+            return bounds
         }
+
+        private fun addFeatureHit(feature: Feature, bounds: Rectangle) {
+            val padded = Rectangle(bounds.x - 3, bounds.y - 3, bounds.width + 6, bounds.height + 6)
+            labelHitRegions += LabelHitRegion(padded, feature.start, feature.end)
+            featureLabelHitRegions.putIfAbsent(featureLabel(feature), padded)
+            if (feature.name.isNotBlank()) featureLabelHitRegions.putIfAbsent(feature.name, padded)
+        }
+
+        private fun addPositionHit(bounds: Rectangle, position: Int) {
+            val padded = Rectangle(bounds.x - 3, bounds.y - 3, bounds.width + 6, bounds.height + 6)
+            labelHitRegions += LabelHitRegion(padded, position, position + 1)
+        }
+
+        fun featureLabelHitCenterForTest(name: String): Pair<Int, Int>? {
+            val bounds = featureLabelHitRegions[name] ?: return null
+            return bounds.x + bounds.width / 2 to bounds.y + bounds.height / 2
+        }
+
+        fun featureArcHitCenterForTest(name: String): Pair<Int, Int>? {
+            val hit = arcHitRegions.firstOrNull { featureLabel(it.feature) == name || it.feature.name == name } ?: return null
+            val midpoint = hit.feature.start + hit.feature.length / 2
+            val angle = angleOf(midpoint % doc.seq.length)
+            return pointX(angle, hit.ring) to pointY(angle, hit.ring)
+        }
+
+        fun featureLabelBoundsForTest(): List<Rectangle> =
+            featureLabelHitRegions.values.map { Rectangle(it) }
 
         private fun drawStringCentered(g2: Graphics2D, text: String, x: Int, y: Int) {
             g2.drawString(text, x - g2.fontMetrics.stringWidth(text) / 2, y)
@@ -916,6 +1082,17 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         private fun handleClick(e: MouseEvent) {
             val seq = doc.seq
             if (seq.length == 0) return
+            labelHitRegions
+                .filter { it.bounds.contains(e.x, e.y) }
+                .minByOrNull { it.bounds.width * it.bounds.height }
+                ?.let {
+                onSelect?.invoke(it.start, it.end.coerceAtMost(seq.length))
+                return
+            }
+            featureArcAt(e.x, e.y)?.let {
+                onSelect?.invoke(it.start, it.end)
+                return
+            }
             val position = positionAt(e) ?: return
             val feature = seq.features.firstOrNull { position in it.start until it.end }
             if (feature != null) {
@@ -924,5 +1101,27 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 onSelect?.invoke(position, position + 1)
             }
         }
+
+        private fun featureArcAt(x: Int, y: Int): Feature? {
+            val seq = doc.seq
+            if (!seq.isCircular || arcHitRegions.isEmpty()) return null
+            val dx = (x - centerX).toDouble()
+            val dy = (centerY - y).toDouble()
+            val dist = sqrt(dx * dx + dy * dy)
+            var angle = PI / 2 - atan2(dy, dx)
+            if (angle < 0) angle += 2 * PI
+            val position = (angle / (2 * PI) * seq.length).roundToInt().coerceIn(0, seq.length - 1)
+            return arcHitRegions
+                .filter { abs(dist - it.ring) <= 10.0 && containsFeaturePosition(it.feature, position) }
+                .minByOrNull { abs(dist - it.ring) }
+                ?.feature
+        }
+
+        private fun containsFeaturePosition(feature: Feature, position: Int): Boolean =
+            if (feature.start <= feature.end) {
+                position in feature.start until feature.end
+            } else {
+                position >= feature.start || position < feature.end
+            }
     }
 }

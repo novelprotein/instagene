@@ -106,7 +106,7 @@ class GenBankTest {
         assertEquals("contig", seq.name)
         assertEquals("", seq.bases)
         assertEquals("join(ABC123.1:1..12)", seq.metadata["CONTIG"])
-        assertEquals(listOf("source", "kept"), seq.features.map { it.name })
+        assertEquals(listOf("kept"), seq.features.map { it.name })
         assertEquals(1, seq.features.single { it.name == "kept" }.start)
         assertEquals(8, seq.features.single { it.name == "kept" }.end)
     }

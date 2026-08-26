@@ -29,6 +29,8 @@ object Embl {
 
         fun flushFeature() {
             val type = currentType ?: return
+            // source is a metadata feature spanning the whole sequence; skip it.
+            if (type.equals("source", true)) { currentType = null; currentLocation = ""; qualifiers.clear(); return }
             val reverse = currentLocation.contains("complement", true)
             val positions = Regex("(\\d+)\\.\\.(\\d+)").find(currentLocation)
                 ?: Regex("(\\d+)").find(currentLocation)

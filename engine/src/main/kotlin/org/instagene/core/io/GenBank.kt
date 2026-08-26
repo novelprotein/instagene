@@ -64,6 +64,8 @@ object GenBank {
         fun flushFeature() {
             val loc = pendingLocation ?: return
             pendingLocation = null
+            // source is a metadata feature spanning the whole sequence; skip it.
+            if (pendingType.equals("source", ignoreCase = true)) { qualifiers.clear(); lastQualifier = null; return }
             val strand = if (loc.contains("complement", ignoreCase = true)) Strand.REVERSE else Strand.FORWARD
             val label = qualifiers["label"]?.firstOrNull() ?: qualifiers["gene"]?.firstOrNull()
                 ?: qualifiers["product"]?.firstOrNull() ?: qualifiers["note"]?.firstOrNull() ?: pendingType

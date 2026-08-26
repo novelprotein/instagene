@@ -261,14 +261,15 @@ class DigestPanel(
 
         prefs.addListener { onPrefsChanged() }
 
-        docListener = SeqDocument.Listener { _, reason ->
+        val initialListener = SeqDocument.Listener { _, reason ->
             if (reason == SeqDocument.Reason.SEQUENCE) {
                 digestVersion++
                 cutSitesCache.clear()
                 sequenceDebounceTimer.restart()
             }
         }
-        doc.addListener(docListener!!)
+        docListener = initialListener
+        doc.addListener(initialListener)
         refresh()
     }
 
@@ -282,17 +283,18 @@ class DigestPanel(
         if (switched) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
-            if (docListener != null) doc.addListener(docListener!!)
+            docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            docListener = SeqDocument.Listener { _, reason ->
+            val listener = SeqDocument.Listener { _, reason ->
                 if (reason == SeqDocument.Reason.SEQUENCE) {
                     digestVersion++
                     cutSitesCache.clear()
                     sequenceDebounceTimer.restart()
                 }
             }
-            doc.addListener(docListener!!)
+            docListener = listener
+            doc.addListener(listener)
         }
         if (switched) {
             activeCountCancellation?.set(true)

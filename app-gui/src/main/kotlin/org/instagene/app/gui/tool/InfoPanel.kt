@@ -150,13 +150,14 @@ class InfoPanel(
         if (newDoc !== doc) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
-            if (docListener != null) doc.addListener(docListener!!)
+            docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            docListener = SeqDocument.Listener { _, reason ->
+            val listener = SeqDocument.Listener { _, reason ->
                 if (reason == SeqDocument.Reason.SEQUENCE) refresh()
             }
-            doc.addListener(docListener!!)
+            docListener = listener
+            doc.addListener(listener)
         }
         refresh()
     }

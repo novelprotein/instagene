@@ -85,7 +85,7 @@ class SeqIOTest {
         assertEquals("J01749.1", sample.metadata["BLAST_SELECTED_ACCESSION"])
         assertTrue(sample.metadata["BLAST_VERIFICATION"].orEmpty().contains("NCBI BLASTN"))
         assertTrue(sample.metadata["ANNOTATION_SOURCE"].orEmpty().contains("GenBank feature table"))
-        assertTrue(sample.features.size >= 50)
+        assertTrue(sample.features.size >= 48, "expected at least 48 features after source filtering, got ${sample.features.size}")
         val types = sample.features.map { it.type }.toSet()
         assertTrue("CDS" in types)
         assertTrue("gene" in types)

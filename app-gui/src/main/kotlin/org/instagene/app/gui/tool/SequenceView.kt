@@ -87,6 +87,11 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
     private var basesPerLine = 60
     private var featureLanes = 0
     private val laneOf = HashMap<Feature, Int>()
+    private enum class HitKind { BAR, LABEL }
+    private data class HitTarget(val bounds: Rectangle, val feature: Feature, val kind: HitKind)
+    private val featureHitTargets = ArrayList<HitTarget>()
+    var selectedFeature: Feature? = null
+        private set
     private var runBuffer = CharArray(0)
     private var lastPaintedRowCount = 0
 
@@ -120,14 +125,15 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         if (newDoc !== doc) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
-            if (docListener != null) doc.addListener(docListener!!)
+            docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            docListener = SeqDocument.Listener { _, reason ->
+            val listener = SeqDocument.Listener { _, reason ->
                 if (reason == SeqDocument.Reason.SEQUENCE) relayout() else repaint()
                 if (reason == SeqDocument.Reason.SELECTION) scrollCaretIntoView()
             }
-            doc.addListener(docListener!!)
+            docListener = listener
+            doc.addListener(listener)
         }
         relayout()
     }
@@ -232,6 +238,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         val lastRow = ((clip.y + clip.height - padding) / rowHeight()).coerceAtMost(rowCount() - 1)
 
         lastPaintedRowCount = if (lastRow >= firstRow) lastRow - firstRow + 1 else 0
+        featureHitTargets.clear()
         for (row in firstRow..lastRow) paintRow(g2, row)
         paintCaret(g2)
     }
@@ -247,6 +254,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         val top = yOfRow(row)
         val baseY = top + markHeight + lineHeight - getFontMetrics(baseFont).descent
 
+        paintRowBand(g2, row, top)
         paintHistoryChange(g2, from, to, top)
         paintSelection(g2, from, to, top)
         paintCutMarks(g2, from, to, top)
@@ -261,6 +269,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         // row costs a handful of text calls instead of one per base. Grid lines
         // are drawn first so the batched glyphs land on top of them, matching the
         // original per-column paint order.
+        paintBaseChips(g2, from, to, baseY)
         if (to - from >= 10) {
             g2.color = Palette.GRID
             var col = 10
@@ -302,6 +311,36 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         paintFeatures(g2, from, to, top + markHeight + lineHeight * trackCount())
     }
 
+    private fun paintRowBand(g2: Graphics2D, row: Int, top: Int) {
+        val bandTop = top + markHeight
+        val bandHeight = lineHeight * trackCount()
+        val activeRow = doc.caret / basesPerLine == row
+        val color = when {
+            activeRow -> Palette.EDITOR_ACTIVE_ROW
+            row % 2 == 1 -> Palette.EDITOR_ROW_ALT
+            else -> null
+        }
+        if (color != null) {
+            g2.color = color
+            g2.fillRoundRect(padding + gutterWidth - 2, bandTop - 1, basesPerLine * charWidth + 4, bandHeight + 2, 8, 8)
+        }
+        g2.color = Palette.translucent(Palette.GRID, 0x88)
+        g2.drawLine(padding + gutterWidth, top + rowHeight() - rowGap / 2, width - padding, top + rowHeight() - rowGap / 2)
+    }
+
+    private fun paintBaseChips(g2: Graphics2D, from: Int, to: Int, baseY: Int) {
+        if (charWidth < 8 || lineHeight < 14) return
+        val seq = doc.seq
+        val chipY = baseY - lineHeight + 3
+        val chipHeight = lineHeight - 2
+        val chipWidth = maxOf(4, charWidth - 1)
+        for (i in from until to) {
+            val color = Palette.charColor(seq.bases[i], seq.kind)
+            g2.color = Palette.translucent(color, 0x1F)
+            g2.fillRoundRect(xOf(i - from) - 1, chipY, chipWidth, chipHeight, 5, 5)
+        }
+    }
+
     private fun paintTranslation(g2: Graphics2D, from: Int, to: Int, y: Int) {
         val seq = doc.seq
         g2.color = Palette.TEXT
@@ -332,11 +371,13 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         val e = minOf(doc.selectionEnd, to)
         if (e <= s) return
         g2.color = Palette.SELECTION
-        g2.fillRect(
+        g2.fillRoundRect(
             xOf(s - from),
             top + markHeight,
             (e - s) * charWidth,
             lineHeight * trackCount(),
+            6,
+            6,
         )
     }
 
@@ -347,7 +388,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         val e = minOf(changed.last + 1, to)
         if (e <= s) return
         g2.color = Color(0xF5, 0xA6, 0x23, 0x48)
-        g2.fillRect(xOf(s - from), top + markHeight, (e - s) * charWidth, lineHeight * trackCount())
+        g2.fillRoundRect(xOf(s - from), top + markHeight, (e - s) * charWidth, lineHeight * trackCount(), 6, 6)
     }
 
     private fun paintCutMarks(g2: Graphics2D, from: Int, to: Int, top: Int) {
@@ -392,6 +433,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         if (doc.seq.features.isEmpty()) return
         g2.font = labelFont
         val fm = getFontMetrics(labelFont)
+        val selected = selectedFeature
         doc.seq.features.forEachIndexed { index, f ->
             val s = maxOf(f.start, from)
             val e = minOf(f.end, to)
@@ -400,28 +442,49 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
             val y = top + lane * laneHeight + 1
             val x = xOf(s - from)
             val w = maxOf(3, (e - s) * charWidth)
+            val barBounds = Rectangle(x - 5, y - 4, w + 10, laneHeight + 6)
+            featureHitTargets += HitTarget(barBounds, f, HitKind.BAR)
             val color = Palette.featureColor(index)
-            g2.color = Palette.translucent(color, 0x66)
+            g2.color = Palette.FEATURE_OUTLINE
+            g2.fillRoundRect(x - 1, y - 1, w + 2, laneHeight, 5, 5)
+            g2.color = Palette.translucent(color, 0x78)
             g2.fillRoundRect(x, y, w, laneHeight - 2, 4, 4)
             g2.color = color
             g2.drawRoundRect(x, y, w, laneHeight - 2, 4, 4)
             // Strand arrowhead at the leading edge.
             if (f.strand == Strand.FORWARD && f.end in s until e) {
                 g2.fillPolygon(
-                    intArrayOf(x + w, x + w, x + w + 4),
-                    intArrayOf(y, y + laneHeight - 2, y + (laneHeight - 2) / 2),
+                    intArrayOf(x + w, x + w, x + w + 5),
+                    intArrayOf(y - 1, y + laneHeight - 1, y + (laneHeight - 2) / 2),
                     3,
                 )
             } else if (f.strand == Strand.REVERSE && f.start in s until e) {
                 g2.fillPolygon(
-                    intArrayOf(x, x, x - 4),
-                    intArrayOf(y, y + laneHeight - 2, y + (laneHeight - 2) / 2),
+                    intArrayOf(x, x, x - 5),
+                    intArrayOf(y - 1, y + laneHeight - 1, y + (laneHeight - 2) / 2),
                     3,
                 )
             }
             if (w > fm.stringWidth(f.name) + 8) {
-                g2.color = Palette.TEXT
-                g2.drawString(f.name, x + 4, y + laneHeight - 3)
+                val labelX = x + 4
+                val labelY = y + laneHeight - 3
+                val textW = fm.stringWidth(f.name)
+                val labelTop = maxOf(y - 1, labelY - fm.ascent - 2)
+                val labelBounds = Rectangle(
+                    labelX - 3,
+                    labelTop,
+                    textW + 6,
+                    (labelY + fm.descent + 2) - labelTop,
+                )
+                featureHitTargets += HitTarget(labelBounds, f, HitKind.LABEL)
+                if (f === selected) {
+                    g2.color = Palette.translucent(Palette.ACCENT, 0x33)
+                    g2.fillRoundRect(labelBounds.x - 1, labelBounds.y - 1, labelBounds.width + 2, labelBounds.height + 2, 5, 5)
+                    g2.color = Palette.ACCENT
+                    g2.drawRoundRect(labelBounds.x - 1, labelBounds.y - 1, labelBounds.width + 2, labelBounds.height + 2, 5, 5)
+                }
+                g2.color = if (f === selected) Palette.ACCENT else Palette.TEXT
+                g2.drawString(f.name, labelX, labelY)
             }
         }
     }
@@ -449,6 +512,34 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         requestFocusInWindow()
     }
 
+    /** Programmatically selects a feature as an object (label highlight, no base text selection). */
+    fun selectFeature(feature: Feature) {
+        selectedFeature = feature; repaint()
+    }
+
+    /** Clears any object-selected feature. */
+    fun clearFeatureSelection() {
+        selectedFeature = null; repaint()
+    }
+
+    /** Exposed for GUI regression tests: center of the latest painted feature hit target. */
+    fun featureHitCenterForTest(name: String): Pair<Int, Int>? {
+        val target = featureHitTargets.firstOrNull { it.feature.name == name } ?: return null
+        return target.bounds.x + target.bounds.width / 2 to target.bounds.y + target.bounds.height / 2
+    }
+
+    /** Exposed for GUI regression tests: center of the label hit target for the named feature. */
+    fun featureLabelHitCenterForTest(name: String): Pair<Int, Int>? {
+        val target = featureHitTargets.firstOrNull { it.feature.name == name && it.kind == HitKind.LABEL } ?: return null
+        return target.bounds.x + target.bounds.width / 2 to target.bounds.y + target.bounds.height / 2
+    }
+
+    /** Exposed for GUI regression tests: center of the bar hit target for the named feature. */
+    fun featureBarHitCenterForTest(name: String): Pair<Int, Int>? {
+        val target = featureHitTargets.firstOrNull { it.feature.name == name && it.kind == HitKind.BAR } ?: return null
+        return target.bounds.x + target.bounds.width / 2 to target.bounds.y + target.bounds.height / 2
+    }
+
     // ------------------------------------------------------------------ input
 
     private fun installMouseHandlers() {
@@ -457,9 +548,20 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
                 requestFocusInWindow()
                 if (SwingUtilities.isLeftMouseButton(e)) {
                     val hit = featureAt(e.x, e.y)
-                    if (hit != null && e.clickCount == 2) {
-                        doc.select(hit.start, hit.end)
+                    if (hit != null && e.clickCount >= 1) {
+                        val (feature, kind) = hit
+                        when (kind) {
+                            HitKind.LABEL -> {
+                                selectedFeature = feature
+                                repaint()
+                            }
+                            HitKind.BAR -> {
+                                selectedFeature = null
+                                doc.select(feature.start, feature.end)
+                            }
+                        }
                     } else {
+                        selectedFeature = null
                         doc.moveCaret(indexAt(e.x, e.y), e.isShiftDown)
                     }
                 }
@@ -470,15 +572,28 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
                 doc.moveCaret(indexAt(e.x, e.y), extendSelection = true)
             }
         })
+        addMouseMotionListener(object : MouseMotionAdapter() {
+            override fun mouseMoved(e: MouseEvent) {
+                val overLabel = featureHitTargets.any { it.kind == HitKind.LABEL && it.bounds.contains(e.x, e.y) }
+                val newCursor = if (overLabel) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                    else Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
+                if (cursor !== newCursor) {
+                    cursor = newCursor
+                }
+            }
+        })
     }
 
-    private fun featureAt(px: Int, py: Int): Feature? {
+    private fun featureAt(px: Int, py: Int): Pair<Feature, HitKind>? {
+        // Prefer label hits over bar hits since labels sit inside bar bounds.
+        featureHitTargets.firstOrNull { it.kind == HitKind.LABEL && it.bounds.contains(px, py) }?.let { return it.feature to it.kind }
+        featureHitTargets.firstOrNull { it.kind == HitKind.BAR && it.bounds.contains(px, py) }?.let { return it.feature to it.kind }
         val row = ((py - padding) / rowHeight()).coerceIn(0, rowCount() - 1)
         val bandTop = yOfRow(row) + markHeight + lineHeight * trackCount()
         if (py < bandTop) return null
         val lane = (py - bandTop) / laneHeight
         val index = indexAt(px, py)
-        return doc.seq.features.firstOrNull { laneOf[it] == lane && index in it.start until it.end }
+        return doc.seq.features.firstOrNull { laneOf[it] == lane && index in it.start until it.end }?.let { it to HitKind.BAR }
     }
 
     override fun getToolTipText(event: MouseEvent): String {

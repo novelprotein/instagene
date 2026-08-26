@@ -28,6 +28,8 @@ import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
 import java.awt.Container
 import java.awt.GraphicsEnvironment
+import java.awt.event.InputEvent
+import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.swing.JCheckBox
@@ -118,6 +120,45 @@ class GuiSmokeTest {
             assertTrue(status.contains("dna", ignoreCase = true) || status.contains("DNA") || status.contains("bp"))
 
             paintComponent(view, 900, 400)
+        }
+    }
+
+    @Test
+    fun sequenceFeatureLabelClickSelectsFeatureAsObject() {
+        onEdt {
+            val feature = Feature("promoter", "promoter", 4, 20)
+            val doc = SeqDocument(Seq(bases = "ACGT".repeat(20), features = listOf(feature)))
+            val view = SequenceView(doc)
+            paintComponent(view, 900, 400)
+            val hit = view.featureLabelHitCenterForTest(feature.name)
+
+            assertTrue(hit != null, "expected painted sequence feature label hit target")
+            view.dispatchEvent(
+                MouseEvent(view, MouseEvent.MOUSE_PRESSED, 0, InputEvent.BUTTON1_DOWN_MASK, hit.first, hit.second, 1, false, MouseEvent.BUTTON1)
+            )
+
+            assertEquals(feature, view.selectedFeature, "label click should select feature as object")
+            assertFalse(doc.hasSelection, "label click should not text-select bases")
+        }
+    }
+
+    @Test
+    fun sequenceFeatureBarClickSelectsBaseRange() {
+        onEdt {
+            val feature = Feature("promoter", "promoter", 4, 20)
+            val doc = SeqDocument(Seq(bases = "ACGT".repeat(20), features = listOf(feature)))
+            val view = SequenceView(doc)
+            paintComponent(view, 900, 400)
+            val hit = view.featureBarHitCenterForTest(feature.name)
+
+            assertTrue(hit != null, "expected painted sequence feature bar hit target")
+            view.dispatchEvent(
+                MouseEvent(view, MouseEvent.MOUSE_PRESSED, 0, InputEvent.BUTTON1_DOWN_MASK, hit.first, hit.second, 1, false, MouseEvent.BUTTON1)
+            )
+
+            assertEquals(feature.start, doc.selectionStart)
+            assertEquals(feature.end, doc.selectionEnd)
+            assertNull(view.selectedFeature, "bar click should not object-select the feature")
         }
     }
 

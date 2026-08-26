@@ -121,8 +121,9 @@ class PrimersPanel(
         fromField.document.addDocumentListener(editListener())
         toField.document.addDocumentListener(editListener())
 
-        docListener = SeqDocument.Listener { _, reason -> handleDocChanged(reason) }
-        doc.addListener(docListener!!)
+        val initialListener = SeqDocument.Listener { _, reason -> handleDocChanged(reason) }
+        docListener = initialListener
+        doc.addListener(initialListener)
         autoPopulateAndDesign()
     }
 
@@ -135,11 +136,12 @@ class PrimersPanel(
         if (switched) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
-            if (docListener != null) doc.addListener(docListener!!)
+            docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            docListener = SeqDocument.Listener { _, reason -> handleDocChanged(reason) }
-            doc.addListener(docListener!!)
+            val listener = SeqDocument.Listener { _, reason -> handleDocChanged(reason) }
+            docListener = listener
+            doc.addListener(listener)
         }
         if (switched) {
             result = null
@@ -455,8 +457,9 @@ class PrimersPanel(
         val to = toField.text.toIntOrNull()
         designButton.isEnabled = from != null && to != null && from < to &&
             from >= 1 && to <= doc.seq.length
-        if (result != null) {
-            val (fwd, rev) = result!!
+        val currentResult = result
+        if (currentResult != null) {
+            val (fwd, rev) = currentResult
             val (f0, t0) = toRange()
             summary.text = "Amplicon $f0..$t0 (${t0 - f0} bp): $fwd   $rev"
         } else {
@@ -713,7 +716,8 @@ class PrimersPanel(
             SeqOps.meltingTemp(cleanedBases),
             SeqOps.gcContent(cleanedBases),
         )
-        result = if (row == 0) result!!.copy(first = updated) else result!!.copy(second = updated)
+        val currentResult = result ?: return "Choose a primer to edit."
+        result = if (row == 0) currentResult.copy(first = updated) else currentResult.copy(second = updated)
         descriptions = descriptions.mapIndexed { index, current -> if (index == row) description else current }
         resultsModel.fireTableRowsUpdated(row, row)
         return null
@@ -783,7 +787,8 @@ class PrimersPanel(
         override fun getColumnName(column: Int): String = columns[column]
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
-            val primer = if (rowIndex == 0) result!!.first else result!!.second
+            val currentResult = result ?: return ""
+            val primer = if (rowIndex == 0) currentResult.first else currentResult.second
             return when (columnIndex) {
                 0 -> primer.name
                 1 -> primer.bases

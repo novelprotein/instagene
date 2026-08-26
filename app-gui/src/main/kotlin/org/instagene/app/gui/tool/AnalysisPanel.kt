@@ -57,8 +57,9 @@ class AnalysisPanel(
                 if (reason == SeqDocument.Reason.SEQUENCE || reason == SeqDocument.Reason.SELECTION) refreshChildren()
             }
         }
-        if (changed || !docListenerAttached) {
-            doc.addListener(listener!!)
+        val currentListener = listener
+        if ((changed || !docListenerAttached) && currentListener != null) {
+            doc.addListener(currentListener)
         }
         refreshChildren()
     }

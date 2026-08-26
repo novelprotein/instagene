@@ -49,8 +49,9 @@ class TextEditorView(initial: TextDocument) : JPanel(BorderLayout()) {
             docListener?.let { document.addDocListener(it) }
         }
         if (docListener == null) {
-            docListener = Doc.Listener { refreshFromDoc() }
-            document.addDocListener(docListener!!)
+            val listener = Doc.Listener { refreshFromDoc() }
+            docListener = listener
+            document.addDocListener(listener)
         }
         refreshFromDoc()
     }

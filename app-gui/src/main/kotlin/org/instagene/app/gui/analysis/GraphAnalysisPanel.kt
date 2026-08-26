@@ -155,7 +155,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         val seq = doc.seq
         if (seq.kind == SeqKind.PROTEIN) {
             chartTabs.removeAll()
-            chartTabs.addTab("Amino Acid Composition", buildPieChart())
+            chartTabs.addTab("Amino Acid Composition", buildProteinPieChart(seq))
             infoArea.text = buildProteinInfo(seq)
             return
         }
@@ -195,7 +195,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
                     infoArea.text = buildStatsText()
                     buildSelectedTab()
                 } catch (ex: Exception) {
-                    System.err.println("instagene: graph stats computation failed: ${ex.message}")
+                    infoArea.text = "Graph statistics could not be computed: ${ex.message ?: ex::class.simpleName}"
                 }
             }
         }.also { it.execute() }
@@ -222,7 +222,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
                     chartTabs.setComponentAt(idx, get())
                     builtTabs += idx
                 } catch (ex: Exception) {
-                    System.err.println("instagene: chart build failed: ${ex.message}")
+                    chartTabs.setComponentAt(idx, loadingPanel("Chart could not be built: ${ex.message ?: ex::class.simpleName}"))
                 }
             }
         }
@@ -230,14 +230,14 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         worker.execute()
     }
 
-    private fun loadingPanel(): JPanel = JPanel(BorderLayout()).apply {
-        add(JLabel("Computing statistics\u2026", SwingConstants.CENTER), BorderLayout.CENTER)
+    private fun loadingPanel(message: String = "Computing statistics\u2026"): JPanel = JPanel(BorderLayout()).apply {
+        add(JLabel(message, SwingConstants.CENTER), BorderLayout.CENTER)
     }
 
     // --------------------------------------------------------- chart builders
 
     private fun buildPieChart(): ChartPanel {
-        val stats = cachedStats!!
+        val stats = cachedStats ?: return emptyChart("Nucleotide Composition \u2014 no data")
         val ds = DefaultPieDataset<String>()
         for ((base, count) in stats.nucleotideComposition) {
             if (count > 0) ds.setValue("$base", count)
@@ -256,6 +256,22 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         }
         plot.labelGenerator = StandardPieSectionLabelGenerator(
             "{0}: {1} ({2})", DecimalFormat("#,##0"), DecimalFormat("0.0%")
+        )
+        return ChartPanel(chart)
+    }
+
+    private fun buildProteinPieChart(seq: Seq): ChartPanel {
+        val ds = DefaultPieDataset<String>()
+        SequenceStatistics.aminoAcidComposition(seq)
+            .filter { it.value > 0.0 }
+            .forEach { ds.setValue(it.label, it.value) }
+        val chart = ChartFactory.createPieChart("Amino Acid Composition", ds, true, true, false)
+        chart.backgroundPaint = Color.WHITE
+        @Suppress("UNCHECKED_CAST")
+        val plot = chart.plot as PiePlot<String>
+        plot.labelFont = Font("SansSerif", Font.PLAIN, 10)
+        plot.labelGenerator = StandardPieSectionLabelGenerator(
+            "{0}: {1}%", DecimalFormat("0.0"), DecimalFormat("0.0%")
         )
         return ChartPanel(chart)
     }
