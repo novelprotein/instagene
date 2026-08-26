@@ -1,16 +1,16 @@
 {
-  "commit": "b57c378",
-  "timestamp": "2026-08-24T23:47:21.273126+00:00",
+  "commit": "3c0f5a2",
+  "timestamp": "2026-08-26T06:05:49.324414+00:00",
   "sequence": "PRS424",
   "length": 5616,
   "results": [
     {
       "label": "SequenceStatistics/computeStats",
-      "ms": 7.2
+      "ms": 11.8
     },
     {
       "label": "SequenceStatistics/gcContentProfile(100, 50)",
-      "ms": 0.3
+      "ms": 0.4
     },
     {
       "label": "SequenceStatistics/gcSkewProfile(100, 50)",
@@ -18,7 +18,7 @@
     },
     {
       "label": "SequenceStatistics/cumulativeGcSkew(100, 50)",
-      "ms": 0.0
+      "ms": 0.2
     },
     {
       "label": "SequenceStatistics/meltingTempProfile(20, 10)",
@@ -26,119 +26,119 @@
     },
     {
       "label": "SequenceStatistics/nucleotideComposition",
-      "ms": 2.2
+      "ms": 1.4
     },
     {
       "label": "SequenceStatistics/codonUsage",
-      "ms": 2.4
+      "ms": 5.0
     },
     {
       "label": "SequenceStatistics/dinucleotideFrequencies",
-      "ms": 1.1
+      "ms": 1.9
     },
     {
       "label": "SequenceStatistics/tandemRepeats(1..10, minRepeats=3)",
-      "ms": 8.2
+      "ms": 10.6
     },
     {
       "label": "SeqOps/transcribe",
-      "ms": 0.7
-    },
-    {
-      "label": "SeqOps/backTranscribe",
-      "ms": 0.3
-    },
-    {
-      "label": "SeqOps/translateBases(frame=0)",
-      "ms": 3.5
-    },
-    {
-      "label": "SeqOps/baseCounts",
       "ms": 0.5
     },
     {
+      "label": "SeqOps/backTranscribe",
+      "ms": 0.5
+    },
+    {
+      "label": "SeqOps/translateBases(frame=0)",
+      "ms": 4.0
+    },
+    {
+      "label": "SeqOps/baseCounts",
+      "ms": 0.6
+    },
+    {
       "label": "SeqOps/find(ATGCATGC)",
-      "ms": 7.5
+      "ms": 13.5
     },
     {
       "label": "Digest/cutSites(EcoRI)",
-      "ms": 1.7
+      "ms": 2.7
     },
     {
       "label": "Digest/cutCounts(ALL 53 enzymes)",
-      "ms": 33.2
+      "ms": 52.3
     },
     {
       "label": "Digest/digest(EcoRI + HindIII)",
-      "ms": 2.0
+      "ms": 3.2
     },
     {
       "label": "ORFsandSearch/findOrfs(30aa)",
-      "ms": 7.7
+      "ms": 13.6
     },
     {
       "label": "ORFsandSearch/orfDensity(200, 100)",
-      "ms": 6.6
+      "ms": 11.3
     },
     {
       "label": "ORFsandSearch/AdvancedSearch.find(ATGC, DNA, 2strands)",
-      "ms": 8.2
+      "ms": 9.3
     },
     {
       "label": "ORFsandSearch/AdvancedSearch.find(MVSK, AA, 2strands)",
-      "ms": 5.3
+      "ms": 3.8
     },
     {
       "label": "PrimerThermodynamics(30nt)/thermodynamicResult",
-      "ms": 0.4
+      "ms": 1.6
     },
     {
       "label": "PrimerThermodynamics(30nt)/selfDimer",
-      "ms": 1.0
+      "ms": 2.2
     },
     {
       "label": "PrimerThermodynamics(30nt)/heteroDimer(primer, rc)",
-      "ms": 0.9
+      "ms": 1.8
     },
     {
       "label": "PrimerThermodynamics(30nt)/assessHairpin",
-      "ms": 5.3
-    },
-    {
-      "label": "PrimerThermodynamics(30nt)/fullScreen",
-      "ms": 3.0
-    },
-    {
-      "label": "SiteDomestication/findInternalSites(8 enzymes)",
       "ms": 8.1
     },
     {
+      "label": "PrimerThermodynamics(30nt)/fullScreen",
+      "ms": 5.5
+    },
+    {
+      "label": "SiteDomestication/findInternalSites(8 enzymes)",
+      "ms": 7.3
+    },
+    {
       "label": "SiteDomestication/suggestEnzyme(8 enzymes)",
-      "ms": 2.6
+      "ms": 2.2
     },
     {
       "label": "SiteDomestication/domesticate(8 enzymes)",
-      "ms": 6.5
+      "ms": 4.2
     },
     {
       "label": "CodonOptimization/reverseTranslate(1000 aa)",
-      "ms": 3.4
+      "ms": 2.3
     },
     {
       "label": "CodonOptimization/optimize(codon usage)",
-      "ms": 3.6
+      "ms": 2.6
     },
     {
       "label": "Desktop/SequenceView first viewport (10 kb)",
-      "ms": 256.6
+      "ms": 138.4
     },
     {
       "label": "Desktop/SequenceView first viewport (100 kb)",
-      "ms": 4.1
+      "ms": 15.9
     },
     {
       "label": "Desktop/SequenceView scrolled viewport (100 kb)",
-      "ms": 3.4
+      "ms": 16.5
     }
   ]
 }
