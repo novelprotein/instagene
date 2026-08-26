@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.instagene.app.gui.edit.SequenceEditService
 
 class SeqDocumentTest {
 
@@ -158,5 +159,19 @@ class SeqDocumentTest {
         assertEquals("TTTT", doc.seq.bases)
         // The batch emits one notification for its final state.
         assertEquals(1, reasons.size)
+    }
+
+    @Test
+    fun sharedEditServiceValidatesAndTrimsSelection() {
+        val doc = SeqDocument(Seq(bases = "AACCGG"))
+        doc.select(1, 4)
+        assertTrue(SequenceEditService.insert(doc, "a-cg"))
+        assertEquals("AACGGG", doc.seq.bases)
+        assertEquals(4, doc.caret)
+        doc.select(1, 3)
+        assertTrue(SequenceEditService.trimSelection(doc))
+        assertEquals("AGGG", doc.seq.bases)
+        doc.undo()
+        assertEquals("AACGGG", doc.seq.bases)
     }
 }

@@ -213,13 +213,7 @@ data class Seq(
     fun insertAt(at: Int, insert: String): Seq {
         require(at in 0..length) { "Insert position $at is outside 0..$length" }
         val added = insert.length
-        val moved = features.map { f ->
-            when {
-                f.end <= at -> f                                              // entirely upstream
-                f.start >= at -> f.copy(start = f.start + added, end = f.end + added)
-                else -> f.copy(end = f.end + added)                           // insertion lands inside
-            }
-        }
+        val moved = features.map { f -> remapFeatureAfterInsertion(f, at, added) }
         val movedPrimers = primers.map { p ->
             when {
                 p.bindingEnd <= at -> p
@@ -354,15 +348,51 @@ data class Seq(
         return s to e
     }
 
-    private fun clipAfterDeletion(f: Feature, s: Int, e: Int, removed: Int): Feature? = when {
-        f.end <= s -> f                                                        // upstream of the cut
-        f.start >= e -> f.copy(start = f.start - removed, end = f.end - removed)
-        f.start >= s && f.end <= e -> null                                     // fully deleted
-        else -> {
-            val newStart = if (f.start < s) f.start else s
-            val newEnd = (if (f.end > e) f.end - removed else s).coerceAtLeast(newStart)
-            if (newEnd <= newStart) null else f.copy(start = newStart, end = newEnd)
+    private fun remapFeatureAfterInsertion(f: Feature, at: Int, added: Int): Feature {
+        if (f.segments.isEmpty()) return when {
+            f.end <= at -> f
+            f.start >= at -> f.copy(start = f.start + added, end = f.end + added)
+            else -> f.copy(end = f.end + added)
         }
+        val segments = f.segments.map { segment ->
+            when {
+                segment.end <= at -> segment
+                segment.start >= at -> segment.copy(start = segment.start + added, end = segment.end + added)
+                else -> segment.copy(end = segment.end + added)
+            }
+        }
+        return f.copy(
+            start = segments.minOf { it.start },
+            end = segments.maxOf { it.end },
+            segments = segments,
+        )
+    }
+
+    private fun clipAfterDeletion(f: Feature, s: Int, e: Int, removed: Int): Feature? {
+        if (f.segments.isEmpty()) return when {
+            f.end <= s -> f
+            f.start >= e -> f.copy(start = f.start - removed, end = f.end - removed)
+            f.start >= s && f.end <= e -> null
+            else -> {
+                val newStart = if (f.start < s) f.start else s
+                val newEnd = (if (f.end > e) f.end - removed else s).coerceAtLeast(newStart)
+                if (newEnd <= newStart) null else f.copy(start = newStart, end = newEnd)
+            }
+        }
+
+        val kept = f.segments.mapNotNull { segment ->
+            when {
+                segment.end <= s -> segment
+                segment.start >= e -> segment.copy(start = segment.start - removed, end = segment.end - removed)
+                else -> {
+                    val newStart = if (segment.start < s) segment.start else s
+                    val newEnd = (if (segment.end > e) segment.end - removed else s).coerceAtLeast(newStart)
+                    if (newEnd <= newStart) null else FeatureSegment(newStart, newEnd)
+                }
+            }
+        }
+        if (kept.isEmpty()) return null
+        return f.copy(start = kept.minOf { it.start }, end = kept.maxOf { it.end }, segments = kept)
     }
 
     private fun clipPrimerAfterDeletion(p: PrimerAnnotation, s: Int, e: Int, removed: Int): PrimerAnnotation? = when {

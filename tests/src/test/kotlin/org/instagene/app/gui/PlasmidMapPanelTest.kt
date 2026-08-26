@@ -12,9 +12,11 @@ import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import java.io.File
+import javax.imageio.ImageIO
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -45,9 +47,10 @@ class PlasmidMapPanelTest {
         val map = content.plasmidMapPanel
         map.setSize(400, 400)
         map.doLayout()
-        map.paint(BufferedImage(400, 400, BufferedImage.TYPE_INT_ARGB).graphics)
-        // BorderLayout children: header panel first, map canvas second.
-        return map.getComponent(1) as JPanel
+        val canvas = map.canvasForTest()
+        canvas.setSize(canvas.preferredSize)
+        canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+        return canvas
     }
 
     /**
@@ -89,13 +92,11 @@ class PlasmidMapPanelTest {
         val map = PlasmidMapPanel(SeqDocument(seq))
         map.setSize(width, height)
         map.doLayout()
-        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+        val canvas = map.canvasForTest()
+        canvas.setSize(canvas.preferredSize)
+        val image = BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB)
         val graphics = image.createGraphics()
-        try {
-            map.paint(graphics)
-        } finally {
-            graphics.dispose()
-        }
+        try { canvas.paint(graphics) } finally { graphics.dispose() }
         return image
     }
 
@@ -106,6 +107,14 @@ class PlasmidMapPanelTest {
             }
         }
         return false
+    }
+
+    private fun viewportDistanceTo(map: PlasmidMapPanel, point: Pair<Int, Int>): Int {
+        val position = map.viewportPositionForTest()
+        val extent = map.viewportExtentForTest()
+        val centerX = position.x + extent.width / 2
+        val centerY = position.y + extent.height / 2
+        return abs(point.first - centerX) + abs(point.second - centerY)
     }
 
     /** Renaming only one feature must change pixels if that feature has a visible label. */
@@ -204,13 +213,39 @@ class PlasmidMapPanelTest {
             val map = content.plasmidMapPanel
             map.setSize(800, 700)
             map.doLayout()
-            map.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
-            val canvas = map.getComponent(1) as JPanel
+            val canvas = map.canvasForTest()
+            canvas.setSize(800, 700)
+            canvas.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
             val hit = map.featureLabelHitCenterForTest(feature.name)
 
             assertTrue(hit != null, "expected a painted label hit target for ${feature.name}")
             click(canvas, hit)
 
+            assertEquals(feature.start, content.doc.selectionStart)
+            assertEquals(feature.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun clickingALabelAtDefaultZoomDoesNotMoveTheViewport() {
+        SwingUtilities.invokeAndWait {
+            val content = InstaGeneContent()
+            val seq = SeqIO.Samples.PBR322_NCBI
+            val feature = seq.features.first { it.visible && it.name == "ROP protein" }
+            content.doc.loadSequence(seq)
+            val map = content.plasmidMapPanel
+            map.setSize(800, 700)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(800, 700)
+            canvas.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
+            val before = map.viewportPositionForTest()
+            val hit = map.featureLabelHitCenterForTest(feature.name)
+
+            assertTrue(hit != null, "expected a painted label hit target for ${feature.name}")
+            click(canvas, hit)
+
+            assertEquals(before, map.viewportPositionForTest())
             assertEquals(feature.start, content.doc.selectionStart)
             assertEquals(feature.end, content.doc.selectionEnd)
         }
@@ -226,8 +261,9 @@ class PlasmidMapPanelTest {
             val map = content.plasmidMapPanel
             map.setSize(800, 700)
             map.doLayout()
-            map.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
-            val canvas = map.getComponent(1) as JPanel
+            val canvas = map.canvasForTest()
+            canvas.setSize(800, 700)
+            canvas.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
             val hit = map.featureArcHitCenterForTest(feature.name)
 
             assertTrue(hit != null, "expected a painted arc hit target for ${feature.name}")
@@ -244,7 +280,8 @@ class PlasmidMapPanelTest {
             val map = PlasmidMapPanel(SeqDocument(SeqIO.Samples.PBR322_NCBI))
             map.setSize(800, 700)
             map.doLayout()
-            map.paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
+            map.canvasForTest().setSize(800, 700)
+            map.canvasForTest().paint(BufferedImage(800, 700, BufferedImage.TYPE_INT_ARGB).graphics)
             val bounds = map.featureLabelBoundsForTest()
 
             assertTrue(bounds.size > 6, "expected multiple packed labels for the real plasmid")
@@ -267,8 +304,9 @@ class PlasmidMapPanelTest {
             val map = content.plasmidMapPanel
             map.setSize(340, 300)
             map.doLayout()
-            map.paint(BufferedImage(340, 300, BufferedImage.TYPE_INT_ARGB).graphics)
-            val canvas = map.getComponent(1) as JPanel
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val target = features.last()
             val hit = map.featureLabelHitCenterForTest(target.name)
 
@@ -354,6 +392,259 @@ class PlasmidMapPanelTest {
             val svg = file.readText()
             features.forEach { feature ->
                 assertEquals(1, Regex(">${feature.name}</text>").findAll(svg).count(), "missing or duplicate label for ${feature.name}")
+            }
+        }
+    }
+
+    @Test
+    fun mapZoomClampsAndExpandsTheScrollableCanvas() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(topology = Topology.LINEAR)))
+            map.setSize(320, 320)
+            map.doLayout()
+            assertEquals(100, map.zoomPercent)
+            map.setZoomPercent(275)
+            assertEquals(300, map.zoomPercent)
+            assertEquals("300%", map.zoomLabelTextForTest())
+            assertEquals(
+                0,
+                map.zoomControlsForTest().components.count { it is javax.swing.JComboBox<*> },
+                "zoom controls should not contain a percentage dropdown",
+            )
+            assertTrue(map.canvasForTest().preferredSize.width > map.viewportExtentForTest().width)
+            map.setZoomPercent(999)
+            assertEquals(600, map.zoomPercent)
+            map.setZoomPercent(1)
+            assertEquals(50, map.zoomPercent)
+            map.setZoomPercent(100)
+            assertEquals(100, map.zoomPercent)
+        }
+    }
+
+    @Test
+    fun zoomUpdatesViewportGeometryAndKeepsTheMapCenterAnchored() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(topology = Topology.LINEAR)))
+            map.setSize(320, 320)
+            map.doLayout()
+            val before = map.viewportPositionForTest()
+            val extent = map.viewportExtentForTest()
+            assertTrue(extent.width > 0)
+            val beforeCenterX = before.x + extent.width / 2.0
+            val beforeCenterY = before.y + extent.height / 2.0
+
+            map.setZoomPercent(600)
+            val canvas = map.canvasForTest()
+            assertTrue(canvas.width > extent.width)
+            assertTrue(canvas.height > extent.height)
+            val after = map.viewportPositionForTest()
+            assertTrue(after.x > before.x || after.y > before.y, "zoom should move the viewport into the enlarged canvas")
+            val afterExtent = map.viewportExtentForTest()
+            assertTrue(abs((after.x + afterExtent.width / 2.0) / 6.0 - beforeCenterX) < 2.0)
+            assertTrue(abs((after.y + afterExtent.height / 2.0) / 6.0 - beforeCenterY) < 2.0)
+
+            map.setZoomPercent(100)
+            val reset = map.viewportPositionForTest()
+            assertEquals(0, reset.x)
+            assertEquals(0, reset.y)
+        }
+    }
+
+    @Test
+    fun zoomedCircularFeatureHitUsesLogicalCoordinates() {
+        SwingUtilities.invokeAndWait {
+            val content = InstaGeneContent()
+            val feature = Feature("zoomed", start = 50, end = 100)
+            content.doc.loadSequence(circular.copy(features = listOf(feature)))
+            val map = content.plasmidMapPanel
+            map.setZoomPercent(200)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+            val hit = map.featureArcHitCenterForTest(feature.name)
+            assertTrue(hit != null)
+            click(canvas, hit)
+            assertEquals(feature.start, content.doc.selectionStart)
+            assertEquals(feature.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun zoomedCircularLabelsReflowWithoutOverlapping() {
+        SwingUtilities.invokeAndWait {
+            val features = (0 until 18).map { index ->
+                Feature("zoomed-feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = features)))
+            map.setSize(340, 300)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+
+            val bounds = map.featureLabelBoundsForTest()
+            assertEquals(features.size, bounds.size)
+            bounds.forEachIndexed { index, first ->
+                assertTrue(first.x >= 0 && first.y >= 0)
+                assertTrue(first.maxX <= canvas.width && first.maxY <= canvas.height, "$first outside ${canvas.width}x${canvas.height}")
+                bounds.drop(index + 1).forEach { second ->
+                    assertFalse(first.intersects(second), "zoomed feature labels overlap: $first and $second")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun zoomedCircularLabelsMoveWithTheVisibleViewport() {
+        SwingUtilities.invokeAndWait {
+            val features = (0 until 18).map { index ->
+                Feature("feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = features)))
+            map.setSize(340, 300)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+            val before = map.featureLabelBoundsForTest("feature-0")
+
+            assertTrue(before != null, "expected an initial label for feature-0")
+            map.setViewportPositionForTest(360, 0)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+            val after = map.featureLabelBoundsForTest("feature-0")
+
+            assertTrue(after != null, "expected a scrolled label for feature-0")
+            assertTrue(after.x > before.x, "expected feature-0 label to move with the viewport")
+        }
+    }
+
+    @Test
+    fun clickingZoomedCircularLabelMovesViewportTowardTheFeatureArc() {
+        SwingUtilities.invokeAndWait {
+            val features = (0 until 18).map { index ->
+                Feature("focus-feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = features)))
+            map.setSize(340, 300)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            map.setViewportPositionForTest(360, 0)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+            val target = features.mapNotNull { feature ->
+                val labelHit = map.featureLabelHitCenterForTest(feature.name)
+                val arcHit = map.featureArcHitCenterForTest(feature.name)
+                if (labelHit != null && arcHit != null) Triple(feature, labelHit, arcHit) else null
+            }.maxByOrNull { (_, _, arcHit) -> viewportDistanceTo(map, arcHit) }
+
+            assertTrue(target != null, "expected a clickable zoomed feature label")
+            val beforeDistance = viewportDistanceTo(map, target.third)
+            click(canvas, target.second)
+            val afterDistance = viewportDistanceTo(map, target.third)
+
+            assertTrue(afterDistance < beforeDistance, "expected label click to move the viewport toward the feature arc")
+        }
+    }
+
+    @Test
+    fun zoomedLinearLabelsStayInsideTheHorizontalViewport() {
+        SwingUtilities.invokeAndWait {
+            val seq = Seq(
+                bases = "ACGT".repeat(300),
+                topology = Topology.LINEAR,
+                features = listOf(
+                    Feature("early", start = 20, end = 25),
+                    Feature("late", start = 920, end = 926),
+                ),
+            )
+            val map = PlasmidMapPanel(SeqDocument(seq))
+            map.setSize(320, 260)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            map.setViewportPositionForTest(520, 0)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+            val viewport = map.viewportPositionForTest()
+            val extent = map.viewportExtentForTest()
+            val late = map.featureLabelBoundsForTest("late")
+
+            assertTrue(late != null, "expected a label for the late feature")
+            assertTrue(late.x >= viewport.x)
+            assertTrue(late.maxX <= viewport.x + extent.width)
+        }
+    }
+
+    @Test
+    fun clickingZoomedLinearLabelMovesViewportTowardTheFeatureSpan() {
+        SwingUtilities.invokeAndWait {
+            val lateFeature = Feature("late", start = 920, end = 926)
+            val seq = Seq(
+                bases = "ACGT".repeat(300),
+                topology = Topology.LINEAR,
+                features = listOf(
+                    Feature("early", start = 20, end = 25),
+                    lateFeature,
+                ),
+            )
+            val content = InstaGeneContent()
+            content.doc.loadSequence(seq)
+            val map = content.plasmidMapPanel
+            map.setSize(320, 260)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            map.setViewportPositionForTest(0, 0)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+            val before = map.viewportPositionForTest()
+            val hit = map.featureLabelHitCenterForTest(lateFeature.name)
+
+            assertTrue(hit != null, "expected a clickable label for the late feature")
+            click(canvas, hit)
+
+            assertTrue(map.viewportPositionForTest().x > before.x, "expected label click to scroll toward the late feature")
+            assertEquals(lateFeature.start, content.doc.selectionStart)
+            assertEquals(lateFeature.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun labelsFadedOutAtTheViewportEdgeDoNotExposeHitTargets() {
+        SwingUtilities.invokeAndWait {
+            val features = (0 until 18).map { index ->
+                Feature("edge-feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = features)))
+            map.setSize(340, 300)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+            val faded = map.featureLabelAlphasForTest().entries.firstOrNull { it.value < 0.18f }
+
+            assertTrue(faded != null, "expected at least one label to fade near or outside the viewport")
+            assertTrue(map.featureLabelHitCenterForTest(faded.key) == null, "faded-out labels should not be clickable")
+        }
+    }
+
+    @Test
+    fun pngExportIsIndependentFromInteractiveZoomAndRestoresTheViewportMode() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(circular))
+            map.setZoomPercent(600)
+            val output = File.createTempFile("instagene-map-", ".png")
+            try {
+                map.exportPng(output, 220, 180)
+                assertEquals(600, map.zoomPercent)
+                assertEquals(220, ImageIO.read(output).width)
+                assertEquals(180, ImageIO.read(output).height)
+            } finally {
+                output.delete()
             }
         }
     }

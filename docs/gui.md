@@ -56,18 +56,30 @@ the record metadata, then save the document.
 ![Map tab showing a circular annotated plasmid](screenshots/map.png)
 
 Map displays circular or linear sequence features overlay in sections over the sequence.
-For circular plasmids, use the controls to show feature labels and restriction
-sites. Select a feature or map region and the same region will be selected in the sequence and
-feature tools. The map can be exported as PNG or SVG for reports and records.
+For circular plasmids, use the controls to show feature labels, choose whether
+all or only visible annotations receive labels, and show restriction sites.
+Labels fall back from the feature name to `label`, `gene`, and feature type
+qualifiers when a name is not present. Select a feature or map region and the
+same region will be selected in the sequence and feature tools. The map can be
+exported as PNG or SVG for reports and records.
+Use the `−` and `+` controls to zoom from 50% to 600%; the percentage shown
+between them is a read-only indicator, and **Reset** returns to 100%. Enlarged
+circular and linear maps remain navigable through the scrollbars. Feature
+labels reflow with the zoomed map, adjust as the viewport scrolls, and fade at
+viewport edges to keep callouts attached and readable without changing sequence
+coordinates or export dimensions.
 
 ### Sequence
 
 ![Sequence tab showing colored bases and feature tracks](screenshots/seq.png)
 
 Sequence is the direct nucleic base editor. It displays nucleotide or protein text with
-features highlight. It also displays selections coordinates. Use the Edit menu for reversible
-changes, keyboard selection, clipboard operations, and zoom controls. Save before closing if the edit should
-be retained.
+features highlighted and researcher-facing coordinates. Type valid residues to
+insert them at the caret or replace the current selection; Backspace/Delete,
+clipboard operations, and all resulting annotation shifts are undoable. Feature
+segments and primer bindings are clipped or shifted with edits. Use the Edit
+menu for reversible changes, keyboard selection, clipboard operations, and zoom
+controls. Save before closing if the edit should be retained.
 
 ### Enzyme
 

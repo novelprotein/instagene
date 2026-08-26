@@ -2,6 +2,7 @@ package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.edit.SequenceEditService
 import org.instagene.app.gui.theme.Palette
 import org.instagene.core.Alphabet
 import org.instagene.core.CodonTable
@@ -65,6 +66,9 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         set(value) {
             field = value; repaint()
         }
+
+    var featureLabelMode: FeatureLabelMode = FeatureLabelMode.ALL
+        set(value) { field = value; relayout() }
 
     var translationFrame: Int = 0
         set(value) {
@@ -434,7 +438,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
         g2.font = labelFont
         val fm = getFontMetrics(labelFont)
         val selected = selectedFeature
-        doc.seq.features.forEachIndexed { index, f ->
+        doc.seq.features.filter { FeatureLabelOptions.include(it, featureLabelMode) }.forEachIndexed { index, f ->
             val s = maxOf(f.start, from)
             val e = minOf(f.end, to)
             if (e <= s) return@forEachIndexed
@@ -465,10 +469,11 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
                     3,
                 )
             }
-            if (w > fm.stringWidth(f.name) + 8) {
+            val label = FeatureLabelOptions.text(f)
+            if (w > fm.stringWidth(label) + 8) {
                 val labelX = x + 4
                 val labelY = y + laneHeight - 3
-                val textW = fm.stringWidth(f.name)
+                val textW = fm.stringWidth(label)
                 val labelTop = maxOf(y - 1, labelY - fm.ascent - 2)
                 val labelBounds = Rectangle(
                     labelX - 3,
@@ -484,7 +489,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
                     g2.drawRoundRect(labelBounds.x - 1, labelBounds.y - 1, labelBounds.width + 2, labelBounds.height + 2, 5, 5)
                 }
                 g2.color = if (f === selected) Palette.ACCENT else Palette.TEXT
-                g2.drawString(f.name, labelX, labelY)
+                g2.drawString(label, labelX, labelY)
             }
         }
     }
@@ -673,30 +678,12 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
 
     /** Types [text] into the document, replacing the selection when there is one, otherwise inserting at the caret. */
     fun insertBases(text: String) {
-        val clean = when (doc.seq.kind) {
-            SeqKind.PROTEIN -> Alphabet.clean(text).uppercase()
-                .filter { Alphabet.isAminoAcid(it) && it != '-' && it != '*' }
-
-            else -> Alphabet.clean(text).uppercase().filter { Alphabet.isNucleotide(it) }
-        }
-        if (clean.isEmpty()) return
-        val start = doc.selectionStart
-        if (doc.hasSelection) {
-            val end = doc.selectionEnd
-            doc.mutate("replace ${end - start} bases") { it.replaceRange(start, end, clean) }
-        } else {
-            doc.mutate("insert ${clean.length} bases") { it.insertAt(start, clean) }
-        }
-        doc.moveCaret(start + clean.length)
+        SequenceEditService.insert(doc, text)
     }
 
     /** Deletes the current selection, if any. */
     fun deleteSelection() {
-        if (!doc.hasSelection) return
-        val start = doc.selectionStart
-        val end = doc.selectionEnd
-        doc.mutate("delete ${end - start} bases") { it.deleteRange(start, end) }
-        doc.moveCaret(start)
+        SequenceEditService.deleteSelection(doc)
     }
 
     /** Copies the selection to the system clipboard, or the whole sequence when nothing is selected. */
