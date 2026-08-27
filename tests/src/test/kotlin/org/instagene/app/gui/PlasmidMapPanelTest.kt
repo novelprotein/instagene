@@ -10,6 +10,7 @@ import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
+import java.awt.event.MouseWheelEvent
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -543,6 +544,7 @@ class PlasmidMapPanelTest {
             assertTrue(target != null, "expected a clickable zoomed feature label")
             val beforeDistance = viewportDistanceTo(map, target.third)
             click(canvas, target.second)
+            repeat(40) { map.advanceViewportAnimationForTest() }
             val afterDistance = viewportDistanceTo(map, target.third)
 
             assertTrue(afterDistance < beforeDistance, "expected label click to move the viewport toward the feature arc")
@@ -605,10 +607,40 @@ class PlasmidMapPanelTest {
 
             assertTrue(hit != null, "expected a clickable label for the late feature")
             click(canvas, hit)
+            repeat(40) { map.advanceViewportAnimationForTest() }
 
             assertTrue(map.viewportPositionForTest().x > before.x, "expected label click to scroll toward the late feature")
             assertEquals(lateFeature.start, content.doc.selectionStart)
             assertEquals(lateFeature.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun mouseWheelScrollsTheZoomedMapViewport() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(Seq(bases = "ACGT".repeat(300), topology = Topology.LINEAR)))
+            map.setSize(320, 260)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            val before = map.viewportPositionForTest()
+            val event = MouseWheelEvent(
+                canvas,
+                MouseEvent.MOUSE_WHEEL,
+                System.currentTimeMillis(),
+                0,
+                120,
+                120,
+                0,
+                false,
+                MouseWheelEvent.WHEEL_UNIT_SCROLL,
+                1,
+                2,
+            )
+            canvas.dispatchEvent(event)
+            repeat(40) { map.advanceViewportAnimationForTest() }
+            assertTrue(map.viewportPositionForTest().y > before.y, "expected wheel input to scroll down")
         }
     }
 
@@ -629,6 +661,92 @@ class PlasmidMapPanelTest {
 
             assertTrue(faded != null, "expected at least one label to fade near or outside the viewport")
             assertTrue(map.featureLabelHitCenterForTest(faded.key) == null, "faded-out labels should not be clickable")
+        }
+    }
+
+    @Test
+    fun viewportAnimationReusesTheStaticMapLayer() {
+        SwingUtilities.invokeAndWait {
+            val features = (0 until 80).map { index ->
+                Feature("cached-feature-$index", start = index * 12, end = index * 12 + 8)
+            }
+            val map = PlasmidMapPanel(SeqDocument(Seq(bases = "ACGT".repeat(300), topology = Topology.LINEAR, features = features)))
+            map.setSize(320, 260)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            map.ensureStaticMapImageSizeForTest()
+            val renderCount = map.staticMapRenderCountForTest()
+
+            val event = MouseWheelEvent(
+                canvas,
+                MouseEvent.MOUSE_WHEEL,
+                System.currentTimeMillis(),
+                0,
+                120,
+                120,
+                0,
+                false,
+                MouseWheelEvent.WHEEL_UNIT_SCROLL,
+                1,
+                3,
+            )
+            canvas.dispatchEvent(event)
+            repeat(8) {
+                map.advanceViewportAnimationForTest()
+                map.ensureStaticMapImageSizeForTest()
+            }
+
+            assertEquals(renderCount, map.staticMapRenderCountForTest(), "viewport animation should reuse the cached static map")
+        }
+    }
+
+    @Test
+    fun zoomedStaticMapCacheUsesPhysicalCanvasPixels() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(Seq(bases = "ACGT".repeat(300), topology = Topology.CIRCULAR)))
+            map.setSize(320, 260)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            val cacheSize = map.ensureStaticMapImageSizeForTest()
+
+            assertEquals(canvas.width, cacheSize.width)
+            assertEquals(canvas.height, cacheSize.height)
+            assertTrue(cacheSize.width > 320, "zoomed static cache should not be limited to logical map width")
+        }
+    }
+
+    @Test
+    fun clippedViewportRepaintKeepsFeatureLabelHitTargets() {
+        SwingUtilities.invokeAndWait {
+            val features = (0 until 18).map { index ->
+                Feature("clip-feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = features)))
+            map.setSize(340, 300)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            val image = BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB)
+            canvas.paint(image.graphics)
+            val targetName = map.featureLabelAlphasForTest().entries.firstOrNull { it.value >= 0.18f }?.key
+                ?: error("expected at least one visible label")
+            val target = map.featureLabelHitCenterForTest(targetName)
+
+            assertTrue(target != null, "expected a feature label hit target before clipped repaint")
+            val graphics = image.createGraphics()
+            try {
+                graphics.clip = java.awt.Rectangle(0, 0, 12, 12)
+                canvas.paint(graphics)
+            } finally {
+                graphics.dispose()
+            }
+
+            assertTrue(map.featureLabelHitCenterForTest(targetName) != null, "clipped repaint should not erase label hit targets")
         }
     }
 
