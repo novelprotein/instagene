@@ -643,8 +643,8 @@ class GuiSmokeTest {
             val menu = ViewMenu(doc, SequenceView(doc), onSelectToolTab = { selected = it }).create()
             val panels = submenu(menu, "Panels")
             listOf(
-                "Info", "Map", "Sequence", "Enzyme", "Analysis",
-                "Features", "Primers", "Library", "History",
+                "Info", "Map", "Sequence", "Features", "Primers", "Library",
+                "Analysis", "History", "Enzyme",
             ).forEach { assertTrue(menuItem(panels, it).isEnabled) }
             menuItem(panels, "Enzyme").doClick()
             assertEquals("Enzyme", selected)
@@ -870,7 +870,7 @@ class GuiSmokeTest {
             val content = InstaGeneContent(null)
             val titles = (0 until content.toolTabs.tabCount).map { content.toolTabs.getTitleAt(it) }
             assertEquals(
-                listOf("Info", "Map", "Sequence", "Enzyme", "Analysis", "Features", "Primers", "Library", "History"),
+                listOf("Info", "Map", "Sequence", "Features", "Primers", "Library", "Analysis", "History", "Enzyme"),
                 titles,
             )
 

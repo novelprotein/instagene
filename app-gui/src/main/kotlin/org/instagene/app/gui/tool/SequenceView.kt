@@ -4,6 +4,7 @@ import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.edit.SequenceEditService
 import org.instagene.app.gui.theme.Palette
+import org.instagene.app.gui.theme.ThemeRefreshable
 import org.instagene.core.Alphabet
 import org.instagene.core.CodonTable
 import org.instagene.core.CutSite
@@ -42,7 +43,7 @@ import kotlin.math.abs
  * coordinates and the [org.instagene.core.Seq] coordinates identical, which is
  * what every other panel needs in order to highlight the same region.
  */
-class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
+class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefreshable {
 
     /** The displayed document, rebound when the active tab changes. */
     private var doc = initial
@@ -153,6 +154,11 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable {
     override fun updateUI() {
         super.updateUI()
         background = Palette.BACKGROUND
+    }
+
+    override fun refreshTheme() {
+        background = Palette.BACKGROUND
+        relayout()
     }
 
     /** Sets the base-grid font size in points (clamped to 8..28) and re-lays the view out. */

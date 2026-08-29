@@ -2,6 +2,7 @@ package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.theme.Palette
+import org.instagene.app.gui.theme.ThemeRefreshable
 import org.instagene.app.gui.tool.SequenceView
 import java.awt.BorderLayout
 import javax.swing.BorderFactory
@@ -14,7 +15,7 @@ import javax.swing.JPanel
  * The text is recomputed on document changes rather than on a timer, so it is
  * always current and costs nothing while idle.
  */
-class StatusBar(initial: SeqDocument, private val sequenceView: SequenceView) : JPanel(BorderLayout()) {
+class StatusBar(initial: SeqDocument, private val sequenceView: SequenceView) : JPanel(BorderLayout()), ThemeRefreshable {
 
     private val statusLabel = JLabel("Ready")
 
@@ -59,5 +60,12 @@ class StatusBar(initial: SeqDocument, private val sequenceView: SequenceView) : 
     override fun updateUI() {
         super.updateUI()
         background = Palette.BACKGROUND
+    }
+
+    override fun refreshTheme() {
+        background = Palette.BACKGROUND
+        statusLabel.foreground = Palette.TEXT
+        revalidate()
+        repaint()
     }
 }

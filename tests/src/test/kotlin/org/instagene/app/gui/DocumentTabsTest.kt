@@ -332,7 +332,7 @@ class DocumentTabsTest {
             // The empty-state menu bar still shows the full set of top-level
             // options; the sequence-only ones are merely disabled.
             val menus = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it)!!.text }
-            assertEquals(listOf("Command", "File", "Edit", "View", "Project", "Actions", "Tools", "Help"), menus, "all top-level menus must be present")
+            assertEquals(listOf("File", "Edit", "View", "Project", "Tools", "Command", "Actions", "Help"), menus, "all top-level menus must be present")
             val menusByName = (0 until content.menuBar.menuCount).mapNotNull { content.menuBar.getMenu(it) }.associateBy { it.text }
             val edit = menusByName.getValue("Edit")
             val view = menusByName.getValue("View")

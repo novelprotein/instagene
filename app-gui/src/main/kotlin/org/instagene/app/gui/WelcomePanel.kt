@@ -2,6 +2,7 @@ package org.instagene.app.gui
 
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.theme.Palette
+import org.instagene.app.gui.theme.ThemeRefreshable
 import org.instagene.core.Version
 import org.instagene.core.io.SeqIO
 import java.awt.BorderLayout
@@ -38,7 +39,7 @@ class WelcomePanel(
     private val onOpenRecentFile: (File) -> Unit = {},
     private val onOpenRecentProject: (File) -> Unit = {},
     private val onOpenExample: (WelcomeExample) -> Unit = {},
-) : JPanel(BorderLayout()) {
+) : JPanel(BorderLayout()), ThemeRefreshable {
 
     /** "Open File..." button, exposed for tests. */
     val openFileButton = JButton("Open File...")
@@ -164,6 +165,13 @@ class WelcomePanel(
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             addActionListener { onClick() }
         }
+
+    override fun refreshTheme() {
+        recentFileButtons().forEach { it.foreground = Palette.ACCENT }
+        recentProjectButtons().forEach { it.foreground = Palette.ACCENT }
+        revalidate()
+        repaint()
+    }
 }
 
 private fun WelcomeExample.sourceStatement(): String = when (this) {

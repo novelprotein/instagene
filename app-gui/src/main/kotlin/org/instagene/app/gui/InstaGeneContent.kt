@@ -38,6 +38,7 @@ import org.instagene.app.gui.tool.LibraryPanel
 import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.app.gui.tool.SequenceView
+import org.instagene.app.gui.theme.ThemeRefreshable
 import org.instagene.core.ElnAdapters
 import org.instagene.core.ElnArtifactRole
 import org.instagene.core.ElnAttachment
@@ -125,7 +126,7 @@ class InstaGeneContent(
     private val prefs: Prefs = Prefs(),
     private val ncbiClient: NcbiClient = NcbiClient(),
     private val onRequestClose: () -> Unit = {},
-) : JPanel(BorderLayout()) {
+) : JPanel(BorderLayout()), ThemeRefreshable {
 
     /** The parent window, used for dialogs and the system-app opener; null in headless contexts. */
     val parentWindow: JFrame? get() = owner
@@ -466,6 +467,13 @@ class InstaGeneContent(
         featuresPanel.dispose()
         sequenceView.dispose()
         analysisPanel.detachedWindows.toList().forEach { it.dispose() }
+    }
+
+    /** Reattaches look-and-feel-owned pieces that Swing replaces during a theme switch. */
+    override fun refreshTheme() {
+        installTreeDividerListener()
+        revalidate()
+        repaint()
     }
 
     private fun showProjectSearch(promptIfBlank: Boolean = false) {
@@ -1485,7 +1493,6 @@ class InstaGeneContent(
 
     private fun rebuildMenuBar() {
         menuBar.removeAll()
-        menuBar.add(createCommandMenu())
         val active = hub.active
         if (active == null) {
             buildEmptyMenuBar()
@@ -1496,8 +1503,9 @@ class InstaGeneContent(
             menuBar.add(set.edit.create())
             menuBar.add(set.view.create().apply { isEnabled = sequence })
             menuBar.add(createProjectMenu())
-            menuBar.add(set.tools.createActions().apply { isEnabled = sequence })
             menuBar.add(set.tools.create().apply { isEnabled = sequence })
+            menuBar.add(createCommandMenu())
+            menuBar.add(set.tools.createActions().apply { isEnabled = sequence })
             menuBar.add(HelpMenu().create())
         }
         menuBar.revalidate()
@@ -1506,7 +1514,7 @@ class InstaGeneContent(
 
     /**
      * The menu bar with no document open: the full set of top-level options
-     * (File, Edit, View, Tools), with the sequence-only menus shown disabled.
+     * (File, Edit, View, Project, Tools, Command, Actions), with the sequence-only menus shown disabled.
      */
     private fun buildEmptyMenuBar() {
         menuBar.add(JMenu("File").apply {
@@ -1533,8 +1541,9 @@ class InstaGeneContent(
             add(emptyViewBrowserItem)
         })
         menuBar.add(createProjectMenu())
-        menuBar.add(JMenu("Actions").apply { isEnabled = false })
         menuBar.add(emptyStateMenuSet.tools.create().apply { isEnabled = false })
+        menuBar.add(createCommandMenu())
+        menuBar.add(JMenu("Actions").apply { isEnabled = false })
         menuBar.add(HelpMenu().create())
     }
 
@@ -1587,7 +1596,7 @@ class InstaGeneContent(
             })
         }
 
-        listOf("Info", "Map", "Sequence", "Enzyme", "Features", "Primers", "Library", "History").forEach { name ->
+        listOf("Info", "Map", "Sequence", "Features", "Primers", "Library", "Analysis", "History", "Enzyme").forEach { name ->
             add(CommandPaletteCommand("panel.${name.lowercase()}", "Show $name panel", "Open the $name workspace", listOf("panel tab")) {
                 ensureSequenceWorkspace(Seq(""))
                 toolTabs.selectedIndex = toolTabs.indexOfTab(name)
@@ -1682,12 +1691,12 @@ class InstaGeneContent(
             addTab("Info", infoPanel)
             addTab("Map", plasmidMapPanel)
             addTab("Sequence", editorScroll)
-            addTab("Enzyme", digestPanel)
-            addTab("Analysis", analysisPanel)
             addTab("Features", featuresPanel)
             addTab("Primers", primersPanel)
             addTab("Library", libraryPanel)
+            addTab("Analysis", analysisPanel)
             addTab("History", editHistoryPanel)
+            addTab("Enzyme", digestPanel)
         }
         return toolTabs
     }

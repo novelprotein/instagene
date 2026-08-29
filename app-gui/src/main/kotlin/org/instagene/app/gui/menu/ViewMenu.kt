@@ -86,8 +86,8 @@ class ViewMenu(
     /** Navigation to each of the main tool tabs below the sequence editor. */
     private fun createPanelsMenu(): JMenu = JMenu("Panels").apply {
         listOf(
-            "Info", "Map", "Sequence", "Enzyme", "Analysis",
-            "Features", "Primers", "Library", "History",
+            "Info", "Map", "Sequence", "Features", "Primers", "Library",
+            "Analysis", "History", "Enzyme",
         ).forEach { name ->
             add(JMenuItem(name).apply {
                 addActionListener { onSelectToolTab?.invoke(name) }

@@ -2,11 +2,18 @@ package org.instagene.app.gui.theme
 
 import com.formdev.flatlaf.FlatLaf
 import com.formdev.flatlaf.intellijthemes.FlatAllIJThemes
+import java.awt.Component
+import java.awt.Container
 import java.io.File
 import java.net.URLDecoder
 import java.util.jar.JarFile
 import javax.swing.LookAndFeel
 import javax.swing.UIManager
+
+/** Components with cached or custom-painted theme state refresh themselves after a look-and-feel switch. */
+interface ThemeRefreshable {
+    fun refreshTheme()
+}
 
 /**
  * Registry of selectable FlatLaf themes and the runtime switching logic.
@@ -174,6 +181,16 @@ object ThemeManager {
         applied = id
         runCatching { FlatLaf.updateUI() }
             .onFailure { System.err.println("instagene: theme '${target.displayName}' installed but UI refresh failed: ${it.message}") }
+        java.awt.Window.getWindows().forEach(::refreshThemeTree)
         return true
+    }
+
+    private fun refreshThemeTree(component: Component) {
+        if (component is ThemeRefreshable) component.refreshTheme()
+        if (component is Container) {
+            component.components.forEach(::refreshThemeTree)
+        }
+        component.invalidate()
+        component.repaint()
     }
 }

@@ -3,11 +3,14 @@ package org.instagene.app.gui
 import org.instagene.app.gui.tool.MapExportOptions
 import org.instagene.app.gui.tool.MapPreset
 import org.instagene.app.gui.tool.PlasmidMapPanel
+import org.instagene.app.gui.tool.FeatureLabelChoice
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Feature
+import org.instagene.core.Enzymes
 import org.instagene.core.Seq
 import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
+import java.awt.Color
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.awt.event.MouseWheelEvent
@@ -381,6 +384,69 @@ class PlasmidMapPanelTest {
     }
 
     @Test
+    fun mapDisplayControlsSeparateMapTextAndMetadataSettings() {
+        SwingUtilities.invokeAndWait {
+            val sequence = circular.copy(features = listOf(
+                Feature("coding", "CDS", 10, 80),
+                Feature("promoter", "promoter", 100, 140),
+            ))
+            val map = PlasmidMapPanel(SeqDocument(sequence))
+            assertTrue(map.showFeatureKey.isSelected)
+            assertTrue(map.showMetadata.isSelected)
+            assertEquals(11, (map.mapFontSize.value as Number).toInt())
+            assertTrue(map.featureLabelMode.itemCount >= 4)
+            assertTrue((0 until map.featureLabelMode.itemCount).map { (map.featureLabelMode.getItemAt(it) as FeatureLabelChoice).displayName }
+                .containsAll(listOf("All features", "Visible features", "CDS", "promoter")))
+
+            val controlFontBefore = map.showFeatureKey.font.size
+            map.showFeatureKey.doClick()
+            assertFalse(map.showFeatureKey.isSelected)
+            assertTrue(map.showMetadata.isSelected)
+            map.showMetadata.doClick()
+            assertFalse(map.showMetadata.isSelected)
+            map.mapFontSize.value = 18
+
+            assertEquals(18, (map.mapFontSize.value as Number).toInt())
+            assertEquals(controlFontBefore, map.showFeatureKey.font.size)
+        }
+    }
+
+    @Test
+    fun exportsHonorCustomDimensionsTransparencyAndKeyOptions() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = listOf(Feature("feature", start = 10, end = 20)))))
+            val png = File.createTempFile("instagene-map-options-", ".png").also { it.deleteOnExit() }
+            map.exportPng(
+                png,
+                MapExportOptions(
+                    width = 640,
+                    height = 480,
+                    showTitle = false,
+                    showFeatureKey = false,
+                    showMetadata = false,
+                    transparentBackground = true,
+                    fontSize = 18,
+                ),
+            )
+            val image = ImageIO.read(png)
+            assertEquals(640, image.width)
+            assertEquals(480, image.height)
+            assertEquals(0, image.getRGB(0, 0).ushr(24))
+
+            val svg = File.createTempFile("instagene-map-options-", ".svg").also { it.deleteOnExit() }
+            map.exportSvg(
+                svg,
+                MapExportOptions(width = 640, height = 480, showTitle = false, showFeatureKey = false, showMetadata = false, fontSize = 18),
+            )
+            val text = svg.readText()
+            assertTrue(text.contains("width=\"640\""))
+            assertTrue(text.contains("height=\"480\""))
+            assertFalse(text.contains("font-size=\"24\""))
+            assertFalse(text.contains("features ·"))
+        }
+    }
+
+    @Test
     fun svgExportKeepsEveryCrowdedFeatureLabelAsAnEditableCallout() {
         SwingUtilities.invokeAndWait {
             val file = File.createTempFile("instagene-crowded-map-", ".svg")
@@ -645,6 +711,23 @@ class PlasmidMapPanelTest {
     }
 
     @Test
+    fun restrictionSiteToggleInvalidatesAndHidesTheMapLayer() {
+        SwingUtilities.invokeAndWait {
+            val doc = SeqDocument(SeqIO.Samples.PUC19_MCS)
+            doc.addEnzyme(Enzymes.require("EcoRI"))
+            val map = PlasmidMapPanel(doc)
+            map.setSize(500, 500)
+            map.doLayout()
+            map.ensureStaticMapImageSizeForTest()
+            val firstRender = map.staticMapRenderCountForTest()
+            map.showRestrictionSites.doClick()
+            map.ensureStaticMapImageSizeForTest()
+            assertTrue(map.staticMapRenderCountForTest() > firstRender)
+            assertFalse(map.showRestrictionSites.isSelected)
+        }
+    }
+
+    @Test
     fun labelsFadedOutAtTheViewportEdgeDoNotExposeHitTargets() {
         SwingUtilities.invokeAndWait {
             val features = (0 until 18).map { index ->
@@ -661,6 +744,24 @@ class PlasmidMapPanelTest {
 
             assertTrue(faded != null, "expected at least one label to fade near or outside the viewport")
             assertTrue(map.featureLabelHitCenterForTest(faded.key) == null, "faded-out labels should not be clickable")
+        }
+    }
+
+    @Test
+    fun plasmidFeatureLabelStripeUsesTheFeatureColor() {
+        SwingUtilities.invokeAndWait {
+            val custom = Feature("custom-color", start = 10, end = 18, color = "#123456")
+            val features = listOf(custom) + (1 until 18).map { index ->
+                Feature("stripe-feature-$index", start = index * 15, end = index * 15 + 9)
+            }
+            val map = PlasmidMapPanel(SeqDocument(circular.copy(features = features)))
+            map.setSize(340, 300)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
+
+            assertEquals(Color.decode("#123456"), map.featureLabelStripeColorsForTest().getValue(custom.name))
         }
     }
 
@@ -699,6 +800,31 @@ class PlasmidMapPanelTest {
             }
 
             assertEquals(renderCount, map.staticMapRenderCountForTest(), "viewport animation should reuse the cached static map")
+        }
+    }
+
+    @Test
+    fun themeRefreshInvalidatesTheStaticMapLayer() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(Seq(bases = "ACGT".repeat(300), topology = Topology.CIRCULAR)))
+            map.setSize(320, 260)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            val graphics = BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics
+            try {
+                canvas.paint(graphics)
+                assertEquals(1, map.staticMapRenderCountForTest())
+
+                canvas.paint(graphics)
+                assertEquals(1, map.staticMapRenderCountForTest())
+
+                map.refreshTheme()
+                canvas.paint(graphics)
+                assertEquals(2, map.staticMapRenderCountForTest())
+            } finally {
+                graphics.dispose()
+            }
         }
     }
 

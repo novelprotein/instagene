@@ -4,6 +4,7 @@ package org.instagene.app.gui.tool
 
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.theme.Palette
+import org.instagene.app.gui.theme.ThemeRefreshable
 import org.instagene.core.Feature
 import org.instagene.core.SeqKind
 import org.instagene.core.SeqOps
@@ -37,7 +38,10 @@ import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JScrollPane
+import javax.swing.JSpinner
+import javax.swing.JTextField
 import javax.swing.JViewport
+import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 import kotlin.math.PI
@@ -63,9 +67,20 @@ enum class MapPreset(val width: Int, val height: Int) {
 data class MapExportOptions(
     val preset: MapPreset = MapPreset.PAPER,
     val title: String? = null,
+    val showTitle: Boolean = true,
+    val showFeatureKey: Boolean = false,
+    val showMetadata: Boolean = false,
+    @Deprecated("Use showFeatureKey and showMetadata separately")
+    val showMapKey: Boolean? = null,
     val showFeatureLabels: Boolean = true,
     val showRestrictionSites: Boolean = true,
+    val featureLabelModeId: String = "all",
+    val featureType: String? = null,
     val featureLaneSpacing: Int = 12,
+    val fontSize: Int = 11,
+    val transparentBackground: Boolean = false,
+    val width: Int? = null,
+    val height: Int? = null,
 )
 
 /**
@@ -74,7 +89,7 @@ data class MapExportOptions(
  * section between the press and release points. The header's "Circular" toggle
  * always reflects the sequence's actual topology.
  */
-class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
+class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeRefreshable {
 
     /** The displayed document, rebound when the active tab changes. */
     private var doc = initial
@@ -89,14 +104,25 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     }
     val showFeatureLabels: JCheckBox = JCheckBox("Feature labels", true)
     val showRestrictionSites: JCheckBox = JCheckBox("Restriction sites", true)
-    val featureLabelMode = JComboBox(FeatureLabelMode.entries.toTypedArray()).apply {
+    val showFeatureKey: JCheckBox = JCheckBox("Feature key", true)
+    val showMetadata: JCheckBox = JCheckBox("Metadata", true)
+    @Deprecated("Use showFeatureKey")
+    val showMapKey: JCheckBox get() = showFeatureKey
+    @Deprecated("Title is configured in the export dialog")
+    val showTitle: JCheckBox = JCheckBox("Title", true)
+    @Deprecated("Title is configured in the export dialog")
+    val titleField = JTextField()
+    val mapFontSize = JSpinner(javax.swing.SpinnerNumberModel(11, 9, 24, 1)).apply {
+        toolTipText = "Map text font size"
+    }
+    val featureLabelMode = JComboBox(FeatureLabelOptions.choices(initial.seq.features).toTypedArray()).apply {
         toolTipText = "Choose which annotations receive labels"
         renderer = object : javax.swing.DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
                 list: javax.swing.JList<*>?, value: Any?, index: Int,
                 isSelected: Boolean, cellHasFocus: Boolean,
             ): java.awt.Component = super.getListCellRendererComponent(
-                list, (value as? FeatureLabelMode)?.displayName ?: value, index, isSelected, cellHasFocus,
+                list, (value as? FeatureLabelChoice)?.displayName ?: value, index, isSelected, cellHasFocus,
             )
         }
     }
@@ -160,8 +186,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         val canvasWidth: Int,
         val canvasHeight: Int,
         val zoomPercent: Int,
-        val featureLabelMode: FeatureLabelMode,
+        val featureLabelMode: String,
         val showRestrictionSites: Boolean,
+        val showFeatureKey: Boolean,
+        val showMetadata: Boolean,
+        val fontSize: Int,
+        val title: String,
         val cutSiteIdentity: Int,
         val cutSiteCount: Int,
     )
@@ -181,6 +211,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     }
     private var viewportAnimationTarget: java.awt.Point? = null
     private var exportFeatureLaneSpacing: Int? = null
+    private var exportTitle: String? = null
+    private var exportShowTitle: Boolean? = null
+    private var exportShowFeatureKey: Boolean? = null
+    private var exportShowMetadata: Boolean? = null
+    private var exportFeatureChoiceId: String? = null
+    private var exportFontSize: Int? = null
+    private var exportTransparentCanvas = false
     private var zoomFactor = 1.0
     private val zoomValues = intArrayOf(50, 75, 100, 125, 150, 200, 300, 400, 600)
     private val zoomLabel = JLabel("100%").apply {
@@ -213,7 +250,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             if (reason == SeqDocument.Reason.SEQUENCE) mapCanvas.clearLabelVisuals()
             if (reason == SeqDocument.Reason.SEQUENCE || reason == SeqDocument.Reason.ENZYMES) mapCanvas.invalidateStaticMapCache()
             mapCanvas.repaint()
-            if (reason == SeqDocument.Reason.SEQUENCE) syncTopologyControl()
+            if (reason == SeqDocument.Reason.SEQUENCE) {
+                syncTopologyControl()
+                refreshFeatureLabelChoices()
+            }
         }
         docListener = initialListener
         doc.addListener(initialListener)
@@ -227,6 +267,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 add(showFeatureLabels)
                 add(featureLabelMode)
                 add(showRestrictionSites)
+                add(showFeatureKey)
+                add(showMetadata)
+                add(JLabel("Font"))
+                add(mapFontSize)
             })
         }
         zoomControlsPanel.add(JLabel("Zoom"))
@@ -245,33 +289,38 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         })
         val exportControls = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
             isOpaque = false
-            add(JButton("Export PNG").apply {
-                addActionListener {
-                    val chooser = JFileChooser().apply { dialogTitle = "Export map as PNG" }
-                    if (chooser.showSaveDialog(this@PlasmidMapPanel) == JFileChooser.APPROVE_OPTION) exportPng(chooser.selectedFile)
-                }
-            })
-            add(JButton("Export SVG").apply {
-                addActionListener {
-                    val chooser = JFileChooser().apply { dialogTitle = "Export map as SVG" }
-                    if (chooser.showSaveDialog(this@PlasmidMapPanel) == JFileChooser.APPROVE_OPTION) exportSvg(chooser.selectedFile)
-                }
-            })
+            add(JButton("Export...").apply { addActionListener { showExportDialog() } })
         }
-        add(JPanel(BorderLayout(8, 0)).apply {
+        val controlRow = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
             isOpaque = false
-            add(featureControls, BorderLayout.WEST)
-            add(zoomControlsPanel, BorderLayout.CENTER)
-            add(exportControls, BorderLayout.EAST)
+            add(featureControls)
+            add(zoomControlsPanel)
+            add(exportControls)
+        }
+        add(JScrollPane(controlRow).apply {
+            border = BorderFactory.createEmptyBorder()
+            isOpaque = false
+            viewport.isOpaque = false
+            horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
+            verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_NEVER
         }, BorderLayout.NORTH)
         showFeatureLabels.addActionListener { mapCanvas.clearLabelVisuals(); mapCanvas.repaint() }
         featureLabelMode.addActionListener { mapCanvas.clearLabelVisuals(); mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
         showRestrictionSites.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
+        showFeatureKey.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
+        showMetadata.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
+        mapFontSize.addChangeListener {
+            applyMapFontSize()
+        }
+        applyMapFontSize()
         add(mapScrollPane, BorderLayout.CENTER)
     }
 
     override fun doLayout() {
         super.doLayout()
+        zoomControlsPanel.parent?.let { parent ->
+            zoomControlsPanel.setBounds(0, 0, parent.width, zoomControlsPanel.preferredSize.height)
+        }
         layoutMapViewport()
     }
 
@@ -391,12 +440,16 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 mapCanvas.clearLabelVisuals()
                 if (reason == SeqDocument.Reason.SEQUENCE || reason == SeqDocument.Reason.ENZYMES) mapCanvas.invalidateStaticMapCache()
                 mapCanvas.repaint()
-                if (reason == SeqDocument.Reason.SEQUENCE) syncTopologyControl()
+                if (reason == SeqDocument.Reason.SEQUENCE) {
+                    syncTopologyControl()
+                    refreshFeatureLabelChoices()
+                }
             }
             docListener = listener
             doc.addListener(listener)
         }
         syncTopologyControl()
+        refreshFeatureLabelChoices()
         mapCanvas.clearLabelVisuals()
         mapCanvas.invalidateStaticMapCache()
         mapCanvas.repaint()
@@ -441,20 +494,44 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     @Suppress("unused")
     fun exportPng(file: File, options: MapExportOptions) {
         require(options.featureLaneSpacing > 0) { "Feature lane spacing must be positive" }
+        val width = options.width ?: options.preset.width
+        val height = options.height ?: options.preset.height
+        require(width > 0 && height > 0) { "Map dimensions must be positive" }
         val previousZoom = zoomFactor
         val previousLabels = showFeatureLabels.isSelected
         val previousSites = showRestrictionSites.isSelected
         val previousLaneSpacing = exportFeatureLaneSpacing
+        val previousTitle = exportTitle
+        val previousShowTitle = exportShowTitle
+        val previousShowFeatureKey = exportShowFeatureKey
+        val previousShowMetadata = exportShowMetadata
+        val previousFeatureChoiceId = exportFeatureChoiceId
+        val previousFontSize = exportFontSize
+        val previousTransparent = exportTransparentCanvas
         try {
             showFeatureLabels.isSelected = options.showFeatureLabels
             showRestrictionSites.isSelected = options.showRestrictionSites
             exportFeatureLaneSpacing = options.featureLaneSpacing
+            exportTitle = options.title
+            exportShowTitle = options.showTitle
+            exportShowFeatureKey = options.showFeatureKey || options.showMapKey == true
+            exportShowMetadata = options.showMetadata || options.showMapKey == true
+            exportFeatureChoiceId = options.featureLabelModeId
+            exportFontSize = options.fontSize.coerceIn(9, 24)
+            exportTransparentCanvas = options.transparentBackground
             zoomFactor = 1.0
-            exportPng(file, options.preset.width, options.preset.height)
+            exportPng(file, width, height)
         } finally {
             showFeatureLabels.isSelected = previousLabels
             showRestrictionSites.isSelected = previousSites
             exportFeatureLaneSpacing = previousLaneSpacing
+            exportTitle = previousTitle
+            exportShowTitle = previousShowTitle
+            exportShowFeatureKey = previousShowFeatureKey
+            exportShowMetadata = previousShowMetadata
+            exportFeatureChoiceId = previousFeatureChoiceId
+            exportFontSize = previousFontSize
+            exportTransparentCanvas = previousTransparent
             zoomFactor = previousZoom
         }
     }
@@ -466,7 +543,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
     /** Exports an SVG with reproducible title and visibility settings. */
     fun exportSvg(file: File, options: MapExportOptions) {
-        exportSvg(file, options, options.preset.width, options.preset.height)
+        exportSvg(file, options, options.width ?: options.preset.width, options.height ?: options.preset.height)
     }
 
     private fun exportSvg(file: File, options: MapExportOptions, width: Int, height: Int) {
@@ -475,7 +552,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         val cx = width / 2
         val cy = height / 2
         val radius = min(width, height) / 3
-        val features = seq.features.filter { FeatureLabelOptions.include(it, featureLabelMode.selectedItem as? FeatureLabelMode ?: FeatureLabelMode.ALL) }
+        val availableChoices = FeatureLabelOptions.choices(seq.features)
+        val choice = options.featureType?.let { FeatureLabelChoice("type:$it", it, FeatureLabelMode.ALL, it) }
+            ?: availableChoices.firstOrNull { it.id == options.featureLabelModeId }
+            ?: selectedFeatureLabelChoice()
+        val features = seq.features.filter { FeatureLabelOptions.include(it, choice) }
         val laneOf = HashMap<Feature, Int>()
         packLanes(features, laneOf)
         val featureSvg = features.mapIndexed { index, feature ->
@@ -489,25 +570,31 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
               <path d="$path" fill="none" stroke="$color" stroke-width="10" stroke-linecap="round"/>
             """.trimIndent()
         }.joinToString("\n")
-        val labelSvg = if (options.showFeatureLabels) svgFeatureLabels(features, laneOf, cx, cy, radius, width, height, options.featureLaneSpacing) else ""
+        val labelSvg = if (options.showFeatureLabels) svgFeatureLabels(features, laneOf, cx, cy, radius, width, height, options.featureLaneSpacing, options.fontSize) else ""
         val siteSvg = if (options.showRestrictionSites) doc.cutSites.joinToString("\n") { (enzyme, recognitionStart) ->
             val angle = Math.toRadians(recognitionStart.toDouble() / seq.length * 360.0 - 90.0)
             val x = cx + cos(angle) * (radius + 22)
             val y = cy + sin(angle) * (radius + 22)
             val label = escapeSvg(enzyme.name)
             val labelWidth = label.length * 6 + 8
-            "<circle cx=\"$x\" cy=\"$y\" r=\"3\" fill=\"#8a4baf\"/><rect x=\"${x + 5}\" y=\"${y - 11}\" width=\"$labelWidth\" height=\"14\" rx=\"4\" fill=\"#ffffff\" stroke=\"#c6cfd9\"/><text x=\"${x + 9}\" y=\"$y\" font-size=\"10\">$label</text>"
+            "<circle cx=\"$x\" cy=\"$y\" r=\"3\" fill=\"#8a4baf\"/><rect x=\"${x + 5}\" y=\"${y - options.fontSize}\" width=\"$labelWidth\" height=\"${options.fontSize + 4}\" rx=\"4\" fill=\"#ffffff\" stroke=\"#c6cfd9\"/><text x=\"${x + 9}\" y=\"$y\" font-size=\"${options.fontSize}\">$label</text>"
         } else ""
-        val title = options.title?.takeIf { it.isNotBlank() } ?: "${seq.name} (${seq.length} bp)"
+        val title = options.title?.takeIf { it.isNotBlank() } ?: seq.name
+        val metadata = if (options.showMetadata) "<text x=\"$cx\" y=\"${cy + options.fontSize * 3}\" text-anchor=\"middle\" font-size=\"${options.fontSize}\" fill=\"#69727d\">${seq.length} bp ${seq.kind.name.lowercase()} · GC ${"%.1f".format(SeqOps.gcContent(seq))}% · ${seq.features.size} features · ${doc.cutSites.size} sites</text>" else ""
+        val svgLegend = if (options.showFeatureKey) svgFeatureLegend(features, seq, width, height, options.fontSize) else ""
+        val background = if (options.transparentBackground) "" else "<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>"
+        val titleSvg = if (options.showTitle) "<text x=\"$cx\" y=\"${cy + 5}\" text-anchor=\"middle\" font-size=\"${options.fontSize * 15 / 11}\">${escapeSvg(title)}</text>" else ""
         file.writeText("""
             <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">
-              <rect width="100%" height="100%" fill="#ffffff"/>
+              $background
               <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#d8dee6" stroke-width="10"/>
               <circle cx="$cx" cy="$cy" r="$radius" fill="none" stroke="#f7f9fb" stroke-width="2"/>
-              <text x="$cx" y="${cy + 5}" text-anchor="middle" font-size="16">${escapeSvg(title)}</text>
+              $titleSvg
+              $metadata
               $featureSvg
               $labelSvg
               $siteSvg
+              $svgLegend
             </svg>
         """.trimIndent())
     }
@@ -537,6 +624,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         width: Int,
         height: Int,
         laneSpacing: Int,
+        fontSize: Int,
     ): String {
         data class Callout(val feature: Feature, val lane: Int, val angle: Double, val anchorX: Double, val anchorY: Double)
         val callouts = features.map { feature ->
@@ -560,12 +648,21 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 val text = escapeSvg(callout.feature.name)
                 val x = if (left) 12 else width - 12
                 val anchor = if (left) "end" else "start"
-                "<path d=\"M ${callout.anchorX} ${callout.anchorY} L $x ${requested[index] - 4}\" fill=\"none\" stroke=\"#69727d\" stroke-width=\"1\"/><text x=\"$x\" y=\"${requested[index]}\" text-anchor=\"$anchor\" font-size=\"12\">$text</text>"
+                "<path d=\"M ${callout.anchorX} ${callout.anchorY} L $x ${requested[index] - 4}\" fill=\"none\" stroke=\"#69727d\" stroke-width=\"1\"/><text x=\"$x\" y=\"${requested[index]}\" text-anchor=\"$anchor\" font-size=\"$fontSize\">$text</text>"
             }
         }.joinToString("\n")
     }
 
     private fun svgColor(feature: Feature, index: Int): String = feature.color ?: "#%06x".format(featureColor(feature, index).rgb and 0xffffff)
+
+    private fun svgFeatureLegend(features: List<Feature>, seq: org.instagene.core.Seq, width: Int, height: Int, fontSize: Int): String {
+        val x = 12
+        val startY = height - 12 - features.size * (fontSize + 4)
+        return features.mapIndexed { index, feature ->
+            val y = startY + index * (fontSize + 4)
+            "<rect x=\"$x\" y=\"${y - fontSize + 2}\" width=\"$fontSize\" height=\"$fontSize\" fill=\"${svgColor(feature, seq.features.indexOf(feature))}\"/><text x=\"${x + fontSize + 4}\" y=\"$y\" font-size=\"$fontSize\">${escapeSvg(FeatureLabelOptions.text(feature))}</text>"
+        }.joinToString("\n")
+    }
 
     private fun escapeSvg(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
@@ -575,10 +672,109 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         background = Palette.BACKGROUND
     }
 
+    override fun refreshTheme() {
+        background = Palette.BACKGROUND
+        mapCanvas.refreshTheme()
+        revalidate()
+        repaint()
+    }
+
     /** The checkbox mirrors `seq.isCircular`; it is never pre-checked for a linear sample. */
     private fun syncTopologyControl() {
         circularCheckbox.isSelected = doc.seq.isCircular
         circularCheckbox.isEnabled = doc.seq.kind != SeqKind.PROTEIN
+    }
+
+    private fun refreshFeatureLabelChoices() {
+        val previous = selectedFeatureLabelChoice().id
+        val choices = FeatureLabelOptions.choices(doc.seq.features)
+        featureLabelMode.model = javax.swing.DefaultComboBoxModel(choices.toTypedArray())
+        featureLabelMode.selectedItem = choices.firstOrNull { it.id == previous } ?: choices.firstOrNull()
+    }
+
+    private fun applyMapFontSize() {
+        mapCanvas.clearLabelVisuals()
+        mapCanvas.invalidateStaticMapCache()
+        mapCanvas.revalidate()
+        mapCanvas.repaint()
+    }
+
+    private fun selectedMapFontSize(): Int =
+        (mapFontSize.value as? Number)?.toInt()?.coerceIn(9, 24) ?: 11
+
+    private fun mapTitle(): String = exportTitle ?: doc.seq.name
+
+    private fun mapFeatureKeyVisible(): Boolean = exportShowFeatureKey ?: showFeatureKey.isSelected
+
+    private fun mapMetadataVisible(): Boolean = exportShowMetadata ?: showMetadata.isSelected
+
+    private fun mapTitleVisible(): Boolean = exportShowTitle ?: true
+
+    private fun selectedFeatureLabelChoice(): FeatureLabelChoice =
+        featureLabelMode.selectedItem as? FeatureLabelChoice
+            ?: FeatureLabelOptions.choices(doc.seq.features).first()
+
+    private fun activeFeatureLabelChoice(): FeatureLabelChoice {
+        val id = exportFeatureChoiceId ?: selectedFeatureLabelChoice().id
+        return FeatureLabelOptions.choices(doc.seq.features).firstOrNull { it.id == id }
+            ?: FeatureLabelOptions.choices(doc.seq.features).first()
+    }
+
+    private fun showExportDialog() {
+        val title = JTextField(doc.seq.name, 22)
+        val format = JComboBox(arrayOf("PNG", "SVG"))
+        val includeTitle = JCheckBox("Title", true)
+        val includeKey = JCheckBox("Feature key", showFeatureKey.isSelected)
+        val includeMetadata = JCheckBox("Metadata", showMetadata.isSelected)
+        val includeLabels = JCheckBox("Feature labels", showFeatureLabels.isSelected)
+        val includeSites = JCheckBox("Restriction sites", showRestrictionSites.isSelected)
+        val choice = JComboBox(FeatureLabelOptions.choices(doc.seq.features).toTypedArray())
+        choice.selectedItem = selectedFeatureLabelChoice()
+        val font = JSpinner(javax.swing.SpinnerNumberModel(selectedMapFontSize(), 9, 32, 1))
+        val preset = JComboBox(MapPreset.entries.toTypedArray())
+        val width = JSpinner(javax.swing.SpinnerNumberModel(MapPreset.PAPER.width, 100, 10000, 50))
+        val height = JSpinner(javax.swing.SpinnerNumberModel(MapPreset.PAPER.height, 100, 10000, 50))
+        val transparent = JCheckBox("Transparent background")
+        preset.addActionListener {
+            val selected = preset.selectedItem as? MapPreset ?: return@addActionListener
+            width.value = selected.width
+            height.value = selected.height
+        }
+        val form = JPanel(java.awt.GridLayout(0, 2, 6, 6)).apply {
+            border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
+            add(JLabel("Format")); add(format)
+            add(JLabel("Title")); add(title)
+            add(includeTitle); add(JLabel(""))
+            add(includeKey); add(includeMetadata)
+            add(includeLabels); add(choice)
+            add(includeSites); add(JLabel(""))
+            add(JLabel("Map font")); add(font)
+            add(JLabel("Preset")); add(preset)
+            add(JLabel("Width")); add(width)
+            add(JLabel("Height")); add(height)
+            add(transparent); add(JLabel(""))
+        }
+        if (JOptionPane.showConfirmDialog(this, form, "Export plasmid map", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return
+        val selectedChoice = choice.selectedItem as? FeatureLabelChoice ?: selectedFeatureLabelChoice()
+        val options = MapExportOptions(
+            title = title.text.trim().ifBlank { null },
+            showTitle = includeTitle.isSelected,
+            showFeatureKey = includeKey.isSelected,
+            showMetadata = includeMetadata.isSelected,
+            showFeatureLabels = includeLabels.isSelected,
+            showRestrictionSites = includeSites.isSelected,
+            featureLabelModeId = selectedChoice.id,
+            featureType = selectedChoice.featureType,
+            fontSize = (font.value as Number).toInt(),
+            transparentBackground = transparent.isSelected,
+            width = (width.value as Number).toInt(),
+            height = (height.value as Number).toInt(),
+        )
+        val extension = if (format.selectedItem == "SVG") "svg" else "png"
+        val chooser = JFileChooser().apply { dialogTitle = "Export map as $extension" }
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            if (extension == "svg") exportSvg(chooser.selectedFile, options) else exportPng(chooser.selectedFile, options)
+        }
     }
 
     /** Exposed for GUI regression tests: center of the latest painted feature label target. */
@@ -601,6 +797,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
     fun featureLabelAlphasForTest(): Map<String, Float> =
         mapCanvas.featureLabelAlphasForTest()
 
+    /** Exposed for GUI regression tests: latest painted feature-label stripe colors by feature name. */
+    fun featureLabelStripeColorsForTest(): Map<String, Color> =
+        mapCanvas.featureLabelStripeColorsForTest()
+
     /** Exposed for GUI regression tests: moves the scroll viewport in canvas coordinates. */
     fun setViewportPositionForTest(x: Int, y: Int) {
         val extent = mapScrollPane.viewport.extentSize
@@ -614,9 +814,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
         var onSelect: ((Int, Int) -> Unit)? = null
 
-        private val titleFont = Font(Font.SANS_SERIF, Font.BOLD, 15)
-        private val subtitleFont = Font(Font.SANS_SERIF, Font.PLAIN, 11)
-        private val labelFont = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        private val titleFont: Font get() = Font(Font.SANS_SERIF, Font.BOLD, scaledFontSize(15))
+        private val subtitleFont: Font get() = Font(Font.SANS_SERIF, Font.PLAIN, scaledFontSize(11))
+        private val labelFont: Font get() = Font(Font.SANS_SERIF, Font.PLAIN, scaledFontSize(11))
+
+        private fun scaledFontSize(base: Int): Int =
+            (base * (exportFontSize ?: selectedMapFontSize()).toDouble() / 11.0).roundToInt().coerceAtLeast(8)
 
         private var centerX = 0
         private var centerY = 0
@@ -630,13 +833,14 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         private var gcSequence: Any? = null
         private var cachedGcPercent = 0.0
         private var visibleFeaturesSequence: Any? = null
-        private var visibleFeaturesMode: FeatureLabelMode? = null
+        private var visibleFeaturesMode: String? = null
         private var cachedVisibleFeatures: List<Feature> = emptyList()
         private val labelHitRegions = ArrayList<LabelHitRegion>()
         private val arcHitRegions = ArrayList<ArcHitRegion>()
         private val featureLabelHitRegions = LinkedHashMap<String, Rectangle>()
         private val featureLabelVisualBounds = LinkedHashMap<String, Rectangle>()
         private val featureLabelAlphas = LinkedHashMap<String, Float>()
+        private val featureLabelStripeColors = LinkedHashMap<String, Color>()
         private val labelVisuals = LinkedHashMap<FeatureLabelKey, LabelVisualState>()
         private var labelPaintGeneration = 0
         private var staticMapImage: BufferedImage? = null
@@ -707,25 +911,59 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 }
             })
             addMouseWheelListener { e ->
+                if (e.isControlDown || e.isMetaDown) {
+                    zoomAtPoint(e.x, e.y, if (e.preciseWheelRotation < 0) 1 else -1)
+                    e.consume()
+                    return@addMouseWheelListener
+                }
                 if (zoomFactor <= 1.0) return@addMouseWheelListener
                 val viewport = mapScrollPane.viewport
                 val extent = viewport.extentSize
-                val step = (if (e.isShiftDown) extent.width else extent.height).coerceAtLeast(32) / 3
-                val distance = e.wheelRotation * step
+                val step = (if (e.isShiftDown) extent.width else extent.height).coerceAtLeast(32) / 3.0
+                val distance = (e.preciseWheelRotation * step).roundToInt()
                 val current = viewport.viewPosition
                 val target = if (e.isShiftDown) {
                     java.awt.Point(current.x + distance, current.y)
                 } else {
                     java.awt.Point(current.x, current.y + distance)
                 }
-                animateViewportTo(target)
+                viewportAnimationTarget = null
+                animationTimer.stop()
+                val maxX = (mapCanvas.width - extent.width).coerceAtLeast(0)
+                val maxY = (mapCanvas.height - extent.height).coerceAtLeast(0)
+                viewport.viewPosition = java.awt.Point(target.x.coerceIn(0, maxX), target.y.coerceIn(0, maxY))
                 e.consume()
             }
+        }
+
+        private fun zoomAtPoint(screenX: Int, screenY: Int, direction: Int) {
+            val viewport = mapScrollPane.viewport
+            val before = viewport.viewPosition
+            val oldScale = zoomFactor
+            val logicalX = (before.x + screenX - canvasOffsetX(width, oldScale)) / oldScale
+            val logicalY = (before.y + screenY - canvasOffsetY(height, oldScale)) / oldScale
+            setZoomPercent(neighborZoom(direction))
+            val targetX = (logicalX * zoomFactor + canvasOffsetX(width, zoomFactor) - screenX).roundToInt()
+            val targetY = (logicalY * zoomFactor + canvasOffsetY(height, zoomFactor) - screenY).roundToInt()
+            val extent = viewport.extentSize
+            viewport.viewPosition = java.awt.Point(
+                targetX.coerceIn(0, (mapCanvas.width - extent.width).coerceAtLeast(0)),
+                targetY.coerceIn(0, (mapCanvas.height - extent.height).coerceAtLeast(0)),
+            )
+            mapCanvas.repaint()
         }
 
         override fun updateUI() {
             super.updateUI()
             background = Palette.BACKGROUND
+        }
+
+        fun refreshTheme() {
+            background = Palette.BACKGROUND
+            clearLabelVisuals()
+            invalidateStaticMapCache()
+            revalidate()
+            repaint()
         }
 
         override fun getPreferredSize(): Dimension = Dimension(
@@ -738,7 +976,6 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 viewportAnimationTarget = null
                 animationTimer.stop()
             }
-            if (shouldAnimateLabels() && labelVisuals.isNotEmpty()) animationTimer.start()
             repaintVisibleMap()
         }
 
@@ -760,7 +997,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val elapsedSeconds = ((now - lastAnimationNanos) / 1_000_000_000.0).coerceIn(0.001, 0.05)
             lastAnimationNanos = now
             val viewportMoving = advanceViewportAnimation(elapsedSeconds)
-            val labelsMoving = advanceLabelAnimation(elapsedSeconds)
+            val labelsMoving = if (viewportMoving) false else advanceLabelAnimation(elapsedSeconds)
             if (viewportMoving || labelsMoving) repaintVisibleMap() else animationTimer.stop()
         }
 
@@ -886,7 +1123,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         }
 
         override fun paintComponent(g: Graphics) {
-            super.paintComponent(g)
+            if (!(renderingExport && exportTransparentCanvas)) super.paintComponent(g)
             val g2 = g as Graphics2D
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
@@ -943,6 +1180,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             featureLabelHitRegions.clear()
             featureLabelVisualBounds.clear()
             featureLabelAlphas.clear()
+            featureLabelStripeColors.clear()
         }
 
         private fun restoreStaticHitRegions() {
@@ -987,15 +1225,19 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         }
 
         private fun currentStaticMapCacheKey(): StaticMapCacheKey {
-            val mode = featureLabelMode.selectedItem as? FeatureLabelMode ?: FeatureLabelMode.ALL
+            val choice = activeFeatureLabelChoice()
             return StaticMapCacheKey(
                 logicalWidth,
                 logicalHeight,
                 width,
                 height,
                 zoomPercent,
-                mode,
+                choice.id,
                 showRestrictionSites.isSelected,
+                exportShowFeatureKey ?: showFeatureKey.isSelected,
+                exportShowMetadata ?: showMetadata.isSelected,
+                exportFontSize ?: selectedMapFontSize(),
+                exportTitle ?: doc.seq.name,
                 System.identityHashCode(doc.cutSites),
                 doc.cutSites.size,
             )
@@ -1014,11 +1256,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         }
 
         private fun visibleFeatures(): List<Feature> {
-            val mode = featureLabelMode.selectedItem as? FeatureLabelMode ?: FeatureLabelMode.ALL
-            if (visibleFeaturesSequence !== doc.seq || visibleFeaturesMode != mode) {
-                cachedVisibleFeatures = doc.seq.features.filter { FeatureLabelOptions.include(it, mode) }
+            val choice = activeFeatureLabelChoice()
+            if (visibleFeaturesSequence !== doc.seq || visibleFeaturesMode != choice.id) {
+                cachedVisibleFeatures = doc.seq.features.filter { FeatureLabelOptions.include(it, choice) }
                 visibleFeaturesSequence = doc.seq
-                visibleFeaturesMode = mode
+                visibleFeaturesMode = choice.id
             }
             return cachedVisibleFeatures
         }
@@ -1166,21 +1408,23 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                 }
 
                 // Centre caption.
-                g2.color = Palette.TEXT
-                g2.font = titleFont
-                drawStringCentered(g2, seq.name, centerX, centerY - 6)
-                g2.font = subtitleFont
-                g2.color = Palette.MUTED
-                drawStringCentered(
-                    g2, "${seq.length} bp ${seq.kind.name.lowercase()} circular", centerX, centerY + 12
-                )
-                drawStringCentered(g2, "GC ${"%.1f".format(gcPct)}%", centerX, centerY + 28)
+                if (mapTitleVisible()) {
+                    g2.color = Palette.TEXT
+                    g2.font = titleFont
+                    drawStringCentered(g2, mapTitle(), centerX, centerY - 6)
+                }
+                if (mapMetadataVisible()) {
+                    g2.font = subtitleFont
+                    g2.color = Palette.MUTED
+                    drawStringCentered(g2, "${seq.length} bp ${seq.kind.name.lowercase()} circular", centerX, centerY + 12)
+                    drawStringCentered(g2, "GC ${"%.1f".format(gcPct)}% · ${seq.features.size} features · ${doc.cutSites.size} sites", centerX, centerY + 28)
+                }
             }
 
             // Draw labels last so restriction marks and the backbone cannot obscure them.
             if (!renderingStaticLayer && showFeatureLabels.isSelected) drawCircularFeatureLabels(g2, labels, fm, gcPct)
 
-            if (!renderingDynamicOverlay && seq.features.count { it.visible } <= 12) paintFeatureLegend(g2, seq)
+            if (!renderingDynamicOverlay && mapFeatureKeyVisible()) paintFeatureLegend(g2, seq)
         }
 
         /**
@@ -1245,12 +1489,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                         x,
                         baseline,
                         bounds,
-                        Palette.featureColor(label.colorIndex),
+                        featureColor(label.feature, label.colorIndex),
                         edgeFadeAlpha(bounds, viewport),
                         anchorX,
                         anchorY,
                         labelEdgeX,
                         bounds.y + bounds.height / 2,
+                        color = featureColor(label.feature, label.colorIndex),
                     )
                     occupied += bounds
                 }
@@ -1304,15 +1549,15 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
         private fun circularCaptionBounds(g2: Graphics2D, gcPct: Double = SeqOps.gcContent(doc.seq)): Rectangle {
             val seq = doc.seq
             g2.font = titleFont
-            val titleWidth = g2.fontMetrics.stringWidth(seq.name)
+            val titleWidth = if (mapTitleVisible()) g2.fontMetrics.stringWidth(mapTitle()) else 0
             g2.font = subtitleFont
-            val detailWidth = maxOf(
+            val detailWidth = if (mapMetadataVisible()) maxOf(
                 g2.fontMetrics.stringWidth("${seq.length} bp ${seq.kind.name.lowercase()} circular"),
-                g2.fontMetrics.stringWidth("GC ${"%.1f".format(gcPct)}%"),
-            )
+                g2.fontMetrics.stringWidth("GC ${"%.1f".format(gcPct)}% · ${seq.features.size} features · ${doc.cutSites.size} sites"),
+            ) else 0
             g2.font = labelFont
             val captionWidth = maxOf(titleWidth, detailWidth) + 12
-            return Rectangle(centerX - captionWidth / 2, centerY - 24, captionWidth, 58)
+            return Rectangle(centerX - captionWidth / 2, centerY - 24, captionWidth, if (mapMetadataVisible()) 74 else 34)
         }
 
         // --------------------------------------------------------------- linear
@@ -1439,14 +1684,18 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             }
 
             if (!renderingDynamicOverlay) {
-                g2.color = Palette.TEXT
-                g2.font = titleFont
-                drawStringCentered(g2, seq.name, logicalWidth / 2, 26)
-                g2.font = subtitleFont
-                g2.color = Palette.MUTED
-                drawStringCentered(g2, "${seq.length} bp ${seq.kind.name.lowercase()} linear", logicalWidth / 2, 44)
-
-                paintFeatureLegend(g2, seq)
+                if (mapTitleVisible()) {
+                    g2.color = Palette.TEXT
+                    g2.font = titleFont
+                    drawStringCentered(g2, mapTitle(), logicalWidth / 2, 26)
+                }
+                if (mapMetadataVisible()) {
+                    g2.font = subtitleFont
+                    g2.color = Palette.MUTED
+                    drawStringCentered(g2, "${seq.length} bp ${seq.kind.name.lowercase()} linear", logicalWidth / 2, 44)
+                    drawStringCentered(g2, "GC ${"%.1f".format(SeqOps.gcContent(seq))}% · ${seq.features.size} features · ${doc.cutSites.size} sites", logicalWidth / 2, 60)
+                }
+                if (mapFeatureKeyVisible()) paintFeatureLegend(g2, seq)
             }
         }
 
@@ -1538,12 +1787,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
                     x,
                     baseline,
                     bounds,
-                    Palette.featureColor(label.colorIndex),
+                    featureColor(label.feature, label.colorIndex),
                     edgeFadeAlpha(bounds, viewport),
                     label.anchorX,
                     bounds.y + bounds.height,
                     label.anchorX,
                     featureY,
+                    color = featureColor(label.feature, label.colorIndex),
                 )
             }
         }
@@ -1587,6 +1837,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             leaderEndX: Int? = null,
             leaderEndY: Int? = null,
             animate: Boolean = true,
+            color: Color? = null,
         ) {
             val fm = g2.getFontMetrics(labelFont)
             val key = featureLabelKey(feature, text)
@@ -1621,6 +1872,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             val drawAlpha = visual.alpha.coerceIn(0f, 1f)
             addFeatureVisualBounds(feature, drawBounds)
             addFeatureAlpha(feature, drawAlpha)
+            if (color != null) addFeatureStripeColor(feature, color)
             if (drawAlpha <= 0.02f) return
 
             if (leaderStartX != null && leaderStartY != null && leaderEndX != null && leaderEndY != null) {
@@ -1652,6 +1904,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             if (feature.name.isNotBlank()) featureLabelAlphas.putIfAbsent(feature.name, alpha)
         }
 
+        private fun addFeatureStripeColor(feature: Feature, color: Color) {
+            featureLabelStripeColors.putIfAbsent(featureLabel(feature), color)
+            if (feature.name.isNotBlank()) featureLabelStripeColors.putIfAbsent(feature.name, color)
+        }
+
         private fun addFeatureVisualBounds(feature: Feature, bounds: Rectangle) {
             val screenBounds = screenRect(Rectangle(bounds.x - 3, bounds.y - 3, bounds.width + 6, bounds.height + 6))
             featureLabelVisualBounds.putIfAbsent(featureLabel(feature), screenBounds)
@@ -1668,19 +1925,23 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
             alpha: Float = 1f,
         ) {
             withAlpha(g2, alpha) {
-                g2.color = Palette.MAP_LABEL_BACKGROUND
+                // Theme label colors retain alpha for overlays. Use an opaque
+                // fill here so inline labels do not change over colored arcs.
+                g2.color = opaque(Palette.MAP_LABEL_BACKGROUND)
                 g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
                 if (stripe != null) {
                     g2.color = stripe
                     g2.fillRoundRect(bounds.x, bounds.y, 4, bounds.height, 5, 5)
                 }
-                g2.color = Palette.MAP_LABEL_BORDER
+                g2.color = opaque(Palette.MAP_LABEL_BORDER)
                 g2.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
                 g2.color = Palette.TEXT
                 g2.font = labelFont
                 g2.drawString(text, x, baseline)
             }
         }
+
+        private fun opaque(color: Color): Color = Color(color.red, color.green, color.blue)
 
         private inline fun withAlpha(g2: Graphics2D, alpha: Float, draw: () -> Unit) {
             val previous = g2.composite
@@ -1783,6 +2044,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)) {
 
         fun featureLabelAlphasForTest(): Map<String, Float> =
             featureLabelAlphas.toMap()
+
+        fun featureLabelStripeColorsForTest(): Map<String, Color> =
+            featureLabelStripeColors.toMap()
 
         private fun drawStringCentered(g2: Graphics2D, text: String, x: Int, y: Int) {
             g2.drawString(text, x - g2.fontMetrics.stringWidth(text) / 2, y)
