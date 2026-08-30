@@ -100,6 +100,35 @@ object SeqIO {
     }
 
     /**
+     * Delivers records one at a time. Flat-file records are delimited before
+     * parsing, so callers can process large multi-record files without a list
+     * of sequences accumulating in memory.
+     */
+    fun forEachRecord(file: File, consumer: (Seq) -> Unit): Int {
+        try {
+            val firstLine = firstNonBlankLine(file)
+            return when {
+                isGenBankFile(file) || firstLine.startsWith("LOCUS") ->
+                    file.bufferedReader().use { GenBank.forEachRecord(it, file.nameWithoutExtension, consumer) }
+                firstLine.startsWith("ID   ") -> streamDelimitedRecords(file, consumer) { Embl.parse(it, file.nameWithoutExtension) }
+                firstLine.startsWith("##gff-version") -> {
+                    consumer(parse(file.readText(), file.nameWithoutExtension))
+                    1
+                }
+                else -> {
+                    file.bufferedReader().use {
+                        Fasta.forEachRecord(it, file.nameWithoutExtension, capacityHintFor(file), consumer = consumer)
+                    }
+                }
+            }
+        } catch (e: SeqIOException) {
+            throw e
+        } catch (e: IOException) {
+            throw SeqIOException("Cannot read ${file.name}: ${e.message ?: "I/O error"}", cause = e)
+        }
+    }
+
+    /**
      * Reads a file without ever buffering the whole thing in memory. The format
      * is found from the first non-blank line: GenBank streams through its text
      * parser, while FASTA reads the first record line by line and stops there,
@@ -149,13 +178,13 @@ object SeqIO {
             if (formatOf(file).isAlignment) return AlignmentIO.parse(file.readText(), file.nameWithoutExtension)
             val firstLine = firstNonBlankLine(file)
             return if (isGenBankFile(file) || firstLine.startsWith("LOCUS")) {
-                readGenBankRecords(file)
+                buildList { forEachRecord(file, ::add) }
             } else if (firstLine.startsWith("##gff-version")) {
                 listOf(parse(file.readText(), file.nameWithoutExtension))
             } else if (firstLine.startsWith("ID   ")) {
-                splitFlatFileRecords(file.readText()).map { Embl.parse(it, file.nameWithoutExtension) }
+                buildList { forEachRecord(file, ::add) }
             } else {
-                file.bufferedReader().use { Fasta.parseAllFrom(it, file.nameWithoutExtension, capacityHintFor(file)) }
+                buildList { forEachRecord(file, ::add) }
             }
         } catch (e: SeqIOException) {
             throw e
@@ -261,21 +290,25 @@ object SeqIO {
         return records
     }
 
-    /** Buffers and parses one GenBank record at a time, never the whole file. */
-    private fun readGenBankRecords(file: File): List<Seq> {
-        val records = ArrayList<Seq>()
+    private fun streamDelimitedRecords(
+        file: File,
+        consumer: (Seq) -> Unit,
+        parser: (String) -> Seq,
+    ): Int {
+        var count = 0
         val current = StringBuilder()
         file.bufferedReader().useLines { lines ->
             for (line in lines) {
                 current.append(line).append('\n')
-                if (line.normalizedOpeningLine().startsWith("//")) {
-                    records += GenBank.parse(current.toString(), file.nameWithoutExtension)
+                if (line.trimStart().startsWith("//")) {
+                    consumer(parser(current.toString()))
+                    count++
                     current.setLength(0)
                 }
             }
         }
-        if (current.isNotBlank()) records += GenBank.parse(current.toString(), file.nameWithoutExtension)
-        return records
+        if (current.isNotBlank()) throw SeqIOException("${file.name} is missing the record terminator '//'")
+        return count
     }
 
     private fun isGenBankFile(file: File): Boolean = file.extension.lowercase() in SeqFormat.GENBANK.extensions

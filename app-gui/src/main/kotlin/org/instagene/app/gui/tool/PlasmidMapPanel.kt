@@ -112,7 +112,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     val showTitle: JCheckBox = JCheckBox("Title", true)
     @Deprecated("Title is configured in the export dialog")
     val titleField = JTextField()
-    val mapFontSize = JSpinner(javax.swing.SpinnerNumberModel(11, 9, 24, 1)).apply {
+    val mapFontSize = JSpinner(javax.swing.SpinnerNumberModel(14, 9, 24, 1)).apply {
         toolTipText = "Map text font size"
     }
     val featureLabelMode = JComboBox(FeatureLabelOptions.choices(initial.seq.features).toTypedArray()).apply {
@@ -142,12 +142,22 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val lane: Int,
         val colorIndex: Int,
         val feature: Feature,
+        val inlineX: Int? = null,
     )
 
     private data class PlacedLinearLabel(
         val label: LinearLabel,
         val x: Int,
         val row: Int,
+        val side: LinearCalloutSide? = null,
+    )
+
+    private enum class LinearCalloutSide { LEFT, RIGHT }
+
+    private data class LinearLabelLayout(
+        val inline: List<PlacedLinearLabel>,
+        val callouts: List<PlacedLinearLabel>,
+        val calloutRows: Int,
     )
 
     private data class LabelHitRegion(
@@ -155,6 +165,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val start: Int,
         val end: Int,
         val feature: Feature? = null,
+        val priority: Int = 0,
     )
 
     private data class ArcHitRegion(
@@ -304,11 +315,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
             verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_NEVER
         }, BorderLayout.NORTH)
-        showFeatureLabels.addActionListener { mapCanvas.clearLabelVisuals(); mapCanvas.repaint() }
-        featureLabelMode.addActionListener { mapCanvas.clearLabelVisuals(); mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
+        showFeatureLabels.addActionListener { mapCanvas.clearLabelVisuals(); layoutMapViewport(); mapCanvas.repaint() }
+        featureLabelMode.addActionListener { mapCanvas.clearLabelVisuals(); mapCanvas.invalidateStaticMapCache(); layoutMapViewport(); mapCanvas.repaint() }
         showRestrictionSites.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
         showFeatureKey.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
-        showMetadata.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
+        showMetadata.addActionListener { mapCanvas.invalidateStaticMapCache(); layoutMapViewport(); mapCanvas.repaint() }
         mapFontSize.addChangeListener {
             applyMapFontSize()
         }
@@ -377,6 +388,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         if (zoomFactor == 1.0) {
             baseCanvasWidth = maxOf(380, extent.width)
             baseCanvasHeight = maxOf(380, extent.height)
+            if (doc.seq.isCircular) {
+                baseCanvasHeight = maxOf(baseCanvasHeight, mapCanvas.requiredCircularCanvasHeight())
+            } else {
+                baseCanvasHeight = maxOf(baseCanvasHeight, mapCanvas.requiredLinearCanvasHeight())
+            }
         }
         val preferred = mapCanvas.preferredSize
         mapCanvas.setSize(maxOf(extent.width, preferred.width), maxOf(extent.height, preferred.height))
@@ -514,8 +530,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             exportFeatureLaneSpacing = options.featureLaneSpacing
             exportTitle = options.title
             exportShowTitle = options.showTitle
-            exportShowFeatureKey = options.showFeatureKey || options.showMapKey == true
-            exportShowMetadata = options.showMetadata || options.showMapKey == true
+            exportShowFeatureKey = options.showFeatureKey
+            exportShowMetadata = options.showMetadata
             exportFeatureChoiceId = options.featureLabelModeId
             exportFontSize = options.fontSize.coerceIn(9, 24)
             exportTransparentCanvas = options.transparentBackground
@@ -825,6 +841,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         private var centerY = 0
         private var backboneRadius = 0
         private var linearAxisY = 0
+        private var linearLaneHeight = 16
         private val ringOf = HashMap<Feature, Int>()
         private var ringCount = 0
         private val laneOf = HashMap<Feature, Int>()
@@ -1046,6 +1063,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             labelVisuals.clear()
             featureLabelVisualBounds.clear()
             featureLabelAlphas.clear()
+            featureLabelStripeColors.clear()
         }
 
         fun invalidateStaticMapCache() {
@@ -1152,6 +1170,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 featureLabelHitRegions.clear()
                 featureLabelVisualBounds.clear()
                 featureLabelAlphas.clear()
+                featureLabelStripeColors.clear()
                 labelPaintGeneration++
                 g2.drawImage(staticMap, 0, 0, null)
                 val overlay = g2.create() as Graphics2D
@@ -1532,10 +1551,13 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             // At high zoom the enlarged canvas has enough room to keep all
             // callouts visible; at the default fit, preserve the original
             // readable spacing even when a crowded record needs extra height.
-            val spacing = if (zoomPercent >= 200) {
-                maxOf(minimumSpacing, minOf(preferredSpacing, availableSpacing))
+            // Keep the preferred visual spacing whenever the available canvas
+            // allows it, but compact the column rather than placing a label
+            // outside the canvas when a larger font or zoom leaves less room.
+            val spacing = if (labels.size == 1) {
+                preferredSpacing
             } else {
-                maxOf(preferredSpacing, minimumSpacing)
+                minOf(preferredSpacing, availableSpacing).coerceAtLeast(1)
             }
             val totalSpacing = spacing * (labels.size - 1)
             val firstBaseline = if (totalSpacing <= maxBaseline - minBaseline) {
@@ -1562,6 +1584,46 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
         // --------------------------------------------------------------- linear
 
+        /** Measures the vertical room needed by crowded circular callouts. */
+        fun requiredCircularCanvasHeight(): Int {
+            if (doc.seq.length == 0 || !doc.seq.isCircular || !showFeatureLabels.isSelected) return 380
+            assignLayers()
+            val fm = getFontMetrics(labelFont)
+            val visible = visibleFeatures()
+            if (visible.size <= 6) return 380
+            val leftCount = visible.count { feature ->
+                val angle = angleOf((feature.start + feature.end) / 2)
+                cos(angle) < 0
+            }
+            val rightCount = visible.size - leftCount
+            val maxCallouts = maxOf(leftCount, rightCount)
+            if (maxCallouts <= 1) return 380
+            val topBaseline = fm.ascent + 11
+            val spacing = fm.height + 15
+            val lastBaseline = topBaseline + (maxCallouts - 1) * spacing
+            return maxOf(380, lastBaseline + fm.descent + 16)
+        }
+
+        /** Measures the extra vertical room needed by the linear callout rails. */
+        fun requiredLinearCanvasHeight(): Int {
+            if (doc.seq.length == 0 || doc.seq.isCircular || !showFeatureLabels.isSelected) return 380
+            assignLayers()
+            val left = 40
+            val right = (baseCanvasWidth - 40).coerceAtLeast(left + 1)
+            val fm = getFontMetrics(labelFont)
+            val (inlineLabels, calloutLabels) = linearLabelInputs(fm, left, right)
+            val layout = placeLinearLabels(fm, inlineLabels, calloutLabels, left, right, baseCanvasWidth / 2)
+            val laneH = maxOf(16, fm.height + 11)
+            val rowHeight = fm.height + 11
+            val featureStack = 24 + (laneCount - 1).coerceAtLeast(0) * laneH
+            val calloutHeight = if (layout.calloutRows == 0) 0 else {
+                fm.height + 4 + (layout.calloutRows - 1) * rowHeight
+            }
+            val contentAxisY = linearCalloutBandTop() + calloutHeight + featureStack + 8
+            val fitAxisY = mapScrollPane.viewport.extentSize.height / 2 + laneCount * laneH / 2
+            return maxOf(380, maxOf(contentAxisY, fitAxisY) + 60)
+        }
+
 
 
         private fun paintLinear(g2: Graphics2D) {
@@ -1571,30 +1633,24 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             val left = 40
             val right = logicalWidth - 40
             val span = (right - left).coerceAtLeast(1)
-            val laneH = 16
             g2.font = labelFont
             val fm = g2.fontMetrics
+            val laneH = maxOf(16, fm.height + 11 + zoomLabelPadding())
+            linearLaneHeight = laneH
             val viewport = labelViewport()
             val visibleLabelLeft = maxOf(left, viewport.x + 8).coerceAtMost((right - 24).coerceAtLeast(left))
             val visibleLabelRight = minOf(right, viewport.x + viewport.width - 8)
             val labelLeft = if (visibleLabelRight - visibleLabelLeft >= 24) visibleLabelLeft else left
             val labelRight = if (visibleLabelRight - visibleLabelLeft >= 24) visibleLabelRight else right
-            val calloutLabels = visibleFeatures().mapIndexedNotNull { index, feature ->
-                val x1 = left + (feature.start.toDouble() / seq.length * span).roundToInt()
-                val x2 = left + (feature.end.toDouble() / seq.length * span).roundToInt()
-                val featureWidth = maxOf(4, x2 - x1)
-                val text = featureLabel(feature)
-                if (featureWidth > fm.stringWidth(text) + 8) {
-                    null
-                } else {
-                    LinearLabel(text, x1 + featureWidth / 2, laneOf[feature] ?: 0, index, feature)
-                }
-            }
-            val placedLabels = placeLinearLabels(fm, calloutLabels, labelLeft, labelRight)
-            val labelRowHeight = fm.height + 5 + zoomLabelPadding()
-            val calloutBottom = placedLabels.maxOfOrNull { 62 + it.row * labelRowHeight + fm.descent } ?: 48
+            val (inlineLabels, calloutLabels) = linearLabelInputs(fm, left, right)
+            val labelLayout = placeLinearLabels(fm, inlineLabels, calloutLabels, labelLeft, labelRight, logicalWidth / 2)
+            val labelRowHeight = fm.height + 11 + zoomLabelPadding()
             val featureStack = 24 + (laneCount - 1).coerceAtLeast(0) * laneH
-            val desiredAxisY = maxOf(logicalHeight / 2 + laneCount * laneH / 2, calloutBottom + featureStack + 10)
+            val calloutHeight = if (labelLayout.calloutRows == 0) 0 else {
+                fm.height + 4 + (labelLayout.calloutRows - 1) * labelRowHeight
+            }
+            val labelTopReserve = linearCalloutBandTop() + calloutHeight + featureStack + 8
+            val desiredAxisY = maxOf(logicalHeight / 2 + laneCount * laneH / 2, labelTopReserve)
             val axisY = desiredAxisY.coerceAtMost((logicalHeight - 60).coerceAtLeast(70))
             linearAxisY = axisY
 
@@ -1651,15 +1707,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                     g2.drawRoundRect(x1, y, w, 12, 6, 6)
                     drawLinearArrowHead(g2, x1, y, w, f.strand)
                 }
-                val text = featureLabel(f)
-                if (!renderingStaticLayer && w > fm.stringWidth(text) + 8) {
-                    val labelBaseline = y - 2
-                    val bounds = textBounds(fm, text, x1, labelBaseline)
-                    drawFeatureLabel(g2, f, text, x1, labelBaseline, bounds, null, edgeFadeAlpha(bounds, viewport), animate = false)
-                }
             }
 
-            if (!renderingStaticLayer && showFeatureLabels.isSelected) drawLinearFeatureLabels(g2, placedLabels, axisY, laneH, labelRowHeight, viewport)
+            if (!renderingStaticLayer && showFeatureLabels.isSelected) {
+                drawLinearInlineLabels(g2, labelLayout.inline, axisY, laneH, labelRowHeight, viewport)
+                drawLinearFeatureLabels(g2, labelLayout.callouts, labelLayout.calloutRows, axisY, laneH, laneCount, labelRowHeight, viewport)
+            }
 
             if (!renderingDynamicOverlay && showRestrictionSites.isSelected && doc.cutSites.isNotEmpty()) {
                 g2.font = labelFont
@@ -1719,43 +1772,117 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 g2.fillRoundRect(legendX, legendY - boxSize + 2, boxSize, boxSize, 3, 3)
                 g2.color = Palette.TEXT
                 g2.drawString(label, legendX + boxSize + 4, legendY)
-                addFeatureHit(f, Rectangle(legendX - 2, legendY - fm.ascent - 2, boxSize + 6 + fm.stringWidth(label), fm.height + 4))
+                addFeatureHit(
+                    f,
+                    Rectangle(legendX - 2, legendY - fm.ascent - 2, boxSize + 6 + fm.stringWidth(label), fm.height + 4),
+                    priority = 1,
+                )
             }
         }
 
         private fun featureLabel(feature: Feature): String = FeatureLabelOptions.text(feature)
 
-        /** Packs narrow-feature callouts into rows whose text bounds do not overlap. */
-        @Suppress("SameParameterValue")
-        private fun placeLinearLabels(
+        private fun linearLabelInputs(
             fm: java.awt.FontMetrics,
-            labels: List<LinearLabel>,
             left: Int,
             right: Int,
-        ): List<PlacedLinearLabel> {
-            val rows = ArrayList<MutableList<IntRange>>()
-            val placed = ArrayList<PlacedLinearLabel>(labels.size)
-            val maxWidth = (right - left).coerceAtLeast(16)
-            val padding = 3 + zoomLabelPadding()
-            for (original in labels.sortedBy { it.anchorX }) {
-                val text = fitText(fm, original.text, maxWidth)
+        ): Pair<List<LinearLabel>, List<LinearLabel>> {
+            val seq = doc.seq
+            val span = (right - left).coerceAtLeast(1)
+            val inlineLabels = ArrayList<LinearLabel>()
+            val calloutLabels = ArrayList<LinearLabel>()
+            visibleFeatures().forEachIndexed { index, feature ->
+                val x1 = left + (feature.start.toDouble() / seq.length * span).roundToInt()
+                val x2 = left + (feature.end.toDouble() / seq.length * span).roundToInt()
+                val featureWidth = maxOf(4, x2 - x1)
+                val text = featureLabel(feature)
+                val lane = laneOf[feature] ?: 0
+                val anchorX = x1 + featureWidth / 2
+                if (featureWidth > fm.stringWidth(text) + 8) {
+                    val centeredX = x1 + ((featureWidth - fm.stringWidth(text)) / 2).coerceAtLeast(0)
+                    inlineLabels += LinearLabel(text, anchorX, lane, index, feature, inlineX = centeredX)
+                } else {
+                    calloutLabels += LinearLabel(text, anchorX, lane, index, feature)
+                }
+            }
+            return inlineLabels to calloutLabels
+        }
+
+        private fun linearCalloutBandTop(): Int = when {
+            mapMetadataVisible() -> 76
+            mapTitleVisible() -> 40
+            else -> 12
+        }
+
+        /** Places wide labels inline and narrow labels in two ordered rails. */
+        private fun placeLinearLabels(
+            fm: java.awt.FontMetrics,
+            inlineLabels: List<LinearLabel>,
+            calloutLabels: List<LinearLabel>,
+            left: Int,
+            right: Int,
+            sideMidpoint: Int,
+        ): LinearLabelLayout {
+            val inlineOccupiedByLane = HashMap<Int, MutableList<IntRange>>()
+            val placedInline = ArrayList<PlacedLinearLabel>(inlineLabels.size)
+            val placedCallouts = ArrayList<PlacedLinearLabel>(calloutLabels.size)
+            val fallbackCallouts = ArrayList<LinearLabel>()
+            val safeLeft = (left + 6).coerceAtMost(right)
+            val safeRight = (right - 6).coerceAtLeast(safeLeft)
+            val midpoint = (safeLeft + safeRight) / 2
+            val columnGap = 18
+            val leftColumnRight = (midpoint - columnGap / 2).coerceAtLeast(safeLeft)
+            val rightColumnLeft = (midpoint + (columnGap + 1) / 2).coerceAtMost(safeRight)
+            val leftColumnWidth = (leftColumnRight - safeLeft).coerceAtLeast(16)
+            val rightColumnWidth = (safeRight - rightColumnLeft).coerceAtLeast(16)
+            val padding = 6 + zoomLabelPadding()
+            for (original in inlineLabels.sortedWith(compareBy({ it.lane }, { it.anchorX }))) {
+                val text = original.text
                 val label = original.copy(text = text)
                 val textWidth = fm.stringWidth(text)
-                val x = (label.anchorX - textWidth / 2).coerceIn(left, (right - textWidth).coerceAtLeast(left))
+                val x = label.inlineX ?: label.anchorX
+                val occupied = inlineOccupiedByLane.getOrPut(label.lane) { ArrayList() }
                 val interval = (x - padding)..(x + textWidth + padding)
-                var row = rows.indexOfFirst { occupied -> occupied.none { rangesOverlap(it, interval) } }
-                if (row < 0) {
-                    row = rows.size
-                    rows.add(mutableListOf())
+                if (occupied.none { rangesOverlap(it, interval) }) {
+                    occupied += interval
+                    placedInline += PlacedLinearLabel(label, x, 0)
+                } else {
+                    fallbackCallouts += label.copy(inlineX = null)
                 }
-                rows[row] += interval
-                placed += PlacedLinearLabel(label, x, row)
             }
-            return placed
+            val allCallouts = (calloutLabels + fallbackCallouts).sortedWith(
+                compareBy<LinearLabel>({ it.anchorX }, { it.lane }, { it.colorIndex }),
+            )
+            val leftCallouts = allCallouts.filter { it.anchorX < sideMidpoint }
+            val rightCallouts = allCallouts.filter { it.anchorX >= sideMidpoint }
+            fun placeColumn(
+                labels: List<LinearLabel>,
+                side: LinearCalloutSide,
+                columnWidth: Int,
+            ) {
+                labels.forEachIndexed { row, original ->
+                    val text = fitText(fm, original.text, columnWidth)
+                    val label = original.copy(text = text)
+                    val textWidth = fm.stringWidth(text)
+                    val x = if (side == LinearCalloutSide.LEFT) {
+                        safeLeft
+                    } else {
+                        (safeRight - textWidth).coerceAtLeast(safeLeft)
+                    }
+                    placedCallouts += PlacedLinearLabel(label, x, row, side)
+                }
+            }
+            placeColumn(leftCallouts, LinearCalloutSide.LEFT, leftColumnWidth)
+            placeColumn(rightCallouts, LinearCalloutSide.RIGHT, rightColumnWidth)
+            return LinearLabelLayout(
+                placedInline,
+                placedCallouts,
+                maxOf(leftCallouts.size, rightCallouts.size),
+            )
         }
 
         @Suppress("SameParameterValue")
-        private fun drawLinearFeatureLabels(
+        private fun drawLinearInlineLabels(
             g2: Graphics2D,
             labels: List<PlacedLinearLabel>,
             axisY: Int,
@@ -1765,21 +1892,55 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         ) {
             g2.font = labelFont
             val fm = g2.fontMetrics
-            val minBaseline = if (zoomFactor > 1.0 && !renderingExport) {
-                (viewport.y + fm.ascent + 8).coerceAtLeast(fm.ascent + 8)
-            } else {
-                62
+            for (placed in labels) {
+                val label = placed.label
+                val x = placed.x
+                val baseline = linearInlineLabelBaseline(axisY, laneHeight, rowHeight, placed)
+                val bounds = textBounds(fm, label.text, x, baseline)
+                drawFeatureLabel(
+                    g2,
+                    label.feature,
+                    label.text,
+                    x,
+                    baseline,
+                    bounds,
+                    null,
+                    edgeFadeAlpha(bounds, viewport),
+                    animate = false,
+                )
             }
-            val maxBaseline = if (zoomFactor > 1.0 && !renderingExport) {
-                (viewport.y + viewport.height - fm.descent - 8).coerceAtLeast(minBaseline)
-            } else {
-                (logicalHeight - fm.descent - 8).coerceAtLeast(minBaseline)
-            }
-            val firstBaseline = minBaseline.coerceAtMost(maxBaseline)
-            for ((label, x, row) in labels) {
-                val baseline = firstBaseline + row * rowHeight
+        }
+
+        @Suppress("SameParameterValue")
+        private fun drawLinearFeatureLabels(
+            g2: Graphics2D,
+            labels: List<PlacedLinearLabel>,
+            calloutRows: Int,
+            axisY: Int,
+            laneHeight: Int,
+            laneCount: Int,
+            rowHeight: Int,
+            viewport: Rectangle,
+        ) {
+            g2.font = labelFont
+            val fm = g2.fontMetrics
+            for (placed in labels) {
+                val label = placed.label
+                val x = placed.x
+                val baseline = linearCalloutLabelBaseline(
+                    axisY,
+                    laneHeight,
+                    laneCount,
+                    rowHeight,
+                    calloutRows,
+                    viewport,
+                    fm,
+                    placed,
+                )
                 val bounds = textBounds(fm, label.text, x, baseline)
                 val featureY = axisY - 18 - label.lane * laneHeight
+                val side = labelSide(placed)
+                val labelEdgeX = if (side == LinearCalloutSide.LEFT) bounds.x + bounds.width else bounds.x
                 drawFeatureLabel(
                     g2,
                     label.feature,
@@ -1790,12 +1951,45 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                     featureColor(label.feature, label.colorIndex),
                     edgeFadeAlpha(bounds, viewport),
                     label.anchorX,
-                    bounds.y + bounds.height,
-                    label.anchorX,
                     featureY,
+                    labelEdgeX,
+                    bounds.y + bounds.height + 8,
                     color = featureColor(label.feature, label.colorIndex),
                 )
             }
+        }
+
+        private fun labelSide(label: PlacedLinearLabel): LinearCalloutSide =
+            label.side ?: if (label.label.anchorX < logicalWidth / 2) {
+                LinearCalloutSide.LEFT
+            } else {
+                LinearCalloutSide.RIGHT
+            }
+
+        private fun linearInlineLabelBaseline(
+            axisY: Int,
+            laneHeight: Int,
+            rowHeight: Int,
+            label: PlacedLinearLabel,
+        ): Int = axisY - 26 - label.label.lane * laneHeight - label.row * rowHeight
+
+        private fun linearCalloutLabelBaseline(
+            axisY: Int,
+            laneHeight: Int,
+            laneCount: Int,
+            rowHeight: Int,
+            calloutRows: Int,
+            viewport: Rectangle,
+            fm: java.awt.FontMetrics,
+            label: PlacedLinearLabel,
+        ): Int {
+            if (zoomFactor > 1.0 && !renderingExport) {
+                val viewportBaseline = (viewport.y + fm.ascent + 8).coerceAtLeast(fm.ascent + 8)
+                return viewportBaseline + label.row * rowHeight
+            }
+            val featureTop = axisY - 24 - (laneCount - 1).coerceAtLeast(0) * laneHeight
+            val lastBaseline = featureTop - 8 - fm.descent
+            return lastBaseline - (calloutRows - 1 - label.row) * rowHeight
         }
 
         private fun rangesOverlap(first: IntRange, second: IntRange): Boolean =
@@ -1924,20 +2118,28 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             stripe: Color? = null,
             alpha: Float = 1f,
         ) {
-            withAlpha(g2, alpha) {
-                // Theme label colors retain alpha for overlays. Use an opaque
-                // fill here so inline labels do not change over colored arcs.
-                g2.color = opaque(Palette.MAP_LABEL_BACKGROUND)
-                g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
-                if (stripe != null) {
-                    g2.color = stripe
-                    g2.fillRoundRect(bounds.x, bounds.y, 4, bounds.height, 5, 5)
+            val labelGraphics = g2.create() as Graphics2D
+            try {
+                // Labels are drawn after selection and feature strokes. Keep
+                // their border independent from those preceding graphics.
+                labelGraphics.stroke = BasicStroke(1f)
+                withAlpha(labelGraphics, alpha) {
+                    // Theme label colors retain alpha for overlays. Use an opaque
+                    // fill here so inline labels do not change over colored arcs.
+                    labelGraphics.color = opaque(Palette.MAP_LABEL_BACKGROUND)
+                    labelGraphics.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
+                    if (stripe != null) {
+                        labelGraphics.color = stripe
+                        labelGraphics.fillRoundRect(bounds.x, bounds.y, 4, bounds.height, 5, 5)
+                    }
+                    labelGraphics.color = opaque(Palette.MAP_LABEL_BORDER)
+                    labelGraphics.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
+                    labelGraphics.color = Palette.TEXT
+                    labelGraphics.font = labelFont
+                    labelGraphics.drawString(text, x, baseline)
                 }
-                g2.color = opaque(Palette.MAP_LABEL_BORDER)
-                g2.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
-                g2.color = Palette.TEXT
-                g2.font = labelFont
-                g2.drawString(text, x, baseline)
+            } finally {
+                labelGraphics.dispose()
             }
         }
 
@@ -2011,9 +2213,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             return bounds
         }
 
-        private fun addFeatureHit(feature: Feature, bounds: Rectangle) {
+        private fun addFeatureHit(feature: Feature, bounds: Rectangle, priority: Int = 0) {
             val padded = screenRect(Rectangle(bounds.x - 3, bounds.y - 3, bounds.width + 6, bounds.height + 6))
-            labelHitRegions += LabelHitRegion(padded, feature.start, feature.end, feature)
+            labelHitRegions += LabelHitRegion(padded, feature.start, feature.end, feature, priority)
             featureLabelHitRegions.putIfAbsent(featureLabel(feature), padded)
             if (feature.name.isNotBlank()) featureLabelHitRegions.putIfAbsent(feature.name, padded)
         }
@@ -2081,16 +2283,20 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         private fun handleClick(e: MouseEvent) {
             val seq = doc.seq
             if (seq.length == 0) return
+            featureArcAt(e.x, e.y)?.let { feature ->
+                onSelect?.invoke(feature.start, feature.end)
+                labelHitRegions
+                    .firstOrNull { it.feature == feature && it.bounds.contains(e.x, e.y) }
+                    ?.feature
+                    ?.let(::focusFeatureInViewport)
+                return
+            }
             labelHitRegions
                 .filter { it.bounds.contains(e.x, e.y) }
-                .minByOrNull { it.bounds.width * it.bounds.height }
+                .minWithOrNull(compareBy<LabelHitRegion>({ it.priority }, { it.bounds.width * it.bounds.height }))
                 ?.let {
                 onSelect?.invoke(it.start, it.end.coerceAtMost(seq.length))
                 it.feature?.let(::focusFeatureInViewport)
-                return
-            }
-            featureArcAt(e.x, e.y)?.let {
-                onSelect?.invoke(it.start, it.end)
                 return
             }
             val position = positionAt(e) ?: return
@@ -2120,7 +2326,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             val span = (logicalWidth - 80).coerceAtLeast(1)
             val midpoint = (feature.start + feature.length / 2).coerceIn(0, doc.seq.length - 1)
             val x = left + (midpoint.toDouble() / doc.seq.length * span).roundToInt()
-            val y = linearAxisY - 18 - (laneOf[feature] ?: 0) * 16
+            val y = linearAxisY - 18 - (laneOf[feature] ?: 0) * linearLaneHeight
             return logicalToScreen(x, y)
         }
 

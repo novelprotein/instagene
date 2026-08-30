@@ -20,6 +20,60 @@ object Fasta {
     fun parseAll(text: String, defaultName: String = "sequence"): List<Seq> =
         parseAllFrom(StringReader(text), defaultName)
 
+    /** Delivers FASTA records as they are completed, without retaining prior records. */
+    fun forEachRecord(
+        reader: Reader,
+        defaultName: String = "sequence",
+        capacityHint: Int = 1 shl 16,
+        validateAlphabet: Boolean = true,
+        consumer: (Seq) -> Unit,
+    ): Int {
+        var name: String? = null
+        var description = ""
+        val bases = StringBuilder(capacityHint)
+        var firstBasesLine = 0
+        val invalidLines = HashMap<Char, Int>()
+        var count = 0
+
+        fun flush() {
+            if (name == null && bases.isEmpty()) return
+            consumer(build(name ?: defaultName, description, bases.toString(), validateAlphabet, firstBasesLine, invalidLines))
+            count++
+            name = null
+            description = ""
+            bases.setLength(0)
+            firstBasesLine = 0
+            invalidLines.clear()
+        }
+
+        reader.buffered().use { lines ->
+            var lineNumber = 0
+            while (true) {
+                val raw = lines.readLine() ?: break
+                lineNumber++
+                var line = raw.trim()
+                if (lineNumber == 1 && line.startsWith("\uFEFF")) line = line.removePrefix("\uFEFF").trim()
+                if (line.isEmpty()) continue
+                if (line.startsWith(">") || line.startsWith(";")) {
+                    flush()
+                    val header = line.substring(1).trim()
+                    name = header.substringBefore(' ').ifEmpty { defaultName }
+                    description = header.substringAfter(' ', "").trim()
+                } else {
+                    if (firstBasesLine == 0) firstBasesLine = lineNumber
+                    for (c in line) {
+                        if (c.isWhitespace() || c.isDigit()) continue
+                        val upper = c.uppercaseChar()
+                        if (validateAlphabet && upper !in ANY_ALPHABET) invalidLines.putIfAbsent(upper, lineNumber)
+                        bases.append(upper)
+                    }
+                }
+            }
+        }
+        flush()
+        return count
+    }
+
     /**
      * Parses every record from [reader], line by line, so large files are never
      * buffered in its entirety. Each line is cleaned, converted to uppercase, and validated in a single

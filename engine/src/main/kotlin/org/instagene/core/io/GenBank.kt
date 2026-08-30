@@ -2,14 +2,19 @@ package org.instagene.core.io
 
 import org.instagene.core.Alphabet
 import org.instagene.core.Feature
+import org.instagene.core.FeatureLocationNode
 import org.instagene.core.MoleculeProperties
 import org.instagene.core.PrimerAnnotation
 import org.instagene.core.ProcedureRecord
+import org.instagene.core.RecordHeaderField
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
 import org.instagene.core.Strandedness
 import org.instagene.core.Topology
+import org.instagene.core.FeatureLocationMetadata
+import org.instagene.core.SequenceRecordMetadata
+import org.instagene.core.SequenceReference
 import java.io.Reader
 import java.io.StringReader
 
@@ -22,9 +27,6 @@ import java.io.StringReader
  */
 object GenBank {
 
-    private val LOCATION_RANGE = Regex("""[><]?(\d+)\s*\.\.\s*[><]?(\d+)""")
-    private val SINGLE_POSITION = Regex("""^\s*[><]?(\d+)\s*$""")
-
     /** True when [text] opens with a LOCUS line, the GenBank signature. */
     fun looksLikeGenBank(text: String): Boolean =
         text.lineSequence().take(5).any { it.normalizedKeywordLine().startsWith("LOCUS") }
@@ -34,6 +36,24 @@ object GenBank {
     /** Parses one GenBank record from [text]. */
     fun parse(text: String, defaultName: String = "sequence"): Seq =
         parseFrom(StringReader(text), defaultName)
+
+    /** Parses each `//`-terminated record without retaining the complete input. */
+    fun forEachRecord(reader: Reader, defaultName: String = "sequence", consumer: (Seq) -> Unit): Int {
+        val records = reader.buffered()
+        val current = StringBuilder()
+        var count = 0
+        while (true) {
+            val line = records.readLine() ?: break
+            current.append(line).append('\n')
+            if (line.trim() == "//") {
+                consumer(parse(current.toString(), defaultName))
+                count++
+                current.setLength(0)
+            }
+        }
+        if (current.isNotBlank()) throw SeqIOException("GenBank input is missing the record terminator '//'")
+        return count
+    }
 
     /**
      * Parses one GenBank record from [reader], line by line, so a large genome
@@ -48,6 +68,8 @@ object GenBank {
         val features = ArrayList<Feature>()
         val primers = ArrayList<PrimerAnnotation>()
         val metadata = LinkedHashMap<String, String>()
+        val headerFields = ArrayList<RecordHeaderField>()
+        val taxonomy = ArrayList<String>()
         val bases = StringBuilder()
 
         var section = ""
@@ -61,22 +83,50 @@ object GenBank {
         var sawContig = false
         var sawTerminator = false
 
+        fun setHeader(key: String, value: String) {
+            metadata[key] = value
+            headerFields += RecordHeaderField(key, value)
+        }
+
+        fun appendHeaderContinuation(key: String, value: String) {
+            metadata[key] = metadata[key].orEmpty() + " " + value
+            val last = headerFields.indexOfLast { it.key == key }
+            if (last >= 0) headerFields[last] = headerFields[last].copy(value = metadata[key].orEmpty())
+            else headerFields += RecordHeaderField(key, metadata[key].orEmpty())
+        }
+
         fun flushFeature() {
             val loc = pendingLocation ?: return
             pendingLocation = null
             // source is a metadata feature spanning the whole sequence; skip it.
             if (pendingType.equals("source", ignoreCase = true)) { qualifiers.clear(); lastQualifier = null; return }
-            val strand = if (loc.contains("complement", ignoreCase = true)) Strand.REVERSE else Strand.FORWARD
+            val parsed = GenBankLocations.parse(loc)
+            val segments = parsed.segments
+            if (segments.isEmpty()) {
+                qualifiers.clear()
+                lastQualifier = null
+                return
+            }
+            val strand = if (segments.all { it.strand == Strand.REVERSE }) Strand.REVERSE else Strand.FORWARD
             val label = qualifiers["label"]?.firstOrNull() ?: qualifiers["gene"]?.firstOrNull()
                 ?: qualifiers["product"]?.firstOrNull() ?: qualifiers["note"]?.firstOrNull() ?: pendingType
-            for ((start, end) in parseLocations(loc)) {
+            val preserveStructuredLocation = segments.size > 1 ||
+                loc.contains('^') || loc.contains(':') || loc.contains('<') || loc.contains('>') ||
+                loc.contains("order(", ignoreCase = true) || loc.contains("bond(", ignoreCase = true)
+            val locationMetadata = FeatureLocationMetadata(
+                expression = loc,
+                node = parsed.node,
+                segmentCount = segments.size,
+            ).takeIf { preserveStructuredLocation }
+            for ((index, segment) in segments.withIndex()) {
+                val featureLocation = locationMetadata?.copy(segmentIndex = index)
                 if (pendingType.equals("primer_bind", true)) {
                     val bound = qualifiers["sequence"]?.firstOrNull().orEmpty()
                     primers += PrimerAnnotation(
                         name = label,
                         bases = bound,
-                        bindingStart = start,
-                        bindingEnd = end,
+                        bindingStart = segment.start,
+                        bindingEnd = segment.end,
                         strand = strand,
                         extension = qualifiers["extension"]?.firstOrNull().orEmpty(),
                         description = qualifiers["note"]?.joinToString("\n").orEmpty(),
@@ -85,11 +135,12 @@ object GenBank {
                     features += Feature(
                         name = label,
                         type = pendingType,
-                        start = start,
-                        end = end,
+                        start = segment.start,
+                        end = segment.end,
                         strand = strand,
                         notes = qualifiers["note"]?.joinToString("\n").orEmpty(),
                         qualifiers = qualifiers.mapValues { (_, values) -> values.toList() },
+                        locationMetadata = featureLocation,
                         geneticCodeId = qualifiers["transl_table"]?.firstOrNull()?.toIntOrNull() ?: 1,
                         translationStartOffset = ((qualifiers["codon_start"]?.firstOrNull()?.toIntOrNull() ?: 1) - 1).coerceIn(0, 2),
                         translationNumberingStart = qualifiers["numbering_start"]?.firstOrNull()?.toIntOrNull() ?: 1,
@@ -101,8 +152,9 @@ object GenBank {
             lastQualifier = null
         }
 
-        reader.useLines { lines ->
-            for (raw in lines) {
+        reader.buffered().use { lines ->
+            while (true) {
+                val raw = lines.readLine() ?: break
                 val line = raw.trimEnd()
                 if (line.isBlank()) continue
                 val keywordLine = line.normalizedKeywordLine()
@@ -121,6 +173,7 @@ object GenBank {
                     keywordLine.startsWith("DEFINITION") -> {
                         section = "DEFINITION"
                         description = keywordLine.removePrefix("DEFINITION").trim()
+                        setHeader("DEFINITION", description)
                         pendingMetadata = null
                     }
 
@@ -139,7 +192,7 @@ object GenBank {
                     keywordLine.startsWith("//") -> {
                         flushFeature()
                         sawTerminator = true
-                        return@useLines
+                        break
                     }
 
                     keywordLine == line && line.firstOrNull()?.isWhitespace() == false -> {
@@ -148,7 +201,7 @@ object GenBank {
                         if (key.isNotEmpty()) {
                             if (key == "CONTIG" || key == "WGS") sawContig = true
                             pendingMetadata = key
-                            metadata[key] = keywordLine.drop(12).trim()
+                            setHeader(key, keywordLine.drop(12).trim())
                             section = "HEADER"
                         }
                     }
@@ -199,7 +252,7 @@ object GenBank {
                             val key = line.take(12).trim()
                             if (key.isNotEmpty()) {
                                 pendingMetadata = key
-                                metadata[key] = line.drop(12).trim()
+                                setHeader(key, line.drop(12).trim())
                                 section = "HEADER"
                             } else {
                                 section = ""
@@ -211,13 +264,15 @@ object GenBank {
                         // ORGANISM is the one standard header subfield which is
                         // indented even though it starts a new value, not a
                         // continuation of SOURCE.
-                        if (line.startsWith("  ORGANISM")) {
-                            val key = "ORGANISM"
-                            pendingMetadata = key
-                            metadata[key] = line.removePrefix("  ORGANISM").trim()
+                        val headerText = line.trimStart()
+                        val subfield = headerText.takeWhile { it.isLetterOrDigit() || it == '_' }
+                        if (subfield in setOf("ORGANISM", "AUTHORS", "TITLE", "JOURNAL", "PUBMED", "MEDLINE")) {
+                            pendingMetadata = subfield
+                            setHeader(subfield, headerText.removePrefix(subfield).trim())
                         } else {
                             val key = pendingMetadata
-                            metadata[key] = metadata[key].orEmpty() + " " + line.trim()
+                            if (key == "ORGANISM") taxonomy += line.trim()
+                            else appendHeaderContinuation(key, line.trim())
                         }
                     }
                 }
@@ -237,7 +292,7 @@ object GenBank {
             // record whose sequence got truncated still keeps its annotations.
             features.mapNotNull { f ->
                 val end = minOf(f.end, seqBases.length)
-                if (end > f.start) f.copy(end = end) else null
+                if (end > f.start) f.copy(end = end, locationMetadata = if (end == f.end) f.locationMetadata else null) else null
             }
         }
         val molecule = MoleculeProperties(
@@ -253,6 +308,16 @@ object GenBank {
             val fields = encoded.split('|', limit = 3)
             ProcedureRecord(fields.first(), fields.getOrElse(1) { "" }, timestamp = fields.getOrElse(2) { "0" }.toLongOrNull() ?: 0L)
         }
+        val references = parseReferences(headerFields)
+        val recordMetadata = SequenceRecordMetadata(
+            headerFields = headerFields.filterNot { it.key == "LOCUS" },
+            comments = headerFields.filter { it.key == "COMMENT" }.map { it.value },
+            references = references,
+            source = metadata["SOURCE"],
+            organism = metadata["ORGANISM"],
+            taxonomy = taxonomy,
+            databaseReferences = headerFields.filter { it.key == "DBLINK" }.flatMap { it.value.split(';').map(String::trim) }.filter(String::isNotBlank),
+        )
         return Seq(
             name = name,
             bases = seqBases,
@@ -264,18 +329,28 @@ object GenBank {
             primers = primers.sortedBy { it.bindingStart },
             molecule = molecule,
             provenance = provenance,
+            recordMetadata = recordMetadata,
         )
     }
 
-    /** Turns a GenBank location string into 0-based half-open spans. */
-    private fun parseLocations(location: String): List<Pair<Int, Int>> {
-        val ranges = LOCATION_RANGE.findAll(location)
-            .map { it.groupValues[1].toInt() - 1 to it.groupValues[2].toInt() }
-            .toList()
-        if (ranges.isNotEmpty()) return ranges
-        val single = SINGLE_POSITION.find(location.replace(Regex("[a-z()]"), ""))
-        return single?.let { listOf(it.groupValues[1].toInt() - 1 to it.groupValues[1].toInt()) }
-            ?: emptyList()
+    private fun parseReferences(fields: List<RecordHeaderField>): List<SequenceReference> {
+        val references = ArrayList<SequenceReference>()
+        var current: SequenceReference? = null
+        for (field in fields) {
+            when (field.key) {
+                "REFERENCE" -> {
+                    current?.let { references += it }
+                    current = SequenceReference(reference = field.value)
+                }
+                "AUTHORS" -> current = (current ?: SequenceReference()).copy(authors = field.value)
+                "TITLE" -> current = (current ?: SequenceReference()).copy(title = field.value)
+                "JOURNAL" -> current = (current ?: SequenceReference()).copy(journal = field.value)
+                "PUBMED" -> current = (current ?: SequenceReference()).copy(pubMed = field.value)
+                "MEDLINE" -> current = (current ?: SequenceReference()).copy(medLine = field.value)
+            }
+        }
+        current?.let { references += it }
+        return references
     }
 
     // ------------------------------------------------------------------ writing
@@ -303,34 +378,81 @@ object GenBank {
             }
         )
         val metadata = seq.metadata.filterKeys { it !in setOf("LOCUS", "DEFINITION", "FEATURES", "ORIGIN") } + stateMetadata
-        appendHeaderField("ACCESSION", metadata["ACCESSION"] ?: ".")
-        metadata.filterKeys { it != "ACCESSION" }.forEach { (key, value) -> appendHeaderField(key, value) }
-        if ("SOURCE" !in metadata) append("SOURCE      InstaGene\n")
-        if ("ORGANISM" !in metadata) append("  ORGANISM  synthetic construct\n")
+        val structuredFields = seq.recordMetadata.headerFields.filterNot {
+            it.key in setOf("LOCUS", "DEFINITION", "FEATURES", "ORIGIN") || it.key in stateMetadata
+        }
+        val accession = structuredFields.firstOrNull { it.key == "ACCESSION" }?.value
+            ?: metadata["ACCESSION"]
+            ?: "."
+        appendHeaderField("ACCESSION", accession)
+        if (structuredFields.isNotEmpty()) {
+            structuredFields.filter { it.key != "ACCESSION" && it.key != "ORGANISM" }
+                .forEach { appendHeaderField(it.key, it.value) }
+            structuredFields.firstOrNull { it.key == "ORGANISM" }?.let {
+                appendOrganism(it.value, seq.recordMetadata.taxonomy)
+            } ?: metadata["ORGANISM"]?.let {
+                appendOrganism(it, seq.recordMetadata.taxonomy)
+            }
+            if (structuredFields.none { it.key == "COMMENT" }) {
+                seq.recordMetadata.comments.forEach { appendHeaderField("COMMENT", it) }
+            }
+            if (structuredFields.none { it.key == "REFERENCE" }) {
+                seq.recordMetadata.references.forEach { reference ->
+                    appendHeaderField("REFERENCE", reference.reference)
+                    if (reference.authors.isNotBlank()) appendHeaderField("AUTHORS", reference.authors)
+                    if (reference.title.isNotBlank()) appendHeaderField("TITLE", reference.title)
+                    if (reference.journal.isNotBlank()) appendHeaderField("JOURNAL", reference.journal)
+                    reference.pubMed?.let { appendHeaderField("PUBMED", it) }
+                    reference.medLine?.let { appendHeaderField("MEDLINE", it) }
+                }
+            }
+        } else {
+            metadata.filterKeys { it != "ACCESSION" && it != "ORGANISM" }.forEach { (key, value) -> appendHeaderField(key, value) }
+            metadata["ORGANISM"]?.let { appendOrganism(it, seq.recordMetadata.taxonomy) }
+            if (seq.recordMetadata.comments.isNotEmpty() && "COMMENT" !in metadata) {
+                seq.recordMetadata.comments.forEach { appendHeaderField("COMMENT", it) }
+            }
+            if (seq.recordMetadata.references.isNotEmpty() && "REFERENCE" !in metadata) {
+                seq.recordMetadata.references.forEach { reference ->
+                    appendHeaderField("REFERENCE", reference.reference)
+                    if (reference.authors.isNotBlank()) appendHeaderField("AUTHORS", reference.authors)
+                    if (reference.title.isNotBlank()) appendHeaderField("TITLE", reference.title)
+                    if (reference.journal.isNotBlank()) appendHeaderField("JOURNAL", reference.journal)
+                    reference.pubMed?.let { appendHeaderField("PUBMED", it) }
+                    reference.medLine?.let { appendHeaderField("MEDLINE", it) }
+                }
+            }
+        }
+        val hasSource = structuredFields.any { it.key == "SOURCE" } || "SOURCE" in metadata
+        val hasOrganism = structuredFields.any { it.key == "ORGANISM" } || "ORGANISM" in metadata
+        if (!hasSource) appendHeaderField("SOURCE", seq.recordMetadata.source ?: "InstaGene")
+        if (!hasOrganism) appendOrganism(seq.recordMetadata.organism ?: "synthetic construct", seq.recordMetadata.taxonomy)
+        if (structuredFields.none { it.key == "DBLINK" } && seq.recordMetadata.databaseReferences.isNotEmpty()) {
+            seq.recordMetadata.databaseReferences.forEach { appendHeaderField("DBLINK", it) }
+        }
         append("FEATURES             Location/Qualifiers\n")
         val persistedPrimerNames = seq.primers.map { it.name.lowercase() }.toSet()
-        for (f in seq.features.sortedBy { it.start }.filterNot {
+        val featureRows = seq.features.sortedBy { it.start }.filterNot {
             it.type.equals("primer_bind", true) && it.name.lowercase() in persistedPrimerNames
-        }) {
-            val range = f.locationSegments.joinToString(",") { "${it.start + 1}..${it.end}" }
-            val joined = if (f.locationSegments.size > 1) "join($range)" else range
-            val location = if (f.strand == Strand.REVERSE) "complement($joined)" else joined
-            append("     %-16s%s\n".format(f.type.take(15), location))
-            val defaults = buildMap {
-                put("label", listOf(f.name))
-                if (f.notes.isNotBlank()) put("note", listOf(f.notes))
-                if (f.geneticCodeId != 1) put("transl_table", listOf(f.geneticCodeId.toString()))
-                if (f.translationStartOffset != 0) put("codon_start", listOf((f.translationStartOffset + 1).toString()))
-                if (f.translationNumberingStart != 1) put("numbering_start", listOf(f.translationNumberingStart.toString()))
-                if (f.ribosomalSlippage != 0) put("ribosomal_slippage", listOf(f.ribosomalSlippage.toString()))
+        }
+        val writtenCompoundLocations = HashSet<String>()
+        for (feature in featureRows) {
+            val compound = feature.locationMetadata?.takeIf { it.segmentCount > 1 }
+            val compoundKey = compound?.let { "${feature.type}\u0000${feature.name}\u0000${it.expression}" }
+            if (compoundKey != null) {
+                val group = featureRows.filter { candidate ->
+                    val candidateMetadata = candidate.locationMetadata
+                    candidate.type == feature.type && candidate.name == feature.name &&
+                        candidateMetadata?.expression == compound.expression &&
+                        candidateMetadata.segmentCount == compound.segmentCount
+                }
+                if (group.size >= compound.segmentCount && group.mapNotNull { it.locationMetadata?.segmentIndex }.toSet().size == compound.segmentCount) {
+                    if (!writtenCompoundLocations.add(compoundKey)) continue
+                    appendFeature(group.minBy { it.locationMetadata?.segmentIndex ?: Int.MAX_VALUE }, compound.node?.let(GenBankLocations::format))
+                    continue
+                }
             }
-            val qualifiers = if (f.qualifiers.isEmpty()) {
-                defaults
-            } else defaults + f.qualifiers
-            qualifiers.forEach { (key, values) ->
-                if (values.isEmpty()) append("                     /$key\n")
-                values.forEach { value -> appendQualifier(key, value) }
-            }
+            appendFeature(feature, null)
         }
         for ((name, bases, bindingStart, bindingEnd, strand, extension, description) in seq.primers.sortedBy { it.bindingStart }) {
             val range = "${bindingStart + 1}..$bindingEnd"
@@ -344,11 +466,49 @@ object GenBank {
         append("ORIGIN\n")
         append(origin(seq.bases))
         append("//\n")
+
     }
 
     /** Writes a header value on its own line, avoiding malformed embedded newlines. */
     private fun StringBuilder.appendHeaderField(key: String, value: String) {
-        append(key.take(12).padEnd(12)).append(' ').append(value.replace('\n', ' ')).append('\n')
+        if (key == "ORGANISM") {
+            append("  ORGANISM  ").append(value.replace('\n', ' ')).append('\n')
+        } else {
+            append(key.take(12).padEnd(12)).append(' ').append(value.replace('\n', ' ')).append('\n')
+        }
+    }
+
+    private fun StringBuilder.appendOrganism(value: String, taxonomy: List<String>) {
+        appendHeaderField("ORGANISM", value)
+        taxonomy.forEach { append("            ").append(it.replace('\n', ' ')).append('\n') }
+    }
+
+    private fun legacyLocation(feature: Feature): String {
+        val children = feature.locationSegments.map { segment -> FeatureLocationNode(segment = segment) }
+        val node = if (children.size == 1) children.single() else FeatureLocationNode(
+            operator = org.instagene.core.FeatureLocationOperator.JOIN,
+            children = children,
+        )
+        val location = GenBankLocations.format(node)
+        return if (feature.strand == Strand.REVERSE) "complement($location)" else location
+    }
+
+    private fun StringBuilder.appendFeature(f: Feature, structuredLocation: String? = null) {
+        val location = structuredLocation ?: legacyLocation(f)
+        append("     %-16s%s\n".format(f.type.take(15), location))
+        val defaults = buildMap {
+            put("label", listOf(f.name))
+            if (f.notes.isNotBlank()) put("note", listOf(f.notes))
+            if (f.geneticCodeId != 1) put("transl_table", listOf(f.geneticCodeId.toString()))
+            if (f.translationStartOffset != 0) put("codon_start", listOf((f.translationStartOffset + 1).toString()))
+            if (f.translationNumberingStart != 1) put("numbering_start", listOf(f.translationNumberingStart.toString()))
+            if (f.ribosomalSlippage != 0) put("ribosomal_slippage", listOf(f.ribosomalSlippage.toString()))
+        }
+        val qualifiers = if (f.qualifiers.isEmpty()) defaults else defaults + f.qualifiers
+        qualifiers.forEach { (key, values) ->
+            if (values.isEmpty()) append("                     /$key\n")
+            values.forEach { value -> appendQualifier(key, value) }
+        }
     }
 
     /** Writes a quoted qualifier with embedded quotes escaped for a GenBank flat file. */

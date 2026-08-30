@@ -5,12 +5,14 @@ import org.instagene.app.gui.tool.MapPreset
 import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.tool.FeatureLabelChoice
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.theme.Palette
 import org.instagene.core.Feature
 import org.instagene.core.Enzymes
 import org.instagene.core.Seq
 import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
 import java.awt.Color
+import java.awt.Rectangle
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.awt.event.MouseWheelEvent
@@ -112,6 +114,32 @@ class PlasmidMapPanelTest {
         }
         return false
     }
+
+    private fun paintCanvas(canvas: JPanel): BufferedImage {
+        val image = BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB)
+        val graphics = image.createGraphics()
+        try {
+            canvas.paint(graphics)
+        } finally {
+            graphics.dispose()
+        }
+        return image
+    }
+
+    private fun labelPixels(image: BufferedImage, bounds: Rectangle, inset: Int = 1): List<Int> =
+        (bounds.y + inset until bounds.y + bounds.height - inset).flatMap { y ->
+            (bounds.x + inset until bounds.x + bounds.width - inset).map { x -> image.getRGB(x, y) }
+        }
+
+    private fun opaqueRgb(color: Color): Int = Color(color.red, color.green, color.blue).rgb
+
+    private fun containsColorNear(pixels: List<Int>, expected: Color, tolerance: Int = 12): Boolean =
+        pixels.any { pixel ->
+            val actual = Color(pixel, true)
+            abs(actual.red - expected.red) <= tolerance &&
+                abs(actual.green - expected.green) <= tolerance &&
+                abs(actual.blue - expected.blue) <= tolerance
+        }
 
     private fun viewportDistanceTo(map: PlasmidMapPanel, point: Pair<Int, Int>): Int {
         val position = map.viewportPositionForTest()
@@ -310,6 +338,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             val canvas = map.canvasForTest()
             canvas.setSize(canvas.preferredSize)
+            assertTrue(canvas.height > 380, "crowded circular callouts should increase the canvas height")
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val target = features.last()
             val hit = map.featureLabelHitCenterForTest(target.name)
@@ -319,6 +348,64 @@ class PlasmidMapPanelTest {
 
             assertEquals(target.start, content.doc.selectionStart)
             assertEquals(target.end, content.doc.selectionEnd)
+        }
+    }
+
+    @Test
+    fun clickingFeatureLabelKeepsItsBoxAndTextColorsAfterRepaint() {
+        SwingUtilities.invokeAndWait {
+            val content = InstaGeneContent()
+            val clicked = Feature("clicked-color-feature", start = 0, end = 80)
+            val unaffected = Feature("unaffected-color-feature", start = 200, end = 280)
+            content.doc.loadSequence(circular.copy(features = listOf(clicked, unaffected)))
+            val map = content.plasmidMapPanel
+            map.setSize(340, 300)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+
+            val before = paintCanvas(canvas)
+            val clickedBounds = map.featureLabelBoundsForTest(clicked.name)
+                ?: error("expected an initial label for ${clicked.name}")
+            val unaffectedBounds = map.featureLabelBoundsForTest(unaffected.name)
+                ?: error("expected an initial label for ${unaffected.name}")
+            val clickedPixels = labelPixels(before, clickedBounds, inset = 4)
+            val unaffectedPixels = labelPixels(before, unaffectedBounds)
+            assertTrue(clickedPixels.contains(opaqueRgb(Palette.MAP_LABEL_BACKGROUND)), "expected the label background color")
+            assertTrue(containsColorNear(clickedPixels, Palette.TEXT), "expected the label text color")
+
+            val hit = map.featureLabelHitCenterForTest(clicked.name)
+                ?: error("expected a clickable label for ${clicked.name}")
+            click(canvas, hit)
+
+            val after = paintCanvas(canvas)
+            val afterClickedBounds = map.featureLabelBoundsForTest(clicked.name)
+                ?: error("expected the clicked label after the first click")
+            val afterUnaffectedBounds = map.featureLabelBoundsForTest(unaffected.name)
+                ?: error("expected the unaffected label after the first click")
+            assertEquals(clickedBounds, afterClickedBounds)
+            assertEquals(unaffectedBounds, afterUnaffectedBounds)
+            assertEquals(
+                clickedPixels,
+                labelPixels(after, afterClickedBounds, inset = 4),
+                "clicked label text and background colors changed after the first click",
+            )
+            assertEquals(
+                unaffectedPixels,
+                labelPixels(after, afterUnaffectedBounds),
+                "unaffected label colors changed after the first click",
+            )
+            assertEquals(clicked.start, content.doc.selectionStart)
+            assertEquals(clicked.end, content.doc.selectionEnd)
+
+            click(canvas, hit)
+            val afterSecondClick = paintCanvas(canvas)
+            val secondClickedBounds = map.featureLabelBoundsForTest(clicked.name)
+                ?: error("expected the clicked label after the second click")
+            val secondUnaffectedBounds = map.featureLabelBoundsForTest(unaffected.name)
+                ?: error("expected the unaffected label after the second click")
+            assertEquals(clickedPixels, labelPixels(afterSecondClick, secondClickedBounds, inset = 4))
+            assertEquals(unaffectedPixels, labelPixels(afterSecondClick, secondUnaffectedBounds))
         }
     }
 
@@ -368,6 +455,133 @@ class PlasmidMapPanelTest {
     }
 
     @Test
+    fun mixedLinearLabelsDoNotOverlapAcrossFeatureLanesAndCallouts() {
+        SwingUtilities.invokeAndWait {
+            val features = listOf(
+                Feature("wide-alpha", start = 0, end = 300),
+                Feature("wide-beta", start = 100, end = 400),
+                Feature("wide-gamma", start = 200, end = 500),
+            ) + (0 until 3).flatMap { index ->
+                listOf(
+                    Feature("narrow-left-$index", start = 250 + index * 10, end = 251 + index * 10),
+                    Feature("narrow-right-$index", start = 750 + index * 10, end = 751 + index * 10),
+                )
+            }
+            val map = PlasmidMapPanel(
+                SeqDocument(
+                    Seq(
+                        bases = "ACGT".repeat(250),
+                        topology = Topology.LINEAR,
+                        features = features,
+                    )
+                )
+            )
+            map.mapFontSize.value = 14
+            map.setSize(360, 240)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            paintCanvas(canvas)
+
+            val bounds = features.map { feature ->
+                feature.name to (map.featureLabelBoundsForTest(feature.name) ?: error("missing ${feature.name}"))
+            }
+            assertEquals(features.size, bounds.size)
+            val wideLabelYs = features.take(3).map { feature -> bounds.first { it.first == feature.name }.second.y }.toSet()
+            assertEquals(3, wideLabelYs.size, "overlapping feature labels should follow separate vertical lanes")
+            val leftCalloutBounds = features.filter { it.name.startsWith("narrow-left") }
+                .map { feature -> bounds.first { it.first == feature.name }.second }
+            val rightCalloutBounds = features.filter { it.name.startsWith("narrow-right") }
+                .map { feature -> bounds.first { it.first == feature.name }.second }
+            assertEquals(1, leftCalloutBounds.map { it.x }.toSet().size, "left callouts should share one aligned rail")
+            assertEquals(1, rightCalloutBounds.map { it.maxX }.toSet().size, "right callouts should share one aligned rail")
+            assertTrue(leftCalloutBounds.zipWithNext().all { (first, second) -> first.y < second.y })
+            assertTrue(rightCalloutBounds.zipWithNext().all { (first, second) -> first.y < second.y })
+            leftCalloutBounds.forEach { leftCallout ->
+                rightCalloutBounds.forEach { rightCallout ->
+                    assertTrue(leftCallout.maxX < rightCallout.x, "callout rails should keep a center gap")
+                }
+            }
+            bounds.forEachIndexed { index, (firstName, first) ->
+                assertTrue(first.x >= 0 && first.y >= 0, "label $index starts outside the canvas: $first")
+                assertTrue(
+                    first.maxX <= canvas.width && first.maxY <= canvas.height,
+                    "label $index exceeds ${canvas.width}x${canvas.height}: $first",
+                )
+                bounds.drop(index + 1).forEach { (secondName, second) ->
+                    assertFalse(
+                        first.intersects(second),
+                        "linear feature labels overlap: $firstName $first and $secondName $second",
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun sameLaneLinearLabelsUseASecondaryRowWhenTheyCannotFitSideBySide() {
+        SwingUtilities.invokeAndWait {
+            val features = listOf(
+                Feature("same-lane-feature-with-a-long-label-alpha", start = 300, end = 301),
+                Feature("same-lane-feature-with-a-long-label-beta", start = 305, end = 306),
+            )
+            val map = PlasmidMapPanel(
+                SeqDocument(
+                    Seq(
+                        bases = "ACGT".repeat(250),
+                        topology = Topology.LINEAR,
+                        features = features,
+                    )
+                )
+            )
+            map.mapFontSize.value = 14
+            map.setSize(360, 240)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            paintCanvas(canvas)
+
+            val first = map.featureLabelBoundsForTest(features[0].name) ?: error("missing first label")
+            val second = map.featureLabelBoundsForTest(features[1].name) ?: error("missing second label")
+            assertFalse(first.intersects(second), "same-lane labels should not overlap")
+            assertTrue(first.y != second.y, "same-lane labels should use a secondary row when needed")
+        }
+    }
+
+    @Test
+    fun denseLinearCalloutRailExpandsTheCanvasInsteadOfClippingLabels() {
+        SwingUtilities.invokeAndWait {
+            val features = (0 until 14).map { index ->
+                Feature("dense-left-feature-$index", start = 10 + index * 10, end = 11 + index * 10)
+            }
+            val map = PlasmidMapPanel(
+                SeqDocument(
+                    Seq(
+                        bases = "ACGT".repeat(250),
+                        topology = Topology.LINEAR,
+                        features = features,
+                    )
+                )
+            )
+            map.mapFontSize.value = 14
+            map.setSize(360, 240)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            paintCanvas(canvas)
+
+            val bounds = features.map { feature ->
+                map.featureLabelBoundsForTest(feature.name) ?: error("missing ${feature.name}")
+            }
+            assertTrue(canvas.height > 380, "dense callouts should increase the canvas height")
+            assertTrue(bounds.zipWithNext().all { (first, second) -> first.y < second.y })
+            bounds.forEach { label ->
+                assertTrue(label.y >= 0 && label.maxY <= canvas.height, "label $label was clipped")
+            }
+        }
+    }
+
+    @Test
     fun svgExportHonorsPresetTitleAndLabelOptions() {
         SwingUtilities.invokeAndWait {
             val file = File.createTempFile("instagene-map-", ".svg")
@@ -393,7 +607,7 @@ class PlasmidMapPanelTest {
             val map = PlasmidMapPanel(SeqDocument(sequence))
             assertTrue(map.showFeatureKey.isSelected)
             assertTrue(map.showMetadata.isSelected)
-            assertEquals(11, (map.mapFontSize.value as Number).toInt())
+            assertEquals(14, (map.mapFontSize.value as Number).toInt())
             assertTrue(map.featureLabelMode.itemCount >= 4)
             assertTrue((0 until map.featureLabelMode.itemCount).map { (map.featureLabelMode.getItemAt(it) as FeatureLabelChoice).displayName }
                 .containsAll(listOf("All features", "Visible features", "CDS", "promoter")))
@@ -866,7 +1080,7 @@ class PlasmidMapPanelTest {
             assertTrue(target != null, "expected a feature label hit target before clipped repaint")
             val graphics = image.createGraphics()
             try {
-                graphics.clip = java.awt.Rectangle(0, 0, 12, 12)
+                graphics.clip = Rectangle(0, 0, 12, 12)
                 canvas.paint(graphics)
             } finally {
                 graphics.dispose()

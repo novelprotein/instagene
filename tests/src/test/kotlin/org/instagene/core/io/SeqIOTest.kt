@@ -36,6 +36,27 @@ class SeqIOTest {
     }
 
     @Test
+    fun fileRecordCallbackStreamsMultiRecordGenBank() {
+        val file = kotlin.io.path.createTempFile("instagene-records", ".gb").toFile()
+        file.deleteOnExit()
+        file.writeText(
+            """
+            LOCUS       one                        4 bp    DNA     linear
+            ORIGIN
+                     1 acgt
+            //
+            LOCUS       two                        4 bp    DNA     linear
+            ORIGIN
+                     1 tgca
+            //
+            """.trimIndent(),
+        )
+        val names = ArrayList<String>()
+        assertEquals(2, SeqIO.forEachRecord(file) { names += it.name })
+        assertEquals(listOf("one", "two"), names)
+    }
+
+    @Test
     fun rawSequence() {
         val seq = SeqIO.rawSequence("a c g t 12")
         assertEquals("ACGT", seq.bases)

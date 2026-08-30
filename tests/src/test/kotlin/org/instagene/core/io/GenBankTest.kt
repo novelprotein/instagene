@@ -1,6 +1,7 @@
 package org.instagene.core.io
 
 import org.instagene.core.Feature
+import org.instagene.core.LocationBoundary
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Strand
@@ -175,6 +176,62 @@ class GenBankTest {
 
         assertEquals("human", parsed.metadata["SOURCE"])
         assertEquals("Homo sapiens", parsed.metadata["ORGANISM"])
+    }
+
+    @Test
+    fun nestedLocationsKeepOperatorsFuzzyBoundsAndSegmentStrands() {
+        val gb = """
+            LOCUS       nested                    12 bp    DNA     linear
+            FEATURES             Location/Qualifiers
+                 CDS             complement(join(<1..3,8^9,>10..12))
+                                 /gene="nested"
+            ORIGIN
+                     1 atgcatgcatgc
+            //
+        """.trimIndent()
+
+        val parsed = GenBank.parse(gb)
+        assertEquals(3, parsed.features.size)
+        assertTrue(parsed.features.all { it.strand == Strand.REVERSE })
+        assertEquals(
+            LocationBoundary.LESS_THAN,
+            parsed.features.first { it.start == 0 }.locationMetadata?.node?.children?.first()?.segment?.startBoundary,
+        )
+        val exported = GenBank.write(parsed)
+        assertTrue(exported.contains("complement(join(<1..3,8^9,>10..12))"))
+    }
+
+    @Test
+    fun repeatedHeaderFieldsBecomeStructuredRecordMetadata() {
+        val gb = """
+            LOCUS       refs                       4 bp    DNA     linear
+            DEFINITION  referenced sequence
+            ACCESSION   REF001
+            SOURCE      synthetic construct
+              ORGANISM  Example organism
+                        Bacteria; Example.
+            COMMENT     first comment
+                        continued comment
+            REFERENCE   1
+              AUTHORS   Doe J.
+              TITLE     A useful title
+              JOURNAL   Journal of Tests 1:1-2 (2026)
+              PUBMED    12345
+            DBLINK      BioProject: PRJ001; BioSample: SAM001
+            FEATURES             Location/Qualifiers
+            ORIGIN
+                     1 acgt
+            //
+        """.trimIndent()
+
+        val metadata = GenBank.parse(gb).recordMetadata
+        assertEquals("synthetic construct", metadata.source)
+        assertEquals("Example organism", metadata.organism)
+        assertEquals(listOf("Bacteria; Example."), metadata.taxonomy)
+        assertEquals(listOf("first comment continued comment"), metadata.comments)
+        assertEquals("Doe J.", metadata.references.single().authors)
+        assertEquals("12345", metadata.references.single().pubMed)
+        assertEquals(listOf("BioProject: PRJ001", "BioSample: SAM001"), metadata.databaseReferences)
     }
 
     @Test

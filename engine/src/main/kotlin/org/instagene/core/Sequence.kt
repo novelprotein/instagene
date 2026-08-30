@@ -37,12 +37,54 @@ enum class Strand(val sign: Int, val symbol: String) {
 
 /** One contiguous span of a possibly discontinuous annotation. */
 @Serializable
-data class FeatureSegment(val start: Int, val end: Int) {
+data class FeatureSegment(
+    val start: Int,
+    val end: Int,
+    val strand: Strand = Strand.FORWARD,
+    val startBoundary: LocationBoundary = LocationBoundary.EXACT,
+    val endBoundary: LocationBoundary = LocationBoundary.EXACT,
+    val remoteAccession: String? = null,
+    val between: Boolean = false,
+) {
     init {
         require(start >= 0) { "Feature segment starts before position 0" }
         require(end >= start) { "Feature segment ends before it starts" }
     }
 }
+
+/** Boundary certainty used by INSDC locations such as `<12..>34`. */
+@Serializable
+enum class LocationBoundary { EXACT, LESS_THAN, GREATER_THAN }
+
+/** Operator joining leaves in a structured feature location. */
+@Serializable
+enum class FeatureLocationOperator { JOIN, ORDER, BOND }
+
+/** A small serializable tree for nested `join`, `order`, `bond`, and `complement` locations. */
+@Serializable
+data class FeatureLocationNode(
+    val segment: FeatureSegment? = null,
+    val operator: FeatureLocationOperator? = null,
+    val children: List<FeatureLocationNode> = emptyList(),
+    val complemented: Boolean = false,
+) {
+    init {
+        require((segment == null) != (operator == null)) { "A location node must be a segment or an operator" }
+        if (segment != null) require(children.isEmpty()) { "A segment location cannot have children" }
+        if (operator != null) require(children.isNotEmpty()) { "A compound location needs children" }
+    }
+}
+
+/** The original flat-file location and its parsed structure, when available. */
+@Serializable
+data class FeatureLocationMetadata(
+    val expression: String = "",
+    val node: FeatureLocationNode? = null,
+    /** Index of this legacy split feature within a compound location. */
+    val segmentIndex: Int = 0,
+    /** Number of legacy split features emitted for a compound location. */
+    val segmentCount: Int = 1,
+)
 
 /**
  * An annotated region, in half-open 0-based coordinates: `[start, end)`.
@@ -80,6 +122,8 @@ data class Feature(
     val translationStartOffset: Int = 0,
     /** Optional signed base shift at a programmed ribosomal-slippage position. */
     val ribosomalSlippage: Int = 0,
+    /** Original structured flat-file location, if this feature came from one. */
+    val locationMetadata: FeatureLocationMetadata? = null,
 ) {
     /** Span in bases: [end] - [start]. */
     val length: Int get() = end - start
@@ -132,6 +176,33 @@ data class ProcedureRecord(
     val timestamp: Long = 0L,
 )
 
+/** An ordered record-level field, preserving repeated and unknown flat-file fields. */
+@Serializable
+data class RecordHeaderField(val key: String, val value: String)
+
+/** Bibliographic reference carried by a sequence record. */
+@Serializable
+data class SequenceReference(
+    val reference: String = "",
+    val authors: String = "",
+    val title: String = "",
+    val journal: String = "",
+    val pubMed: String? = null,
+    val medLine: String? = null,
+)
+
+/** Structured record-level metadata while [Seq.metadata] remains the compatibility map. */
+@Serializable
+data class SequenceRecordMetadata(
+    val headerFields: List<RecordHeaderField> = emptyList(),
+    val comments: List<String> = emptyList(),
+    val references: List<SequenceReference> = emptyList(),
+    val source: String? = null,
+    val organism: String? = null,
+    val taxonomy: List<String> = emptyList(),
+    val databaseReferences: List<String> = emptyList(),
+)
+
 /**
  * An immutable nucleotide (or protein) sequence with annotations.
  *
@@ -158,6 +229,7 @@ data class Seq(
         strandedness = if (kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
     ),
     val provenance: List<ProcedureRecord> = emptyList(),
+    val recordMetadata: SequenceRecordMetadata = SequenceRecordMetadata(),
 ) {
     val length: Int get() = bases.length
 
@@ -255,7 +327,7 @@ data class Seq(
             val s = f.start - start
             val e = f.end - start
             if (e <= 0 || s >= slice.length) null
-            else f.copy(start = s.coerceAtLeast(0), end = e.coerceAtMost(slice.length))
+            else remapFeatureToSlice(f, start, slice.length)
         }
         val keptPrimers = primers.mapNotNull { p ->
             val s = p.bindingStart - start
@@ -283,18 +355,7 @@ data class Seq(
         val o = Math.floorMod(newOrigin, length)
         if (o == 0) return this
         val rotated = bases.substring(o) + bases.substring(0, o)
-        val moved = features.flatMap { f ->
-            val s = f.start - o
-            val e = f.end - o
-            when {
-                s >= 0 -> listOf(f.copy(start = s, end = e))
-                e <= 0 -> listOf(f.copy(start = s + length, end = e + length))
-                else -> listOf(
-                    f.copy(start = 0, end = e),
-                    f.copy(start = s + length, end = length),
-                )
-            }
-        }
+        val moved = features.flatMap { f -> rotateFeature(f, o) }
         val movedPrimers = primers.map { p ->
             val span = p.bindingEnd - p.bindingStart
             val start = Math.floorMod(p.bindingStart - o, length)
@@ -309,7 +370,20 @@ data class Seq(
             for (i in bases.indices.reversed()) append(Alphabet.complement(bases[i], kind))
         }
         val mirrored = features.map { f ->
-            f.copy(start = length - f.end, end = length - f.start, strand = f.strand.flipped())
+            val segments = f.locationSegments.map { segment ->
+                segment.copy(
+                    start = length - segment.end,
+                    end = length - segment.start,
+                    strand = segment.strand.flipped(),
+                )
+            }.sortedBy { it.start }
+            f.copy(
+                start = length - f.end,
+                end = length - f.start,
+                strand = f.strand.flipped(),
+                segments = if (f.segments.isEmpty()) emptyList() else segments,
+                locationMetadata = null,
+            )
         }.sortedBy { it.start }
         val mirroredPrimers = primers.map { p ->
             p.copy(
@@ -329,7 +403,7 @@ data class Seq(
     /** Joins another sequence onto the 3' end; both must be linear. */
     operator fun plus(other: Seq): Seq {
         require(!isCircular && !other.isCircular) { "Cannot concatenate circular sequences" }
-        val shifted = other.features.map { it.copy(start = it.start + length, end = it.end + length) }
+        val shifted = other.features.map { it.copy(start = it.start + length, end = it.end + length, locationMetadata = null) }
         val shiftedPrimers = other.primers.map {
             it.copy(bindingStart = it.bindingStart + length, bindingEnd = it.bindingEnd + length)
         }
@@ -351,8 +425,8 @@ data class Seq(
     private fun remapFeatureAfterInsertion(f: Feature, at: Int, added: Int): Feature {
         if (f.segments.isEmpty()) return when {
             f.end <= at -> f
-            f.start >= at -> f.copy(start = f.start + added, end = f.end + added)
-            else -> f.copy(end = f.end + added)
+            f.start >= at -> f.copy(start = f.start + added, end = f.end + added, locationMetadata = null)
+            else -> f.copy(end = f.end + added, locationMetadata = null)
         }
         val segments = f.segments.map { segment ->
             when {
@@ -365,18 +439,19 @@ data class Seq(
             start = segments.minOf { it.start },
             end = segments.maxOf { it.end },
             segments = segments,
+            locationMetadata = if (segments == f.segments) f.locationMetadata else null,
         )
     }
 
     private fun clipAfterDeletion(f: Feature, s: Int, e: Int, removed: Int): Feature? {
         if (f.segments.isEmpty()) return when {
             f.end <= s -> f
-            f.start >= e -> f.copy(start = f.start - removed, end = f.end - removed)
+            f.start >= e -> f.copy(start = f.start - removed, end = f.end - removed, locationMetadata = null)
             f.start >= s && f.end <= e -> null
             else -> {
                 val newStart = if (f.start < s) f.start else s
                 val newEnd = (if (f.end > e) f.end - removed else s).coerceAtLeast(newStart)
-                if (newEnd <= newStart) null else f.copy(start = newStart, end = newEnd)
+                if (newEnd <= newStart) null else f.copy(start = newStart, end = newEnd, locationMetadata = null)
             }
         }
 
@@ -387,12 +462,56 @@ data class Seq(
                 else -> {
                     val newStart = if (segment.start < s) segment.start else s
                     val newEnd = (if (segment.end > e) segment.end - removed else s).coerceAtLeast(newStart)
-                    if (newEnd <= newStart) null else FeatureSegment(newStart, newEnd)
+                    if (newEnd <= newStart) null else segment.copy(start = newStart, end = newEnd)
                 }
             }
         }
         if (kept.isEmpty()) return null
-        return f.copy(start = kept.minOf { it.start }, end = kept.maxOf { it.end }, segments = kept)
+        return f.copy(
+            start = kept.minOf { it.start },
+            end = kept.maxOf { it.end },
+            segments = kept,
+            locationMetadata = if (kept == f.segments) f.locationMetadata else null,
+        )
+    }
+
+    private fun remapFeatureToSlice(f: Feature, offset: Int, sliceLength: Int): Feature? {
+        val mapped = f.locationSegments.mapNotNull { segment ->
+            val s = (segment.start - offset).coerceAtLeast(0)
+            val e = (segment.end - offset).coerceAtMost(sliceLength)
+            if (e <= s) null else segment.copy(start = s, end = e)
+        }
+        if (mapped.isEmpty()) return null
+        return f.copy(
+            start = mapped.minOf { it.start },
+            end = mapped.maxOf { it.end },
+            segments = if (f.segments.isEmpty()) emptyList() else mapped,
+            locationMetadata = null,
+        )
+    }
+
+    private fun rotateFeature(f: Feature, origin: Int): List<Feature> {
+        val spans = f.locationSegments.flatMap { segment ->
+            val s = segment.start - origin
+            val e = segment.end - origin
+            when {
+                s >= 0 -> listOf(segment.copy(start = s, end = e))
+                e <= 0 -> listOf(segment.copy(start = s + length, end = e + length))
+                else -> listOf(
+                    segment.copy(start = 0, end = e),
+                    segment.copy(start = s + length, end = length),
+                )
+            }
+        }.sortedBy { it.start }
+        if (spans.isEmpty()) return emptyList()
+        val base = f.copy(
+            start = spans.minOf { it.start },
+            end = spans.maxOf { it.end },
+            segments = if (f.segments.isEmpty() && spans.size == 1) emptyList() else spans,
+            locationMetadata = null,
+        )
+        if (spans.size == 1) return listOf(base)
+        return spans.map { span -> base.copy(start = span.start, end = span.end, segments = emptyList()) }
     }
 
     private fun clipPrimerAfterDeletion(p: PrimerAnnotation, s: Int, e: Int, removed: Int): PrimerAnnotation? = when {
