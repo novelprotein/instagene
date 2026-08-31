@@ -2232,10 +2232,17 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
         fun featureArcHitCenterForTest(name: String): Pair<Int, Int>? {
             val hit = arcHitRegions.firstOrNull { featureLabel(it.feature) == name || it.feature.name == name } ?: return null
-            val midpoint = hit.feature.start + hit.feature.length / 2
-            val angle = angleOf(midpoint % doc.seq.length)
-            return (canvasOffsetX(width, zoomFactor) + pointX(angle, hit.ring) * zoomFactor).roundToInt() to
-                (canvasOffsetY(height, zoomFactor) + pointY(angle, hit.ring) * zoomFactor).roundToInt()
+            val sampleCount = minOf(hit.feature.length.coerceAtLeast(1), 64)
+            val candidates = (0 until sampleCount).map { index ->
+                val offset = ((index + 0.5) * hit.feature.length / sampleCount)
+                    .toInt()
+                    .coerceAtMost(hit.feature.length - 1)
+                val angle = angleOf((hit.feature.start + offset) % doc.seq.length)
+                logicalToScreen(pointX(angle, hit.ring), pointY(angle, hit.ring))
+            }.distinct()
+            return candidates.firstOrNull { point ->
+                labelHitRegions.none { it.feature != null && it.priority == 0 && it.bounds.contains(point.first, point.second) }
+            } ?: candidates.first()
         }
 
         fun featureLabelBoundsForTest(): List<Rectangle> =
@@ -2283,18 +2290,19 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         private fun handleClick(e: MouseEvent) {
             val seq = doc.seq
             if (seq.length == 0) return
-            featureArcAt(e.x, e.y)?.let { feature ->
-                onSelect?.invoke(feature.start, feature.end)
-                labelHitRegions
-                    .firstOrNull { it.feature == feature && it.bounds.contains(e.x, e.y) }
-                    ?.feature
-                    ?.let(::focusFeatureInViewport)
-                return
-            }
-            labelHitRegions
+            val labelHit = labelHitRegions
                 .filter { it.bounds.contains(e.x, e.y) }
                 .minWithOrNull(compareBy<LabelHitRegion>({ it.priority }, { it.bounds.width * it.bounds.height }))
-                ?.let {
+            if (labelHit?.feature != null && labelHit.priority == 0) {
+                onSelect?.invoke(labelHit.start, labelHit.end.coerceAtMost(seq.length))
+                labelHit.feature.let(::focusFeatureInViewport)
+                return
+            }
+            featureArcAt(e.x, e.y)?.let {
+                onSelect?.invoke(it.start, it.end)
+                return
+            }
+            labelHit?.let {
                 onSelect?.invoke(it.start, it.end.coerceAtMost(seq.length))
                 it.feature?.let(::focusFeatureInViewport)
                 return
