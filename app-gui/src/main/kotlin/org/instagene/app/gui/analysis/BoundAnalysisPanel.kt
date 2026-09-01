@@ -9,7 +9,7 @@ import javax.swing.table.DefaultTableModel
 
 internal abstract class BoundAnalysisPanel : JPanel(BorderLayout()) {
     internal lateinit var doc: SeqDocument
-    fun bindDocument(value: SeqDocument) {
+    open fun bindDocument(value: SeqDocument) {
         doc = value
         refreshDocument()
     }

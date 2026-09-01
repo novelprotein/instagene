@@ -1,5 +1,6 @@
 package org.instagene.app.gui.analysis
 
+import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.EnzymeAnalysis
 import org.instagene.core.EnzymeSetCatalog
 import org.instagene.core.Enzymes
@@ -12,9 +13,13 @@ internal class EnzymeAnalysisPanel : BoundAnalysisPanel() {
     private val enzymeSet = JComboBox((listOf("Custom") + EnzymeSetCatalog.PREDEFINED.map { it.name }).toTypedArray())
     private val dam = JCheckBox("Dam methylated")
     private val dcm = JCheckBox("Dcm methylated")
+    private val scopeLabel = JLabel(" ")
     private val output = output()
+    private var observedDoc: SeqDocument? = null
+    private var selectionListener: SeqDocument.Listener? = null
 
     init {
+        names.toolTipText = "Enter enzyme names or recognition sites separated by commas, for example EcoRI, GAATTC."
         enzymeSet.addActionListener {
             val selected = enzymeSet.selectedIndex - 1
             if (selected >= 0) names.text = EnzymeSetCatalog.PREDEFINED[selected].enzymeNames.joinToString(",")
@@ -39,7 +44,11 @@ internal class EnzymeAnalysisPanel : BoundAnalysisPanel() {
                 }
             }
         }
-        add(row(JLabel("Set"), enzymeSet, JLabel("Enzymes"), names, dam, dcm, applyState), BorderLayout.NORTH)
+        add(JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(row(JLabel("Enzyme set"), enzymeSet, JLabel("Enzyme names or sites"), names, dam, dcm, applyState))
+            add(row(scopeLabel))
+        }, BorderLayout.NORTH)
         add(row(report, unique, methylation, diagnostic, silent, recognition), BorderLayout.SOUTH)
         add(JScrollPane(output), BorderLayout.CENTER)
     }
@@ -47,9 +56,39 @@ internal class EnzymeAnalysisPanel : BoundAnalysisPanel() {
     override fun refreshDocument() {
         dam.isSelected = doc.seq.molecule.damMethylated
         dcm.isSelected = doc.seq.molecule.dcmMethylated
+        updateScopeLabel()
+    }
+
+    override fun bindDocument(value: SeqDocument) {
+        selectionListener?.let { listener -> observedDoc?.removeListener(listener) }
+        super.bindDocument(value)
+        val listener = SeqDocument.Listener { _, reason ->
+            if (reason == SeqDocument.Reason.SELECTION || reason == SeqDocument.Reason.SEQUENCE) {
+                updateScopeLabel()
+            }
+        }
+        observedDoc = value
+        selectionListener = listener
+        value.addListener(listener)
+        updateScopeLabel()
+    }
+
+    internal fun scopeTextForTest(): String = scopeLabel.text
+
+    private fun updateScopeLabel() {
+        val unit = if (doc.seq.kind == org.instagene.core.SeqKind.PROTEIN) "aa" else "bp"
+        scopeLabel.text = buildString {
+            append("Analysis target: whole sequence (${doc.seq.length} $unit)")
+            if (doc.hasSelection) {
+                append("  |  selected range ${doc.selectionStart + 1}–${doc.selectionEnd}")
+                append(" (${doc.selectionEnd - doc.selectionStart} $unit; context only)")
+            }
+        }
     }
 
     private fun execute(action: (List<org.instagene.core.Enzyme>) -> String) {
-        runCatching { action(Enzymes.parseList(names.text)) }.onSuccess { output.text = it.ifBlank { "No results." } }.onFailure { output.text = it.message ?: "Analysis failed" }
+        runCatching { action(Enzymes.parseList(names.text)) }.onSuccess {
+            output.text = "${scopeLabel.text}\n\n${it.ifBlank { "No results." }}"
+        }.onFailure { output.text = it.message ?: "Analysis failed" }
     }
 }

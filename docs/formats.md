@@ -22,6 +22,31 @@ Keep an original copy and review a converted record before using it.
 | ABI/AB1 chromatogram | `.ab1`, `.abi` | Yes | No | Imported as trace calls, quality data, and channels for chromatogram/Sanger workflows. It is not a sequence-file export target. |
 | SCF chromatogram | `.scf` | Yes | No | Imported for chromatogram/Sanger workflows; not exported by InstaGene. |
 
+## Interoperability contract
+
+The supported import/export paths follow a three-level contract so research
+workflows can distinguish safe exchange from lossy conversion:
+
+| Contract level | Meaning | Typical examples | Handling expectation |
+|---|---|---|---|
+| Native fidelity | The format is parsed and written by InstaGene with explicit retention of sequence, features, topology, and provenance where the format is capable of representing them. | GenBank/ApE, GFF3, EMBL, Swiss-Prot, alignment families | Preferred working format for major desktop or scripting workflows. |
+| Best-effort loss-aware | The format captures the core sequence but may lose some editable or display metadata. | FASTA, text-export variants | Acceptable for exchange or transcript-style use, but warnings should be surfaced before use in a critical workflow. |
+| Converter-only / deferred | The format is not natively supported by InstaGene and must be exported through a reviewed converter or a documented import route. | SnapGene `.dna`, some vendor-specific or legacy formats | Treat as a migration path, not as native compatibility. |
+
+The practical rule is simple:
+
+- use GenBank/ApE or GFF3 when a feature table, origin, and annotation state
+  matter;
+- use FASTA or alignment formats when the sequence itself is the only required
+  payload;
+- treat all converter-backed formats as migration steps and verify the resulting
+  record before using it in a decision-making workflow.
+
+A record should be considered scientifically trustworthy only when its format,
+annotation retention, and provenance are understood. When a conversion drops
+annotation state or topology, the UI and CLI should make that loss explicit
+instead of silently accepting it.
+
 `SeqIO.read(file)` returns the first record of a multi-record sequence or
 alignment file. Use `SeqIO.readAll(file)` or the alignment tools when all rows
 are required.

@@ -181,6 +181,75 @@ class SequenceTest {
     }
 
     @Test
+    fun validateAcceptsWellFormedSequence() {
+        val seq = Seq(
+            name = "valid",
+            bases = "ACGTAC",
+            features = listOf(Feature("gene", start = 0, end = 4)),
+            primers = listOf(PrimerAnnotation("pcr", "ACGT", bindingStart = 1, bindingEnd = 5)),
+        )
+        assertTrue(seq.validate().isEmpty())
+    }
+
+    @Test
+    fun validateReportsUnsupportedCharactersAndOutOfBoundsCoordinates() {
+        val seq = Seq(
+            name = "bad",
+            bases = "ACGTZ",
+            features = listOf(Feature("overflow", start = 0, end = 6)),
+            primers = listOf(PrimerAnnotation("bad-primer", "ACGT", bindingStart = 2, bindingEnd = 7)),
+        )
+        val issues = seq.validate()
+        assertTrue(issues.any { it.message.contains("unsupported characters") })
+        assertTrue(issues.any { it.message.contains("Feature") && it.message.contains("overflow") })
+        assertTrue(issues.any { it.message.contains("Primer") && it.message.contains("bad-primer") })
+    }
+
+    @Test
+    fun sourceAuditAddsMetadataAndProvenance() {
+        val seq = Seq(bases = "ACGT").withSourceAudit(
+            source = "example.gb",
+            operation = "IMPORT",
+            summary = "Imported synthetic record",
+            warnings = listOf("Retained as a simple sequence record"),
+            fileHash = "abc123",
+        )
+        assertEquals("example.gb", seq.metadata["SOURCE"])
+        assertEquals("abc123", seq.metadata["SOURCE_HASH"])
+        assertTrue(seq.provenance.any { it.operation == "IMPORT" && it.summary == "Imported synthetic record" })
+    }
+
+    @Test
+    fun recordMetadataConvenienceMethodsMirrorBiopythonStyleAnnotations() {
+        val seq = Seq(bases = "ACGT")
+            .withSource("Escherichia coli")
+            .withOrganism("Escherichia coli", listOf("Bacteria", "Proteobacteria"))
+            .withTaxonomy("Gammaproteobacteria")
+            .withComment("synthetic construct")
+            .withDatabaseReference("taxon:562")
+            .withHeaderField("ACCESSION", "ABC123")
+        assertEquals("Escherichia coli", seq.recordMetadata.source)
+        assertEquals("Escherichia coli", seq.recordMetadata.organism)
+        assertTrue(seq.recordMetadata.taxonomy.contains("Bacteria"))
+        assertTrue(seq.recordMetadata.taxonomy.contains("Gammaproteobacteria"))
+        assertTrue(seq.recordMetadata.comments.contains("synthetic construct"))
+        assertTrue(seq.recordMetadata.databaseReferences.contains("taxon:562"))
+        assertTrue(seq.recordMetadata.headerFields.any { it.key == "ACCESSION" && it.value == "ABC123" })
+        assertEquals("Escherichia coli", seq.metadata["SOURCE"])
+        assertEquals("Escherichia coli", seq.metadata["ORGANISM"])
+    }
+
+    @Test
+    fun provenanceSummaryFormatsRecordHistoryLikeBioinformaticsAnnotations() {
+        val seq = Seq(bases = "ACGT")
+            .withSourceAudit("example.gb", operation = "IMPORT", summary = "Imported example")
+            .withProcedure(ProcedureRecord("EDIT", "trimmed 2 bases", timestamp = 42))
+        val summary = seq.provenanceSummary(2)
+        assertTrue(summary.contains("IMPORT:Imported example"))
+        assertTrue(summary.contains("EDIT:trimmed 2 bases"))
+    }
+
+    @Test
     fun emptyCircularBaseAtRejects() {
         val empty = Seq(bases = "", topology = Topology.CIRCULAR)
         assertFailsWith<IllegalArgumentException> { empty.baseAt(0) }

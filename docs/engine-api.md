@@ -119,11 +119,37 @@ after a network failure, and `CACHE_ONLY` is safe for offline replay. Every
 `fetchGenBank` result records NCBI request, response hash, retrieval timestamp,
 and origin in `Seq.metadata` and a `ProcedureRecord`.
 
+The project policy is intentionally strict:
+
+- remote retrieval remains opt-in for every workflow;
+- host-specific access policies and response provenance are retained in the
+  record instead of being hidden in UI state;
+- network fetches are treated as data provenance events, not as a guarantee of
+  biological correctness;
+- cached or remote results must remain transparent in reports and logs.
+
 ~~~kotlin
 val cache = OnlineCache(File(".instagene-cache"))
 val client = NcbiClient(onlineCache = cache, onlineCacheMode = OnlineCacheMode.PREFER_CACHE)
 val record = client.fetchGenBank("J01636.1")
 ~~~
+
+### Trust signals and fidelity warnings
+
+Every import, transform, and export path should tell the caller whether it is
+lossless, tolerable, or lossy. The engine supports that through validation and
+provenance records, while the UI and CLI should surface those results in plain
+language:
+
+- "sequence preserved"
+- "annotations retained"
+- "topology preserved"
+- "metadata reduced during export"
+- "non-native format converted"
+
+When a conversion drops content or changes a biological interpretation, the
+warning must be visible with the result and stored in the record's provenance.
+A researcher should never need to guess whether a file round trip was faithful.
 
 ## Reports and reproducibility
 

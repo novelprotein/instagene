@@ -69,6 +69,8 @@ class DigestPanel(
     private val enzymeTable = JTable(enzymeModel)
     private val digestTable = JTable(digestModel)
     private val filterField = JTextField()
+    private val scopeLabel = JLabel(" ")
+    private val enzymeListStatus = JLabel(" ")
     private val cuttersOnly = JCheckBox("Only enzymes that cut", true)
     private val uniqueOnly = JCheckBox("Only unique cutters", false)
     private val editElementButton = JButton("Edit Element...")
@@ -83,6 +85,7 @@ class DigestPanel(
     private val extractButton = JButton("Open fragment as new sequence")
     private val saveFragmentButton = JButton("Save fragment to library")
     private val exportCsvButton = JButton("Export CSV")
+    private val digestResultsLabel = JLabel("Digest fragments and cut sites")
 
     private var visibleEnzymes: List<Enzyme> = emptyList()
     private var fragments: List<Fragment> = emptyList()
@@ -209,7 +212,7 @@ class DigestPanel(
             JScrollPane(enzymeTable),
             JPanel(BorderLayout(0, 4)).apply {
                 add(
-                    JLabel("Digest fragments and cut sites").apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
+                    digestResultsLabel.apply { border = BorderFactory.createEmptyBorder(4, 2, 2, 2) },
                     BorderLayout.NORTH
                 )
                 add(JScrollPane(digestTable), BorderLayout.CENTER)
@@ -225,6 +228,7 @@ class DigestPanel(
         // Restore the persisted panel state before wiring the change listeners,
         // so the initial values do not get re-recorded as edits.
         filterField.text = prefs.value.digestFilter
+        filterField.toolTipText = "Find enzymes by name or recognition site, for example EcoRI or GAATTC."
         cuttersOnly.isSelected = prefs.value.digestCuttersOnly
         uniqueOnly.isSelected = prefs.value.digestUniqueOnly
         // Restore the ticked set by name. Empty means "nothing ticked" (unlike
@@ -262,14 +266,20 @@ class DigestPanel(
         prefs.addListener { onPrefsChanged() }
 
         val initialListener = SeqDocument.Listener { _, reason ->
-            if (reason == SeqDocument.Reason.SEQUENCE) {
-                digestVersion++
-                cutSitesCache.clear()
-                sequenceDebounceTimer.restart()
+            when (reason) {
+                SeqDocument.Reason.SEQUENCE -> {
+                    digestVersion++
+                    cutSitesCache.clear()
+                    sequenceDebounceTimer.restart()
+                    updateScopeLabel()
+                }
+                SeqDocument.Reason.SELECTION -> updateScopeLabel()
+                SeqDocument.Reason.ENZYMES -> Unit
             }
         }
         docListener = initialListener
         doc.addListener(initialListener)
+        updateScopeLabel()
         refresh()
     }
 
@@ -287,10 +297,15 @@ class DigestPanel(
         }
         if (docListener == null) {
             val listener = SeqDocument.Listener { _, reason ->
-                if (reason == SeqDocument.Reason.SEQUENCE) {
-                    digestVersion++
-                    cutSitesCache.clear()
-                    sequenceDebounceTimer.restart()
+                when (reason) {
+                    SeqDocument.Reason.SEQUENCE -> {
+                        digestVersion++
+                        cutSitesCache.clear()
+                        sequenceDebounceTimer.restart()
+                        updateScopeLabel()
+                    }
+                    SeqDocument.Reason.SELECTION -> updateScopeLabel()
+                    SeqDocument.Reason.ENZYMES -> Unit
                 }
             }
             docListener = listener
@@ -308,6 +323,7 @@ class DigestPanel(
             checked.clear()
             checked += enabledPool.filter { it.name.lowercase() in mapped }
         }
+        updateScopeLabel()
         refresh()
     }
 
@@ -336,9 +352,14 @@ class DigestPanel(
     private fun buildTop(): JPanel = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         add(JPanel(BorderLayout(6, 0)).apply {
-            add(JLabel("Filter"), BorderLayout.WEST)
+            add(JLabel("Find enzyme"), BorderLayout.WEST)
             add(filterField, BorderLayout.CENTER)
             maximumSize = Dimension(Int.MAX_VALUE, 28)
+        })
+        add(JPanel(BorderLayout(6, 0)).apply {
+            add(scopeLabel, BorderLayout.WEST)
+            add(enzymeListStatus, BorderLayout.EAST)
+            maximumSize = Dimension(Int.MAX_VALUE, 22)
         })
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
             add(cuttersOnly)
@@ -384,6 +405,7 @@ class DigestPanel(
      */
     fun refresh() {
         val seq = doc.seq
+        updateScopeLabel()
         val dnaOnly = seq.kind == SeqKind.DNA
         setInteractive(dnaOnly)
         if (!dnaOnly) {
@@ -407,6 +429,8 @@ class DigestPanel(
             digestModel.fireTableDataChanged()
             restoreFragmentSelection(null)
             mergedRows = emptyList()
+            enzymeListStatus.text = ""
+            updateDigestResultsLabel()
             summary.text = "Restriction digestion applies to double-stranded DNA" +
                     (if (seq.kind == SeqKind.PROTEIN) " (this is a protein sequence)." else ".")
             return
@@ -444,6 +468,7 @@ class DigestPanel(
         enzymeModel.counts = counts
         enzymeModel.overhangs = overhangCache
         enzymeModel.fireTableDataChanged()
+        updateEnzymeListStatus()
         restoreEnzymeSelection(selectedEnzyme)
         showMatchesForSelectedEnzyme(selectedMatch?.takeIf { it.enzyme == selectedEnzyme })
         refreshEditElementActionState()
@@ -536,6 +561,7 @@ class DigestPanel(
         if (enzyme == null || doc.seq.kind != SeqKind.DNA) {
             matches = emptyList()
             rebuildMergedRows()
+            updateDigestResultsLabel()
             return
         }
         matches = cutSitesCache[enzyme]
@@ -543,6 +569,7 @@ class DigestPanel(
             ?: Digest.cutSites(doc.seq, enzyme)
         rebuildMergedRows()
         restoreMergedSelection(matchToRestore)
+        updateDigestResultsLabel()
     }
 
     private fun rebuildMergedRows() {
@@ -613,7 +640,7 @@ class DigestPanel(
             }
             return
         }
-        countScanProgress.text = "Scanning restriction sites: 0/${enzymes.size} enzymes…"
+        countScanProgress.text = "Scanning restriction sites in whole sequence: 0/${enzymes.size} enzymes…"
         cancelCountScanButton.isEnabled = true
         // The per-enzyme scans are independent, so they run on a shared pool and
         // the partial maps are merged on the event thread after every chunk completes.
@@ -663,7 +690,7 @@ class DigestPanel(
                             countsCache = partial.toMap()
                             overhangCache = partialOverhangs.toMap()
                             rebuildEnzymeTable()
-                            countScanProgress.text = "Scanning restriction sites: $done/${enzymes.size} enzymes…"
+                            countScanProgress.text = "Scanning restriction sites in whole sequence: $done/${enzymes.size} enzymes…"
                         }
                     }
                 } finally {
@@ -674,7 +701,7 @@ class DigestPanel(
                             overhangCache = partialOverhangs
                             countsStale = false
                             activeCountCancellation = null
-                            countScanProgress.text = "Restriction-site scan complete: ${completed.get()}/${enzymes.size} enzymes."
+                            countScanProgress.text = "Whole-sequence restriction-site scan complete: ${completed.get()}/${enzymes.size} enzymes."
                             cancelCountScanButton.isEnabled = false
                             rebuildEnzymeTable()
                         }
@@ -713,6 +740,41 @@ class DigestPanel(
         updateFragmentActionState()
     }
 
+    /** Keeps the active calculation scope visible while the sequence selection moves. */
+    private fun updateScopeLabel() {
+        val seq = doc.seq
+        val unit = TableLabels.unit(seq.kind)
+        scopeLabel.text = buildString {
+            append("Scope: whole sequence (${seq.length} $unit)")
+            if (doc.hasSelection) {
+                append("  |  selected range ${doc.selectionStart + 1}–${doc.selectionEnd}")
+                append(" (${doc.selectionEnd - doc.selectionStart} $unit; context only)")
+            }
+        }
+    }
+
+    private fun updateEnzymeListStatus() {
+        if (!enzymeTable.isEnabled) {
+            enzymeListStatus.text = ""
+            return
+        }
+        val needle = filterField.text.trim()
+        enzymeListStatus.text = when {
+            visibleEnzymes.isEmpty() && needle.isNotEmpty() -> "No matching enzymes"
+            needle.isEmpty() -> "${visibleEnzymes.size} enzyme(s) shown"
+            else -> "${visibleEnzymes.size} matching enzyme(s) shown"
+        }
+    }
+
+    private fun updateDigestResultsLabel() {
+        val enzyme = visibleEnzymes.getOrNull(enzymeTable.selectedRow)
+        digestResultsLabel.text = if (enzyme == null) {
+            "Digest fragments and cut sites • whole sequence"
+        } else {
+            "Matches for ${enzyme.name} (${matches.size}) • whole sequence"
+        }
+    }
+
     /** Exposed for tests: whether digestion is available for the current sample. */
     fun isDigestEnabled(): Boolean = enzymeTable.isEnabled
 
@@ -739,7 +801,7 @@ class DigestPanel(
         countsCache = null
         overhangCache = emptyMap()
         cancelCountScanButton.isEnabled = false
-        countScanProgress.text = "Restriction-site scan cancelled."
+        countScanProgress.text = "Whole-sequence restriction-site scan cancelled."
         rebuildEnzymeTable()
     }
 
@@ -790,6 +852,9 @@ class DigestPanel(
 
     /** Exposed for tests: the inline digest or fragment-action status. */
     fun summaryText(): String = summary.text
+
+    /** Exposed for GUI regression tests: the currently displayed calculation scope. */
+    fun scopeTextForTest(): String = scopeLabel.text
 
     /** Exposed for tests and the GUI: the saved description for an enzyme row. */
     fun enzymeDescription(row: Int): String = visibleEnzymes.getOrNull(row)?.let(::descriptionFor).orEmpty()
@@ -910,7 +975,8 @@ class DigestPanel(
             restoreFragmentSelection(null)
             enzymeModel.fireTableDataChanged()
             prefs.update { it.copy(selectedEnzymes = emptyList()) }
-            summary.text = "Tick enzymes to map their sites."
+            updateDigestResultsLabel()
+            summary.text = "Tick enzymes to map their sites in the whole sequence."
             return
         }
         // Small sequences are digested synchronously (fast enough not to block,
@@ -946,7 +1012,8 @@ class DigestPanel(
         enzymeModel.fireTableDataChanged()
         prefs.update { it.copy(selectedEnzymes = active.map { enzyme -> enzyme.name }) }
         val total = fragments.sumOf { it.length }
-        summary.text = "${active.joinToString(", ") { it.name }}  ->  ${doc.cutSites.size} site(s), " +
+        updateDigestResultsLabel()
+        summary.text = "${active.joinToString(", ") { it.name }}  ->  ${doc.cutSites.size} site(s) in whole sequence, " +
                 "${fragments.size} fragment(s), total $total bp"
     }
 

@@ -36,6 +36,8 @@ import javax.swing.JCheckBox
 import javax.swing.JMenu
 import javax.swing.JMenuItem
 import javax.swing.JScrollPane
+import javax.swing.JLabel
+import javax.swing.JTextField
 import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -120,6 +122,58 @@ class GuiSmokeTest {
             assertTrue(status.contains("dna", ignoreCase = true) || status.contains("DNA") || status.contains("bp"))
 
             paintComponent(view, 900, 400)
+        }
+    }
+
+    @Test
+    fun sequenceSelectionAndCutSiteLabelsExplainWhatIsSelected() {
+        onEdt {
+            val doc = SeqDocument(Seq(name = "label-test", bases = "GAATTCGAATTC"))
+            val view = SequenceView(doc)
+            doc.setMappedEnzymes(listOf(Enzymes.require("EcoRI")))
+            doc.select(0, 6)
+
+            assertTrue(view.statusText().contains("Selected range 1–6 (6 bp"))
+            paintComponent(view, 900, 400)
+            assertTrue(view.cutSiteLabelsForTest().contains("EcoRI"), "selected enzyme label should remain visible")
+        }
+    }
+
+    @Test
+    fun enzymePanelsIdentifySearchAndWholeSequenceScope() {
+        onEdt {
+            val doc = SeqDocument(Seq(name = "enzyme-label-test", bases = "GAATTCGAATTC"))
+            val prefs = Prefs().also { it.update { current -> current.copy(digestCuttersOnly = false) } }
+            val digest = DigestPanel(doc, { _: Seq -> }, { _, _ -> }, prefs)
+            val enzyme = Enzymes.require("EcoRI")
+
+            assertTrue(digest.scopeTextForTest().contains("Scope: whole sequence (12 bp)"))
+            assertTrue(descendants(digest, JLabel::class.java).any { it.text == "Find enzyme" })
+            val filter = descendants(digest, JTextField::class.java).single()
+            assertTrue(filter.toolTipText.contains("recognition site"))
+
+            digest.selectEnzymeInTable(enzyme)
+            assertTrue(descendants(digest, JLabel::class.java).any { it.text.startsWith("Matches for EcoRI (2)") })
+
+            doc.select(6, 12)
+            assertTrue(digest.scopeTextForTest().contains("selected range 7–12 (6 bp; context only)"))
+
+            digest.dispose()
+
+            val content = InstaGeneContent(null, prefs = Prefs())
+            try {
+                content.openSequence(Seq(name = "analysis-label-test", bases = "GAATTCGAATTC"))
+                content.analysisPanel.selectTool("Enzymes")
+                assertTrue(descendants(content.analysisPanel, JLabel::class.java).any {
+                    it.text.startsWith("Analysis target: whole sequence (12 bp)")
+                })
+                content.activeDocument.select(6, 12)
+                assertTrue(descendants(content.analysisPanel, JLabel::class.java).any {
+                    it.text.contains("selected range 7–12 (6 bp; context only)")
+                })
+            } finally {
+                content.dispose()
+            }
         }
     }
 
@@ -377,7 +431,7 @@ class GuiSmokeTest {
                 panel.cancelCutCountScan()
 
                 assertFalse(panel.isCutCountScanRunning())
-                assertEquals("Restriction-site scan cancelled.", panel.cutCountScanStatus())
+                assertEquals("Whole-sequence restriction-site scan cancelled.", panel.cutCountScanStatus())
                 assertNull(panel.computedCutCounts())
             } finally {
                 panel.dispose()
@@ -840,13 +894,13 @@ class GuiSmokeTest {
                 try {
                     content.toolTabs.selectedIndex = content.toolTabs.indexOfTab("Analysis")
                     content.analysisPanel.selectTool("Assembly")
-                    val partsField = descendants(content.analysisPanel, javax.swing.JTextField::class.java)
+                    val partsField = descendants(content.analysisPanel, JTextField::class.java)
                         .single { it.columns == 36 }
                     val assembly = partsField.getParent().getParent() as javax.swing.JPanel
 
-                    descendants(assembly, javax.swing.JTextField::class.java).single { it.columns == 36 }.text =
+                    descendants(assembly, JTextField::class.java).single { it.columns == 36 }.text =
                         "${partA.absolutePath},${partB.absolutePath}"
-                    descendants(assembly, javax.swing.JTextField::class.java).single { it.text == "assembly_product" }.text =
+                    descendants(assembly, JTextField::class.java).single { it.text == "assembly_product" }.text =
                         "opened_from_analysis"
                     descendants(assembly, JCheckBox::class.java).single { it.text == "Circular product" }.isSelected = false
                     descendants(assembly, javax.swing.JButton::class.java).single { it.text == "Preview" }.doClick()

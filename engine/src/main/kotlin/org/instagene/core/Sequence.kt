@@ -166,6 +166,16 @@ data class PrimerAnnotation(
     }
 }
 
+/** A structured validation warning or error raised by [Seq.validate]. */
+@Serializable
+enum class ValidationSeverity { WARNING, ERROR }
+
+@Serializable
+data class ValidationIssue(
+    val severity: ValidationSeverity,
+    val message: String,
+)
+
 /** One reconstructable scientific operation that produced or changed a sequence. */
 @Serializable
 data class ProcedureRecord(
@@ -174,6 +184,14 @@ data class ProcedureRecord(
     val inputs: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val timestamp: Long = 0L,
+    /** Source or parent record identifier for provenance chains. */
+    val source: String? = null,
+    /** Stable file or payload hash associated with the operation. */
+    val sourceHash: String? = null,
+    /** Earlier operation identity when building a provenance DAG. */
+    val parentOperation: String? = null,
+    /** Version string for the software, CLI, or tool that created the step. */
+    val toolVersion: String? = null,
 )
 
 /** An ordered record-level field, preserving repeated and unknown flat-file fields. */
@@ -235,6 +253,61 @@ data class Seq(
 
     val isCircular: Boolean get() = topology == Topology.CIRCULAR
 
+    /** Validates the record for sequence-alphabet legality, coordinate bounds, and annotation consistency. */
+    fun validate(): List<ValidationIssue> {
+        val issues = mutableListOf<ValidationIssue>()
+
+        val invalidBases = Alphabet.invalidCharacters(bases, kind)
+        if (invalidBases.isNotEmpty()) {
+            issues += ValidationIssue(
+                ValidationSeverity.ERROR,
+                "Sequence '${name}' contains unsupported characters for ${kind.name}: ${invalidBases.sorted().joinToString("")}",
+            )
+        }
+
+        if (topology == Topology.CIRCULAR && length == 0) {
+            issues += ValidationIssue(
+                ValidationSeverity.WARNING,
+                "Circular sequence '${name}' is empty; origin-related operations will be no-ops or reject input.",
+            )
+        }
+
+        features.forEachIndexed { index, feature ->
+            if (feature.start < 0 || feature.end > length || feature.end < feature.start) {
+                issues += ValidationIssue(
+                    ValidationSeverity.ERROR,
+                    "Feature #$index '${feature.name}' exceeds the bounds of sequence '${name}' (${feature.start}..${feature.end} not within 0..$length).",
+                )
+            }
+            feature.locationSegments.forEachIndexed { segmentIndex, segment ->
+                if (segment.start < 0 || segment.end > length || segment.end < segment.start) {
+                    issues += ValidationIssue(
+                        ValidationSeverity.ERROR,
+                        "Feature #$index '${feature.name}' segment #$segmentIndex exceeds the bounds of sequence '${name}' (${segment.start}..${segment.end} not within 0..$length).",
+                    )
+                }
+            }
+        }
+
+        primers.forEachIndexed { index, primer ->
+            if (primer.bindingStart < 0 || primer.bindingEnd > length || primer.bindingEnd < primer.bindingStart) {
+                issues += ValidationIssue(
+                    ValidationSeverity.ERROR,
+                    "Primer #$index '${primer.name}' exceeds the bounds of sequence '${name}' (${primer.bindingStart}..${primer.bindingEnd} not within 0..$length).",
+                )
+            }
+            val matchLength = primer.bindingEnd - primer.bindingStart
+            if (matchLength != primer.bases.length) {
+                issues += ValidationIssue(
+                    ValidationSeverity.WARNING,
+                    "Primer #$index '${primer.name}' has a binding span of $matchLength bases but a stored primer sequence of ${primer.bases.length} bases.",
+                )
+            }
+        }
+
+        return issues
+    }
+
     /** A persisted sequence identity, when one has been applied. */
     val uniqueIdentifier: String? get() = metadata["CDSEGUID"]?.takeIf { it.isNotBlank() }
 
@@ -280,6 +353,93 @@ data class Seq(
 
     /** Appends a reconstructable operation to this sequence's embedded provenance. */
     fun withProcedure(record: ProcedureRecord): Seq = copy(provenance = provenance + record)
+
+    /** Records a source file or dataset and optional checksum in both metadata and provenance. */
+    fun withSourceAudit(
+        source: String,
+        operation: String = "IMPORT",
+        summary: String = "Applied $operation from $source",
+        inputs: List<String> = listOf(source),
+        warnings: List<String> = emptyList(),
+        fileHash: String? = null,
+        parentOperation: String? = provenance.lastOrNull()?.operation,
+        toolVersion: String? = null,
+    ): Seq {
+        val nextMetadata = LinkedHashMap(metadata)
+        if (source.isNotBlank()) nextMetadata["SOURCE"] = source
+        if (!fileHash.isNullOrBlank()) nextMetadata["SOURCE_HASH"] = fileHash
+        return copy(
+            metadata = nextMetadata,
+            provenance = provenance + ProcedureRecord(
+                operation = operation,
+                summary = summary,
+                inputs = inputs,
+                warnings = warnings,
+                timestamp = System.currentTimeMillis(),
+                source = source.takeIf(String::isNotBlank),
+                sourceHash = fileHash?.takeIf(String::isNotBlank),
+                parentOperation = parentOperation,
+                toolVersion = toolVersion,
+            ),
+        )
+    }
+
+    /** Updates the structured record-level metadata in the same style as Biopython's SeqRecord annotations. */
+    fun withRecordMetadata(update: SequenceRecordMetadata.() -> SequenceRecordMetadata): Seq =
+        copy(recordMetadata = update(recordMetadata))
+
+    /** A compact human-readable provenance summary modeled like record annotations in mature bioinformatics tooling. */
+    fun provenanceSummary(limit: Int = 10): String = provenance
+        .take(limit)
+        .joinToString(" | ") { "${it.operation}:${it.summary}" }
+        .ifBlank { "No provenance recorded" }
+
+    /** Makes the record source explicit in both structured metadata and the compatibility map. */
+    fun withSource(source: String?): Seq {
+        val sourceValue = source?.takeIf(String::isNotBlank)
+        return copy(
+            metadata = if (sourceValue == null) metadata - "SOURCE" else metadata + ("SOURCE" to sourceValue),
+            recordMetadata = recordMetadata.copy(source = sourceValue),
+        )
+    }
+
+    /** Adds a structured organism label and optional taxonomy lineage. */
+    fun withOrganism(organism: String?, taxonomy: List<String> = recordMetadata.taxonomy): Seq =
+        copy(
+            metadata = if (organism.isNullOrBlank()) metadata - "ORGANISM" else metadata + ("ORGANISM" to organism),
+            recordMetadata = recordMetadata.copy(organism = organism?.takeIf(String::isNotBlank), taxonomy = taxonomy),
+        )
+
+    /** Appends one or more taxonomy ranks to the record lineage. */
+    fun withTaxonomy(vararg taxonomy: String): Seq = copy(
+        recordMetadata = recordMetadata.copy(
+            taxonomy = (recordMetadata.taxonomy + taxonomy.filter(String::isNotBlank)).distinct(),
+        ),
+    )
+
+    /** Adds a record-level comment piece. */
+    fun withComment(comment: String): Seq {
+        val cleaned = comment.takeIf(String::isNotBlank) ?: return this
+        return copy(recordMetadata = recordMetadata.copy(comments = recordMetadata.comments + cleaned))
+    }
+
+    /** Adds a database cross-reference for a source or mapping service. */
+    fun withDatabaseReference(reference: String): Seq {
+        val cleaned = reference.takeIf(String::isNotBlank) ?: return this
+        return copy(recordMetadata = recordMetadata.copy(databaseReferences = recordMetadata.databaseReferences + cleaned))
+    }
+
+    /** Adds a raw flat-file header field preserving repeated keys. */
+    fun withHeaderField(key: String, value: String): Seq {
+        val cleanKey = key.takeIf(String::isNotBlank) ?: return this
+        val cleanValue = value.takeIf(String::isNotBlank) ?: return this
+        return copy(recordMetadata = recordMetadata.copy(headerFields = recordMetadata.headerFields + RecordHeaderField(cleanKey, cleanValue)))
+    }
+
+    /** Adds a bibliographic reference to the sequence-level record metadata. */
+    fun withReference(reference: SequenceReference): Seq = copy(
+        recordMetadata = recordMetadata.copy(references = recordMetadata.references + reference),
+    )
 
     /** Inserts [insert] before position [at], shifting downstream features. */
     fun insertAt(at: Int, insert: String): Seq {

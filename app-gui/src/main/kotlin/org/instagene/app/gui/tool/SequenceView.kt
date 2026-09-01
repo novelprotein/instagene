@@ -99,6 +99,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         private set
     private var runBuffer = CharArray(0)
     private var lastPaintedRowCount = 0
+    private val paintedCutSiteLabels = ArrayList<String>()
 
     private fun runBuffer(): CharArray {
         if (runBuffer.size < basesPerLine) runBuffer = CharArray(basesPerLine)
@@ -106,7 +107,11 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
     }
 
     private val padding = 10
-    private val markHeight = 14
+    // Two compact label rows keep nearby cut-site names readable without
+    // letting one busy row turn into an unlabeled line of markers.
+    private val markHeight = 28
+    private val cutLabelLaneHeight = 12
+    private val cutLabelLaneCount = 2
     private val laneHeight = 8
     private val rowGap = 10
 
@@ -237,6 +242,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         val seq = doc.seq
         if (seq.length == 0) {
             lastPaintedRowCount = 0
+            paintedCutSiteLabels.clear()
             g2.color = Palette.MUTED
             g2.font = baseFont
             g2.drawString("Empty sequence - type bases, or use File > Open.", padding + 4, padding + lineHeight)
@@ -249,12 +255,16 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
 
         lastPaintedRowCount = if (lastRow >= firstRow) lastRow - firstRow + 1 else 0
         featureHitTargets.clear()
+        paintedCutSiteLabels.clear()
         for (row in firstRow..lastRow) paintRow(g2, row)
         paintCaret(g2)
     }
 
     /** Number of sequence rows painted for the most recent viewport, useful for large-file diagnostics. */
     fun lastViewportPaintedRowCount(): Int = lastPaintedRowCount
+
+    /** Exposed for GUI regression tests: cut-site names painted in the latest viewport. */
+    fun cutSiteLabelsForTest(): List<String> = paintedCutSiteLabels.toList()
 
     private fun paintRow(g2: Graphics2D, row: Int) {
         val seq = doc.seq
@@ -406,25 +416,99 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         if (cutSites.isEmpty()) return
         g2.font = labelFont
         val fm = getFontMetrics(labelFont)
-        var lastLabelEnd = -1
         // cutSites is already sorted by topCut; jump straight to the first site
         // in the visible window instead of scanning (and re-sorting) the whole
         // list for every painted row.
         var i = lowerBound(cutSites, from)
+        val visibleSites = ArrayList<CutSite>()
         while (i < cutSites.size && cutSites[i].topCut < to) {
-            val site = cutSites[i]
+            visibleSites += cutSites[i]
+            i++
+        }
+        if (visibleSites.isEmpty()) return
+
+        fun isSelected(site: CutSite): Boolean = doc.hasSelection && (
+            site.topCut in doc.selectionStart until doc.selectionEnd ||
+                (site.recognitionStart < doc.selectionEnd && site.recognitionEnd > doc.selectionStart)
+            )
+
+        // Draw every marker, giving a site in the selected range a stable
+        // visual anchor while the labels are laid out below.
+        visibleSites.forEach { site ->
             val pos = site.topCut
             val x = xOf(pos - from)
-            g2.color = Palette.CUT_MARK
-            g2.drawLine(x, top + 2, x, top + markHeight)
-            g2.fillPolygon(intArrayOf(x - 3, x + 3, x), intArrayOf(top + 2, top + 2, top + 7), 3)
-            // Only label a site when the previous label has cleared the space.
-            if (x > lastLabelEnd + 4) {
-                val label = site.enzyme.name
-                g2.drawString(label, x + 4, top + markHeight - 3)
-                lastLabelEnd = x + 4 + fm.stringWidth(label)
+            g2.color = if (isSelected(site)) Palette.ACCENT else Palette.CUT_MARK
+            val markerTop = top + markHeight - 8
+            g2.drawLine(x, markerTop, x, top + markHeight)
+            g2.fillPolygon(intArrayOf(x - 3, x + 3, x), intArrayOf(markerTop, markerTop, markerTop + 5), 3)
+        }
+
+        data class Placement(val site: CutSite, val lane: Int, val bounds: Rectangle, val labelX: Int, val labelY: Int)
+        val placements = ArrayList<Placement>()
+        // Selected sites are placed first so a nearby ordinary label can never
+        // hide the enzyme the user is currently trying to locate.
+        val labelSites = visibleSites.sortedWith(compareByDescending<CutSite> { isSelected(it) }.thenBy { it.topCut })
+        for (site in labelSites) {
+            val label = site.enzyme.name
+            val textWidth = fm.stringWidth(label)
+            val markerX = xOf(site.topCut - from)
+            val rightLabelX = markerX + 4
+            val leftLabelX = markerX - textWidth - 4
+            val labelX = if (rightLabelX + textWidth <= width - padding) {
+                rightLabelX
+            } else {
+                maxOf(padding + gutterWidth, leftLabelX)
             }
-            i++
+
+            var lane = -1
+            var bounds = Rectangle()
+            for (candidate in 0 until cutLabelLaneCount) {
+                val baseline = top + 10 + candidate * cutLabelLaneHeight
+                val candidateBounds = Rectangle(
+                    labelX - 3,
+                    baseline - fm.ascent - 1,
+                    textWidth + 6,
+                    fm.height + 2,
+                )
+                val collides = placements.any {
+                    it.lane == candidate && it.bounds.intersects(candidateBounds)
+                }
+                if (!collides) {
+                    lane = candidate
+                    bounds = candidateBounds
+                    break
+                }
+            }
+
+            // Keep the selected enzyme visible even in a densely annotated
+            // row. Its accent-backed label makes the intentional overlap clear.
+            if (lane < 0 && isSelected(site)) {
+                lane = 0
+                val baseline = top + 10
+                bounds = Rectangle(labelX - 3, baseline - fm.ascent - 1, textWidth + 6, fm.height + 2)
+            }
+            if (lane < 0) continue
+
+            val labelY = top + 10 + lane * cutLabelLaneHeight
+            placements += Placement(site, lane, bounds, labelX, labelY)
+            paintedCutSiteLabels += label
+        }
+
+        placements.forEach { placement ->
+            val selected = isSelected(placement.site)
+            if (selected) {
+                g2.color = Palette.translucent(Palette.ACCENT, 0x33)
+                g2.fillRoundRect(
+                    placement.bounds.x - 1,
+                    placement.bounds.y - 1,
+                    placement.bounds.width + 2,
+                    placement.bounds.height + 2,
+                    5,
+                    5,
+                )
+            }
+            g2.color = if (selected) Palette.ACCENT else Palette.TEXT
+            g2.drawString(placement.site.enzyme.name, placement.labelX, placement.labelY)
         }
     }
 
@@ -719,7 +803,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
             }
             if (doc.hasSelection) {
                 val sel = doc.selectedBases
-                append("   |  selection ${doc.selectionStart + 1}..${doc.selectionEnd}")
+                append("   |  Selected range ${doc.selectionStart + 1}–${doc.selectionEnd}")
                 append(" (${sel.length} $unit")
                 if (seq.kind != SeqKind.PROTEIN) {
                     append(", GC ${"%.1f".format(SeqOps.gcContent(sel))}%")
@@ -727,7 +811,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
                 }
                 append(")")
             } else {
-                append("   |  caret ${doc.caret + 1}")
+                append("   |  Caret ${doc.caret + 1}")
             }
             if (doc.cutSites.isNotEmpty()) append("   |  ${doc.cutSites.size} cut site(s)")
         }

@@ -89,6 +89,27 @@ class InteroperabilityRoundTripTest {
     }
 
     @Test
+    fun genbankRoundTripPreservesSourceAuditMetadataAndProvenance() {
+        val original = Seq(
+            name = "audit",
+            bases = "ACGTACGT",
+        ).withSourceAudit(
+            source = "audit.gb",
+            operation = "IMPORT",
+            summary = "Imported from a validated source",
+            warnings = listOf("Retained as a flat sequence record"),
+            fileHash = "deadbeef",
+        )
+
+        val text = SeqIO.write(original, SeqFormat.GENBANK)
+        val decoded = GenBank.parse(text)
+        assertEquals("audit.gb", decoded.metadata["SOURCE"])
+        assertEquals("deadbeef", decoded.metadata["SOURCE_HASH"])
+        assertEquals(original.provenance.map { it.operation }, decoded.provenance.map { it.operation })
+        assertEquals(original.provenance.map { it.summary }, decoded.provenance.map { it.summary })
+    }
+
+    @Test
     fun alignmentRowsRoundTripThroughEveryNativeAlignmentExtension() {
         val rows = listOf(Seq("reference", "AC-GTT"), Seq("sample", "ATAGTT"))
         val root = createTempDirectory("instagene-interop-alignment").toFile()
