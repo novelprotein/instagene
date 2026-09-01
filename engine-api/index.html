@@ -631,6 +631,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#trust-signals-and-fidelity-warnings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust signals and fidelity warnings
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -878,6 +889,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#trust-signals-and-fidelity-warnings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust signals and fidelity warnings
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1061,10 +1083,34 @@ verified matching response, <code>NETWORK_THEN_CACHE</code> uses a verified resp
 after a network failure, and <code>CACHE_ONLY</code> is safe for offline replay. Every
 <code>fetchGenBank</code> result records NCBI request, response hash, retrieval timestamp,
 and origin in <code>Seq.metadata</code> and a <code>ProcedureRecord</code>.</p>
+<p>The project policy is intentionally strict:</p>
+<ul>
+<li>remote retrieval remains opt-in for every workflow;</li>
+<li>host-specific access policies and response provenance are retained in the
+  record instead of being hidden in UI state;</li>
+<li>network fetches are treated as data provenance events, not as a guarantee of
+  biological correctness;</li>
+<li>cached or remote results must remain transparent in reports and logs.</li>
+</ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kd">val</span><span class="w"> </span><span class="nv">cache</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">OnlineCache</span><span class="p">(</span><span class="n">File</span><span class="p">(</span><span class="s">".instagene-cache"</span><span class="p">))</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kd">val</span><span class="w"> </span><span class="nv">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">NcbiClient</span><span class="p">(</span><span class="n">onlineCache</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cache</span><span class="p">,</span><span class="w"> </span><span class="n">onlineCacheMode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">OnlineCacheMode</span><span class="p">.</span><span class="na">PREFER_CACHE</span><span class="p">)</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kd">val</span><span class="w"> </span><span class="nv">record</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="na">fetchGenBank</span><span class="p">(</span><span class="s">"J01636.1"</span><span class="p">)</span>
 </code></pre></div>
+<h3 id="trust-signals-and-fidelity-warnings">Trust signals and fidelity warnings<a class="headerlink" href="#trust-signals-and-fidelity-warnings" title="Permanent link">&para;</a></h3>
+<p>Every import, transform, and export path should tell the caller whether it is
+lossless, tolerable, or lossy. The engine supports that through validation and
+provenance records, while the UI and CLI should surface those results in plain
+language:</p>
+<ul>
+<li>"sequence preserved"</li>
+<li>"annotations retained"</li>
+<li>"topology preserved"</li>
+<li>"metadata reduced during export"</li>
+<li>"non-native format converted"</li>
+</ul>
+<p>When a conversion drops content or changes a biological interpretation, the
+warning must be visible with the result and stored in the record's provenance.
+A researcher should never need to guess whether a file round trip was faithful.</p>
 <h2 id="reports-and-reproducibility">Reports and reproducibility<a class="headerlink" href="#reports-and-reproducibility" title="Permanent link">&para;</a></h2>
 <p><code>Reports</code> produces text reports for selected workflows. Sequence records also
 carry procedure records that capture a workflow's inputs, warnings, and

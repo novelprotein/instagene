@@ -495,6 +495,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#interoperability-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interoperability contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#desktop-routing-and-file-associations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -773,6 +784,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#interoperability-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interoperability contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#desktop-routing-and-file-associations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -933,6 +955,52 @@ Keep an original copy and review a converted record before using it.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="interoperability-contract">Interoperability contract<a class="headerlink" href="#interoperability-contract" title="Permanent link">&para;</a></h2>
+<p>The supported import/export paths follow a three-level contract so research
+workflows can distinguish safe exchange from lossy conversion:</p>
+<table>
+<thead>
+<tr>
+<th>Contract level</th>
+<th>Meaning</th>
+<th>Typical examples</th>
+<th>Handling expectation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Native fidelity</td>
+<td>The format is parsed and written by InstaGene with explicit retention of sequence, features, topology, and provenance where the format is capable of representing them.</td>
+<td>GenBank/ApE, GFF3, EMBL, Swiss-Prot, alignment families</td>
+<td>Preferred working format for major desktop or scripting workflows.</td>
+</tr>
+<tr>
+<td>Best-effort loss-aware</td>
+<td>The format captures the core sequence but may lose some editable or display metadata.</td>
+<td>FASTA, text-export variants</td>
+<td>Acceptable for exchange or transcript-style use, but warnings should be surfaced before use in a critical workflow.</td>
+</tr>
+<tr>
+<td>Converter-only / deferred</td>
+<td>The format is not natively supported by InstaGene and must be exported through a reviewed converter or a documented import route.</td>
+<td>SnapGene <code>.dna</code>, some vendor-specific or legacy formats</td>
+<td>Treat as a migration path, not as native compatibility.</td>
+</tr>
+</tbody>
+</table>
+<p>The practical rule is simple:</p>
+<ul>
+<li>use GenBank/ApE or GFF3 when a feature table, origin, and annotation state
+  matter;</li>
+<li>use FASTA or alignment formats when the sequence itself is the only required
+  payload;</li>
+<li>treat all converter-backed formats as migration steps and verify the resulting
+  record before using it in a decision-making workflow.</li>
+</ul>
+<p>A record should be considered scientifically trustworthy only when its format,
+annotation retention, and provenance are understood. When a conversion drops
+annotation state or topology, the UI and CLI should make that loss explicit
+instead of silently accepting it.</p>
 <p><code>SeqIO.read(file)</code> returns the first record of a multi-record sequence or
 alignment file. Use <code>SeqIO.readAll(file)</code> or the alignment tools when all rows
 are required.</p>
