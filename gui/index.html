@@ -1260,10 +1260,40 @@ for every open file.</p>
 <h3 id="info">Info<a class="headerlink" href="#info" title="Permanent link">&para;</a></h3>
 <p><img alt="Info tab showing molecule properties and statistics" src="../screenshots/info.png" /></p>
 <p>The Info tab is the quickest sanity check after opening a file. Review the
-name, description, molecule type, topology, methylation, end chemistry, length,
-file path, GC content, melting temperature, molecular weight, feature count,
-and primer count. Edit the name or description only when you intend to change
-the record metadata, then save the document.</p>
+name, compact description, molecule type, topology, strand orientation,
+methylation, end chemistry, record/file dates, and stable CD-SEGUID. The
+record metadata section stores author, sequence class, lab host type and strain,
+natural/synthetic classification, record comments, and references. Sequence
+class choices are grouped into biological source, sequence content, and archive
+or submission class. Select one explicit primary class; the field remains
+editable for classifications not present in the catalog, and InstaGene does
+not infer a class from a sequence, organism name, accession, or example.
+Every catalog choice has a UI label followed by a three-letter sequence-class
+code, such as <code>Plant (PLT)</code>. Documented NCBI
+codes are used where applicable; other codes are explicitly InstaGene-defined
+and are not presented as NCBI divisions. The user-facing labels can be more
+granular than an official database division. For example,
+Plant, Fungal, and Algal are separate application choices even though NCBI
+groups those source records under PLN; the UI does not pretend that each has a
+separate PLN division code.
+Imported record comments and citations are kept as source fields; application
+provenance is stored separately under namespaced <code>IG_*</code> metadata.
+Scientific references can retain PubMed/NCBI identifiers or source links;
+<strong>Resolve NCBI</strong> fills in citation details without discarding the raw link.
+Original author and reference fields are preserved for bundled source records;
+new or imported records are not assigned an author without provenance. Unknown
+Dam, Dcm, or CpG state is shown explicitly and leaves potential
+restriction sites visible with an uncertainty note. The right column also
+shows base composition, GC/Tm/molecular weight, skews, ambiguity, homopolymer,
+complexity, entropy, diversity, di-/trinucleotide counts, and annotation counts.
+Use <strong>Copy</strong> and <strong>Apply</strong> beside CD-SEGUID to copy or persist the identity,
+then save the document when edits should be retained.</p>
+<p>Archive/submission choices include EST, PAT, STS, GSS, HTG, HTC, ENV, WGS,
+TSA, TLS, TPA, and CON. <code>Contig or assembly record (CON)</code> describes an
+assembly record and may contain assembly information without sequence bases;
+it is not a biological-source classification. See the <a href="https://www.ncbi.nlm.nih.gov/genbank/htgs/divisions/">NCBI GenBank division
+and high-throughput sequence documentation</a>
+for the source terminology.</p>
 <h3 id="map">Map<a class="headerlink" href="#map" title="Permanent link">&para;</a></h3>
 <p><img alt="Map tab showing a circular annotated plasmid" src="../screenshots/map.png" /></p>
 <p>Map displays circular or linear sequence features overlay in sections over the sequence.
@@ -1342,9 +1372,11 @@ library.</p>
    preview reports definitions completed and can be cancelled; applying a large
    library also continues in the background.</li>
 </ol>
-<p>Use GenBank for annotated or circular records. FASTA cannot retain features,
-qualifiers, colors, or circular topology. The same short guide is available in
-<strong>Help → Feature annotation guide</strong>.</p>
+<p>Use GenBank for annotated, circular, or metadata-rich records. FASTA cannot
+retain features, qualifiers, colors, circular topology, record metadata, or
+molecule chemistry; GFF3 is annotation-centric and should be checked against
+its associated sequence. The same short guide is available in <strong>Help → Feature
+annotation guide</strong>.</p>
 <h3 id="primers">Primers<a class="headerlink" href="#primers" title="Permanent link">&para;</a></h3>
 <p><img alt="Primers tab showing an amplicon and designed primer pair" src="../screenshots/primers.png" /></p>
 <p>Primers designs candidates for a selected or explicitly entered amplicon. Set

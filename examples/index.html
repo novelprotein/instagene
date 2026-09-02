@@ -682,63 +682,54 @@
 
 
 <h1 id="bundled-example-provenance">Bundled example provenance<a class="headerlink" href="#bundled-example-provenance" title="Permanent link">&para;</a></h1>
-<p>InstaGene includes small bundled examples so a new desktop install can open a
-sequence, map, trace, or alignment without requiring a lab file. Most examples
-are synthetic teaching data authored for InstaGene and distributed under the
-repository MIT License. The real plasmid example is a checked-in NCBI GenBank
-snapshot so it works offline and keeps its feature annotations. For that real
-plasmid, BLAST is used as the record-selection check; the feature annotations
-come from the selected GenBank record, because BLAST reports alignments rather
-than complete feature tables.</p>
-<p>Sequence examples carry the source statement in structured <code>IG_SAMPLE_SOURCE</code>
-metadata. Synthetic sequence examples also put that statement in their record
-description, so exported FASTA headers and GenBank <code>DEFINITION</code> fields retain
-the citation. Do not treat bundled examples as substitutes for reviewing source
-records before experimental use.</p>
+<p>InstaGene bundles only complete, source-identifiable records for its desktop,
+CLI, and web examples. The records are checked-in NCBI GenBank snapshots, so
+they work offline while retaining their original sequence, feature table,
+authors, and publication or submission references.</p>
+<p>Each record carries an InstaGene-added provenance statement in
+<code>IG_SAMPLE_SOURCE</code> metadata, plus the accession, NCBI record URL, retrieval
+date, source checksum, and annotation source. This application metadata is
+separate from the original GenBank <code>COMMENT</code>, <code>AUTHORS</code>, and <code>REFERENCE</code> fields;
+those source fields are preserved in structured record metadata and shown by the
+Info panel. The Info panel also exposes the explicit NCBI nuccore URL as a
+separate source link; it is not appended to the original <code>COMMENT</code> text.</p>
 <table>
 <thead>
 <tr>
 <th>Example</th>
 <th>Where it appears</th>
-<th>Description/source statement</th>
+<th>Original source</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>pUC19_MCS</code></td>
-<td>CLI sample, cloning tests</td>
-<td>Synthetic teaching fragment manually authored for InstaGene; represents the pUC19 multiple cloning site region only, not a downloaded full pUC19 record.</td>
-</tr>
-<tr>
-<td><code>GFP_CDS</code></td>
-<td>Welcome screen gene example, CLI sample</td>
-<td>Synthetic GFP-like teaching open reading frame authored for InstaGene examples; not copied from an external database record.</td>
-</tr>
-<tr>
-<td><code>pInstaGene_demo</code></td>
-<td>Welcome screen plasmid example, CLI sample</td>
-<td>Synthetic circular construct authored for InstaGene tutorials from the bundled <code>pUC19_MCS</code> teaching fragment plus artificial filler and annotations.</td>
-</tr>
-<tr>
 <td><code>pBR322_NCBI</code></td>
-<td>Welcome screen real plasmid example, CLI sample, pBR322 database entry</td>
-<td>Real plasmid example BLAST-verified against NCBI GenBank accession <a href="https://www.ncbi.nlm.nih.gov/nuccore/J01749.1"><code>J01749.1</code></a>, "Cloning vector pBR322, complete sequence"; features are from that selected GenBank record; primary complete-sequence reference <a href="https://pubmed.ncbi.nlm.nih.gov/383387/">PubMed 383387</a>.</td>
+<td>Welcome screen, CLI sample, pBR322 database entry</td>
+<td>Complete NCBI GenBank record <a href="https://www.ncbi.nlm.nih.gov/nuccore/J01749.1"><code>J01749.1</code></a>, “Cloning vector pBR322, complete sequence.”</td>
 </tr>
 <tr>
-<td><code>alignment_reference</code>, <code>alignment_read_1</code>, <code>alignment_read_2</code></td>
-<td>Welcome screen alignment example</td>
-<td>Synthetic three-sequence alignment authored for InstaGene examples, including one gap and one substitution for viewer testing.</td>
+<td><code>pUC19_NCBI_reference</code></td>
+<td>Welcome screen, CLI sample, pUC19 database entry</td>
+<td>Complete NCBI GenBank record <a href="https://www.ncbi.nlm.nih.gov/nuccore/M77789.2"><code>M77789.2</code></a>, “Cloning vector pUC19, complete sequence.”</td>
 </tr>
 <tr>
-<td><code>synthetic_chromatogram</code></td>
-<td>Welcome screen chromatogram example</td>
-<td>Generated synthetic chromatogram trace authored for InstaGene examples; contains no lab, patient, proprietary, or downloaded trace data.</td>
+<td><code>GFP_Aequorea_NCBI_reference</code></td>
+<td>Welcome screen, CLI sample</td>
+<td>Complete NCBI GenBank record <a href="https://www.ncbi.nlm.nih.gov/nuccore/L29345.1"><code>L29345.1</code></a>, <em>Aequorea victoria</em> GFP mRNA, complete cds.</td>
+</tr>
+<tr>
+<td><code>pGFPuv_NCBI_reference</code></td>
+<td>Welcome screen, CLI sample</td>
+<td>Complete NCBI GenBank record <a href="https://www.ncbi.nlm.nih.gov/nuccore/U62636.1"><code>U62636.1</code></a>, “Cloning vector pGFPuv, complete sequence.”</td>
 </tr>
 </tbody>
 </table>
+<p>There are no generated plasmid, gene, alignment, or chromatogram records in
+the bundled example catalog. Alignment and chromatogram tools remain
+available for user-provided files.</p>
 <p>The test fixture corpus has its own versioned manifest at
-<code>tests/src/test/resources/fixtures/manifest.json</code>. That manifest records each
-fixture file's source statement, format, license, and SHA-256 digest.</p>
+<code>tests/src/test/resources/fixtures/manifest.json</code>. Those fixtures support
+deterministic software tests and are not bundled product examples.</p>
 
 
 

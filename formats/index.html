@@ -881,14 +881,14 @@ Keep an original copy and review a converted record before using it.</p>
 <td><code>.fa</code>, <code>.fasta</code>, <code>.fna</code>, <code>.fas</code>, <code>.seq</code>, <code>.txt</code></td>
 <td style="text-align: right;">Yes</td>
 <td style="text-align: right;">Yes</td>
-<td>Sequence-focused interchange. It does not retain the editable feature table, circular topology, primers, procedure history, or most record metadata.</td>
+<td>Sequence-focused interchange. It does not retain the editable feature table, circular topology, primers, procedure history, record metadata, or molecule chemistry.</td>
 </tr>
 <tr>
 <td>GenBank / DDBJ / ApE</td>
 <td><code>.gb</code>, <code>.gbk</code>, <code>.genbank</code>, <code>.ape</code></td>
 <td style="text-align: right;">Yes</td>
 <td style="text-align: right;">Yes</td>
-<td>Preferred working format for annotated or circular records. ApE files use the GenBank-family path.</td>
+<td>Preferred working format for annotated, circular, metadata-rich, or methylation-aware records. InstaGene fields use namespaced <code>IG_</code> headers so author, sequence class, host, origin, dates, references, and chemistry survive a round trip. The sequence-class UI label is persisted compatibly as <code>IG_NACAT</code>.</td>
 </tr>
 <tr>
 <td>GFF3</td>
@@ -902,7 +902,7 @@ Keep an original copy and review a converted record before using it.</p>
 <td><code>.embl</code>, <code>.ena</code></td>
 <td style="text-align: right;">Yes</td>
 <td style="text-align: right;">Yes</td>
-<td>Flat-file interchange. Review complex qualifiers after a cross-tool round trip.</td>
+<td>Flat-file interchange. InstaGene metadata and chemistry use namespaced <code>CC   IG_*=</code> comments; review complex qualifiers after a cross-tool round trip.</td>
 </tr>
 <tr>
 <td>Swiss-Prot</td>
@@ -999,8 +999,9 @@ workflows can distinguish safe exchange from lossy conversion:</p>
 </ul>
 <p>A record should be considered scientifically trustworthy only when its format,
 annotation retention, and provenance are understood. When a conversion drops
-annotation state or topology, the UI and CLI should make that loss explicit
-instead of silently accepting it.</p>
+annotation state, topology, record metadata, or molecule chemistry, the UI
+should make that loss explicit instead of silently accepting it. The desktop
+save flow warns before exporting a metadata-rich record to FASTA or GFF3.</p>
 <p><code>SeqIO.read(file)</code> returns the first record of a multi-record sequence or
 alignment file. Use <code>SeqIO.readAll(file)</code> or the alignment tools when all rows
 are required.</p>
