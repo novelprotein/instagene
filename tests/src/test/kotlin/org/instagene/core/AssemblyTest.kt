@@ -1,6 +1,5 @@
 package org.instagene.core
 
-import org.instagene.core.io.SeqIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -80,8 +79,8 @@ class AssemblyTest {
     fun buildPlasmidFromMcsAndGfp() {
         val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HindIII"))
         val result = Assembly.buildPlasmid(
-            backbone = SeqIO.Samples.PUC19_MCS.copy(topology = Topology.CIRCULAR),
-            insert = SeqIO.Samples.GFP_CDS,
+            backbone = TestSequenceFixtures.restrictionBackbone.copy(topology = Topology.CIRCULAR),
+            insert = TestSequenceFixtures.restrictionInsert,
             enzymes = enzymes,
             name = "pGFP",
         )
@@ -94,7 +93,7 @@ class AssemblyTest {
     @Test
     fun buildPlasmidRejectsEmptyEnzymes() {
         assertFailsWith<IllegalArgumentException> {
-            Assembly.buildPlasmid(SeqIO.Samples.PUC19_MCS, SeqIO.Samples.GFP_CDS, emptyList())
+            Assembly.buildPlasmid(TestSequenceFixtures.restrictionBackbone, TestSequenceFixtures.restrictionInsert, emptyList())
         }
     }
 

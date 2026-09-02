@@ -2,7 +2,71 @@
 
 package org.instagene.core
 
-data class MethylationProfile(val dam: Boolean = false, val dcm: Boolean = false)
+/** Methylation assumptions used by restriction-site calculations. */
+data class MethylationProfile(
+    /** Kept non-null for compatibility with the original two-flag API. */
+    val dam: Boolean = false,
+    val dcm: Boolean = false,
+    val cpg: Boolean? = null,
+    /** Whether the legacy [dam] value is known rather than an unknown placeholder. */
+    val damKnown: Boolean = true,
+    /** Whether the legacy [dcm] value is known rather than an unknown placeholder. */
+    val dcmKnown: Boolean = true,
+) {
+    val hasUnknown: Boolean get() = !damKnown || !dcmKnown || cpg == null
+
+    companion object {
+        fun from(molecule: MoleculeProperties): MethylationProfile = MethylationProfile(
+            dam = molecule.damMethylated,
+            dcm = molecule.dcmMethylated,
+            cpg = molecule.cpgState.toBooleanOrNull(),
+            damKnown = molecule.damState != MethylationState.UNKNOWN,
+            dcmKnown = molecule.dcmState != MethylationState.UNKNOWN,
+        )
+
+        fun unknown(): MethylationProfile = MethylationProfile(
+            dam = false,
+            dcm = false,
+            cpg = null,
+            damKnown = false,
+            dcmKnown = false,
+        )
+    }
+}
+
+private fun MethylationState.toBooleanOrNull(): Boolean? = when (this) {
+    MethylationState.METHYLATED -> true
+    MethylationState.UNMETHYLATED -> false
+    MethylationState.UNKNOWN -> null
+}
+
+/** A centralized, deliberately conservative restriction methylation rule table. */
+object MethylationRules {
+    private val damBlocked = setOf("bcli", "clai")
+    private val dcmBlocked = emptySet<String>()
+    private val cpgBlocked = setOf("accii", "bsshii", "bstui", "clai", "eagi", "hpaii", "smai", "sacii")
+    private val methylatedSubstrateCutters = setOf("dpni")
+
+    /** True when this site is blocked by the supplied methylation profile. */
+    fun isBlocked(seq: Seq, site: CutSite, profile: MethylationProfile): Boolean {
+        val key = site.enzyme.name.lowercase()
+        val recognition = seq.sub(site.recognitionStart, site.recognitionStart + site.enzyme.siteLength).uppercase()
+        if (key in methylatedSubstrateCutters && recognition.contains("GATC")) return profile.damKnown && !profile.dam
+        if (profile.damKnown && profile.dam && key in damBlocked) return true
+        if (profile.dcmKnown && profile.dcm && key in dcmBlocked && Regex("CC[ACT]GG").containsMatchIn(recognition)) return true
+        if (profile.cpg == true && key in cpgBlocked && recognition.contains("CG")) return true
+        return false
+    }
+
+    /** Human-readable explanation for a result that remains uncertain. */
+    fun uncertainty(profile: MethylationProfile): String? = if (profile.hasUnknown) {
+        "Methylation state unknown for ${listOfNotNull(
+            if (!profile.damKnown) "Dam" else null,
+            if (!profile.dcmKnown) "Dcm" else null,
+            if (profile.cpg == null) "CpG" else null,
+        ).distinct().joinToString(", ")}."
+    } else null
+}
 data class RestrictionReport(val enzyme: Enzyme, val count: Int, val positions: List<Int>)
 
 enum class CpGContext { ISLAND, SHORE, OPEN_SEA }
@@ -29,38 +93,48 @@ data class MutationCandidate(
 
 /** Higher-level restriction analysis described by ApE's enzyme workflows. */
 object EnzymeAnalysis {
-    fun reports(seq: Seq, enzymes: Collection<Enzyme>, selection: IntRange? = null): List<RestrictionReport> {
+    fun reports(
+        seq: Seq,
+        enzymes: Collection<Enzyme>,
+        selection: IntRange? = null,
+        profile: MethylationProfile = MethylationProfile.from(seq.molecule),
+    ): List<RestrictionReport> {
         val enzymeList = enzymes.toList()
         val results = if (enzymeList.size <= 4) {
             enzymeList.map { enzyme ->
-                val sites = Digest.cutSites(seq, enzyme).filter { site -> selection == null || site.recognitionStart in selection }
+                val sites = Digest.cutSites(seq, enzyme, profile).filter { site -> selection == null || site.recognitionStart in selection }
                 RestrictionReport(enzyme, sites.size, sites.map { it.recognitionStart + 1 })
             }
         } else {
             Parallel.map(enzymeList) { enzyme ->
-                val sites = Digest.cutSites(seq, enzyme).filter { site -> selection == null || site.recognitionStart in selection }
+                val sites = Digest.cutSites(seq, enzyme, profile).filter { site -> selection == null || site.recognitionStart in selection }
                 RestrictionReport(enzyme, sites.size, sites.map { it.recognitionStart + 1 })
             }
         }
         return results.sortedBy { it.enzyme.name.lowercase() }
     }
 
-    fun unique(seq: Seq, enzymes: Collection<Enzyme> = Enzymes.ALL): List<Enzyme> {
-        if (enzymes is List && enzymes.size <= 4) return enzymes.filter { Digest.countSites(seq, it) == 1 }
-        return Parallel.filter(enzymes.toList()) { Digest.countSites(seq, it) == 1 }
+    fun unique(
+        seq: Seq,
+        enzymes: Collection<Enzyme> = Enzymes.ALL,
+        profile: MethylationProfile = MethylationProfile.from(seq.molecule),
+    ): List<Enzyme> {
+        if (enzymes is List && enzymes.size <= 4) return enzymes.filter { Digest.countSites(seq, it, profile) == 1 }
+        return Parallel.filter(enzymes.toList()) { Digest.countSites(seq, it, profile) == 1 }
     }
 
-    fun absent(seq: Seq, enzymes: Collection<Enzyme> = Enzymes.ALL): List<Enzyme> {
-        if (enzymes is List && enzymes.size <= 4) return enzymes.filter { Digest.countSites(seq, it) == 0 }
-        return Parallel.filter(enzymes.toList()) { Digest.countSites(seq, it) == 0 }
+    fun absent(
+        seq: Seq,
+        enzymes: Collection<Enzyme> = Enzymes.ALL,
+        profile: MethylationProfile = MethylationProfile.from(seq.molecule),
+    ): List<Enzyme> {
+        if (enzymes is List && enzymes.size <= 4) return enzymes.filter { Digest.countSites(seq, it, profile) == 0 }
+        return Parallel.filter(enzymes.toList()) { Digest.countSites(seq, it, profile) == 0 }
     }
 
-    /** Filters sites blocked by common Dam/Dcm methylation motifs. */
+    /** Filters sites through the same methylation rules used by the digest panel. */
     fun cutSites(seq: Seq, enzymes: Collection<Enzyme>, profile: MethylationProfile): List<CutSite> =
-        Digest.cutSites(seq, enzymes).filterNot { site ->
-            val context = seq.sub(site.recognitionStart - 4, site.recognitionStart + site.enzyme.siteLength + 4).uppercase()
-            (profile.dam && context.contains("GATC")) || (profile.dcm && Regex("CC[ACT]GG").containsMatchIn(context))
-        }
+        Digest.cutSites(seq, enzymes, profile)
 
     fun insertRecognitionSite(enzyme: Enzyme, reverse: Boolean = false): String {
         val concrete = enzyme.site.map { Alphabet.expansion(it)?.firstOrNull() ?: 'N' }.joinToString("")
@@ -209,7 +283,7 @@ object EnzymeAnalysis {
         for ((label, e1Name, e2Name) in METHYL_SENSITIVE_PAIRS) {
             val siteSeq = ISOSCHIZOMER_SITES[e1Name] ?: continue
             val e1 = Enzymes.find(e1Name) ?: continue
-            val sites = Digest.cutSites(seq, listOf(e1))
+            val sites = Digest.cutSites(seq, listOf(e1), MethylationProfile(dam = false, dcm = false, cpg = false))
             var blocked = 0
             for ((_, start) in sites) {
                 if (start + siteSeq.length <= bases.length) {

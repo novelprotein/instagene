@@ -5,6 +5,7 @@ package org.instagene.app.gui.document
 import org.instagene.core.CutSite
 import org.instagene.core.Digest
 import org.instagene.core.Enzyme
+import org.instagene.core.MethylationProfile
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.project.EditKind
@@ -40,7 +41,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
     override val displayName: String get() = file?.name ?: seq.name.ifBlank { "Untitled" }
 
     /** The saved or loaded sequence against which [isDirty] is calculated. */
-    private var savedSeq: Seq = initial
+    private var savedSeq: Seq = seq
 
     /** Caret position, in `0..length`. */
     var caret: Int = 0
@@ -135,8 +136,9 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
     /** Applies [transform], recording an undo entry labelled [label]. */
     fun mutate(label: String, transform: (Seq) -> Seq) {
         val before = seq
-        val next = transform(seq)
-        if (next == seq) return
+        val transformed = transform(seq)
+        if (transformed == seq) return
+        val next = transformed.withRecordDates(createdAt = before.recordMetadata.createdAt, modifiedAt = System.currentTimeMillis())
         undoStack.addLast(label to seq)
         while (undoStack.size > historyLimit) undoStack.removeFirst()
         redoStack.clear()
@@ -155,7 +157,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         redoStack.clear()
         seq = next
         recentChangeRange = null
-        savedSeq = next
+        savedSeq = seq
         file = newFile
         isDirty = dirty
         caret = 0
@@ -307,7 +309,20 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         cutSites = if (mappedEnzymes.isEmpty()) {
             emptyList()
         } else {
-            Digest.cutSites(seq, mappedEnzymes)
+            Digest.cutSites(seq, mappedEnzymes, MethylationProfile.from(seq.molecule))
+        }
+    }
+
+    private fun Seq.withRecordDates(
+        createdAt: Long? = recordMetadata.createdAt,
+        modifiedAt: Long? = recordMetadata.modifiedAt,
+    ): Seq {
+        val now = System.currentTimeMillis()
+        return withRecordMetadata {
+            copy(
+                createdAt = createdAt ?: now,
+                modifiedAt = modifiedAt ?: now,
+            )
         }
     }
 }

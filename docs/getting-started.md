@@ -77,9 +77,10 @@ On Windows, use `gradlew.bat` in place of `./gradlew`.
 The welcome screen provides the starting actions for the desktop application.
 Open a sequence file, open an existing project, create a new document, or
 choose an available recent file or project.
-Bundled examples are synthetic teaching data; see
-[bundled example provenance](examples.md) for the source statement behind each
-sequence, alignment, and chromatogram.
+Bundled examples are complete offline NCBI source records; see
+[bundled example provenance](examples.md) for the original accession and
+reference fields behind each record. Alignment and chromatogram workflows use
+files supplied by the researcher.
 
 1. Start InstaGene.
 2. Choose **Open File...** on the welcome screen, or use **File → Open**.

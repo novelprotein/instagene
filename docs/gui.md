@@ -46,10 +46,41 @@ for every open file.
 ![Info tab showing molecule properties and statistics](screenshots/info.png)
 
 The Info tab is the quickest sanity check after opening a file. Review the
-name, description, molecule type, topology, methylation, end chemistry, length,
-file path, GC content, melting temperature, molecular weight, feature count,
-and primer count. Edit the name or description only when you intend to change
-the record metadata, then save the document.
+name, compact description, molecule type, topology, strand orientation,
+methylation, end chemistry, record/file dates, and stable CD-SEGUID. The
+record metadata section stores author, sequence class, lab host type and strain,
+natural/synthetic classification, record comments, and references. Sequence
+class choices are grouped into biological source, sequence content, and archive
+or submission class. Select one explicit primary class; the field remains
+editable for classifications not present in the catalog, and InstaGene does
+not infer a class from a sequence, organism name, accession, or example.
+Every catalog choice has a UI label followed by a three-letter sequence-class
+code, such as `Plant (PLT)`. Documented NCBI
+codes are used where applicable; other codes are explicitly InstaGene-defined
+and are not presented as NCBI divisions. The user-facing labels can be more
+granular than an official database division. For example,
+Plant, Fungal, and Algal are separate application choices even though NCBI
+groups those source records under PLN; the UI does not pretend that each has a
+separate PLN division code.
+Imported record comments and citations are kept as source fields; application
+provenance is stored separately under namespaced `IG_*` metadata.
+Scientific references can retain PubMed/NCBI identifiers or source links;
+**Resolve NCBI** fills in citation details without discarding the raw link.
+Original author and reference fields are preserved for bundled source records;
+new or imported records are not assigned an author without provenance. Unknown
+Dam, Dcm, or CpG state is shown explicitly and leaves potential
+restriction sites visible with an uncertainty note. The right column also
+shows base composition, GC/Tm/molecular weight, skews, ambiguity, homopolymer,
+complexity, entropy, diversity, di-/trinucleotide counts, and annotation counts.
+Use **Copy** and **Apply** beside CD-SEGUID to copy or persist the identity,
+then save the document when edits should be retained.
+
+Archive/submission choices include EST, PAT, STS, GSS, HTG, HTC, ENV, WGS,
+TSA, TLS, TPA, and CON. `Contig or assembly record (CON)` describes an
+assembly record and may contain assembly information without sequence bases;
+it is not a biological-source classification. See the [NCBI GenBank division
+and high-throughput sequence documentation](https://www.ncbi.nlm.nih.gov/genbank/htgs/divisions/)
+for the source terminology.
 
 ### Map
 
@@ -145,9 +176,11 @@ library.
    preview reports definitions completed and can be cancelled; applying a large
    library also continues in the background.
 
-Use GenBank for annotated or circular records. FASTA cannot retain features,
-qualifiers, colors, or circular topology. The same short guide is available in
-**Help → Feature annotation guide**.
+Use GenBank for annotated, circular, or metadata-rich records. FASTA cannot
+retain features, qualifiers, colors, circular topology, record metadata, or
+molecule chemistry; GFF3 is annotation-centric and should be checked against
+its associated sequence. The same short guide is available in **Help → Feature
+annotation guide**.
 
 ### Primers
 

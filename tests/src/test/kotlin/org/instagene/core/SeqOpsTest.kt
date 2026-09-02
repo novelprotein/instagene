@@ -1,6 +1,5 @@
 package org.instagene.core
 
-import org.instagene.core.io.SeqIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -105,7 +104,7 @@ class SeqOpsTest {
 
     @Test
     fun designPrimers() {
-        val seq = SeqIO.Samples.GFP_CDS
+        val seq = TestSequenceFixtures.sourceGfpCds
         val (fwd, rev) = SeqOps.designPrimers(seq, 0, 100, targetTm = 60.0)
         assertTrue(fwd.bases.length in 18..30)
         assertTrue(rev.bases.length in 18..30)

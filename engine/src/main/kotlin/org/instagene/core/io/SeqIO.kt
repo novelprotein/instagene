@@ -1,10 +1,7 @@
 package org.instagene.core.io
 
 import org.instagene.core.Alphabet
-import org.instagene.core.ChromatogramRecord
 import org.instagene.core.ChromatogramReader
-import org.instagene.core.ChromatogramTrace
-import org.instagene.core.Feature
 import org.instagene.core.MoleculeProperties
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
@@ -12,7 +9,6 @@ import org.instagene.core.Strandedness
 import org.instagene.core.Topology
 import java.io.File
 import java.io.IOException
-import kotlin.math.abs
 
 /** The sequence file formats InstaGene reads and writes. */
 enum class SeqFormat(val displayName: String, val extensions: List<String>) {
@@ -57,7 +53,8 @@ object SeqIO {
             seq.isCircular || seq.features.isNotEmpty() || seq.primers.isNotEmpty() || seq.provenance.isNotEmpty() ||
             seq.molecule != MoleculeProperties(
                 strandedness = if (seq.kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
-            )
+            ) || seq.recordMetadata != org.instagene.core.SequenceRecordMetadata() ||
+            seq.metadata.keys.any { it.startsWith("IG_") || it in setOf("ACCESSION", "SOURCE", "ORGANISM", "COMMENT", "REFERENCE", "DBLINK") }
         ) SeqFormat.GENBANK else SeqFormat.FASTA
 
     /** Sniffs the format of [text] from its opening lines. */
@@ -316,135 +313,112 @@ object SeqIO {
     private fun String.normalizedOpeningLine(): String =
         trimStart().removePrefix("\uFEFF").trimStart()
 
-    /** Bundled example constructs, so the GUI and CLI have something to open immediately. */
+    /** Complete source records bundled for offline GUI and CLI use. */
     object Samples {
         const val SOURCE_METADATA_KEY = "IG_SAMPLE_SOURCE"
-        const val LICENSE_METADATA_KEY = "IG_SAMPLE_LICENSE"
         private const val PBR322_RESOURCE = "/org/instagene/core/samples/pBR322_J01749.1.gb"
+        private const val PUC19_REFERENCE_RESOURCE = "/org/instagene/core/samples/pUC19_M77789.2.gb"
+        private const val GFP_REFERENCE_RESOURCE = "/org/instagene/core/samples/GFP_L29345.1.gb"
+        private const val PGFPUV_REFERENCE_RESOURCE = "/org/instagene/core/samples/pGFPuv_U62636.1.gb"
 
-        private const val SAMPLE_LICENSE = "MIT; synthetic InstaGene example data"
-        private const val PUC19_MCS_SOURCE =
-            "Synthetic teaching fragment manually authored for InstaGene; represents the pUC19 multiple cloning site region only, not a downloaded full pUC19 record."
-        private const val GFP_CDS_SOURCE =
-            "Synthetic GFP-like teaching open reading frame authored for InstaGene examples; not copied from an external database record."
-        private const val PLASMID_DEMO_SOURCE =
-            "Synthetic circular construct authored for InstaGene tutorials from the bundled pUC19_MCS teaching fragment plus artificial filler and annotations."
-        const val ALIGNMENT_DEMO_SOURCE =
-            "Synthetic three-sequence alignment authored for InstaGene examples, including one gap and one substitution for viewer testing."
-        const val CHROMATOGRAM_DEMO_SOURCE =
-            "Generated synthetic chromatogram trace authored for InstaGene examples; contains no lab, patient, proprietary, or downloaded trace data."
         const val PBR322_NCBI_SOURCE =
-            "Real plasmid example BLAST-verified against NCBI GenBank accession J01749.1 (Cloning vector pBR322, complete sequence); features are from the selected GenBank record; primary complete-sequence reference PubMed 383387."
+            "Complete source record bundled from NCBI GenBank accession J01749.1 (Cloning vector pBR322, complete sequence); the full sequence, feature table, authors, and publication references are retained from the source record."
+        const val PUC19_NCBI_REFERENCE_SOURCE =
+            "Complete source record bundled from NCBI GenBank accession M77789.2 (Cloning vector pUC19, complete sequence); the full sequence, feature table, authors, and publication references are retained from the source record."
+        const val GFP_AEQUOREA_NCBI_REFERENCE_SOURCE =
+            "Complete source record bundled from NCBI GenBank accession L29345.1 (Aequorea victoria green-fluorescent protein mRNA, complete cds); the full sequence, feature table, authors, and publication references are retained from the source record."
+        const val PGFPUV_NCBI_REFERENCE_SOURCE =
+            "Complete source record bundled from NCBI GenBank accession U62636.1 (Cloning vector pGFPuv, complete sequence); the full sequence, feature table, authors, and submission references are retained from the source record."
 
-        val PUC19_MCS: Seq = parse(
-            """
-            >pUC19_MCS_region polylinker of pUC19 (lacZalpha), linear
-            GAATTCGAGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGGCATGCAAGCTT
-            """.trimIndent()
-        ).copy(name = "pUC19_MCS", description = PUC19_MCS_SOURCE).withSampleSource(PUC19_MCS_SOURCE)
-
-        val GFP_CDS: Seq = parse(
-            """
-            >GFP_CDS synthetic GFP-like open reading frame flanked by EcoRI and HindIII
-            GAATTCATGAGTAAAGGAGAAGAACTTTTCACTGGAGTTGTCCCAATTCTTGTTGAATTAGATGGTGATG
-            TTAATGGGCACAAATTTTCTGTCAGTGGAGAGGGTGAAGGTGATGCAACATACGGAAAACTTACCCTTAA
-            ATTTATTTGCACTACTGGAAAACTACCTGTTCCATGGCCAACACTTGTCACTACTTTCTCTTATGGTGTT
-            CAATGCTTTTCAAGATACCCAGATCATATGAAACAGCATGACTTTTTCAAGAGTGCCATGCCCGAAGGTT
-            ATGTACAGGAAAGAACTATATTTTTCAAAGATGACGGGAACTACAAGACACGTGCTGAAGTCAAGTTTGA
-            AGGTGATACCCTTGTTAATAGAATCGAGTTAAAAGGTATTGATTTTAAAGAAGATGGAAACATTCTTGGA
-            CACAAATTGGAATACAACTATAACTCACACAATGTATACATCATGGCAGACAAACAAAAGAATGGAATCA
-            AAGTTAACTTCAAAATTAGACACAACATTGAAGATGGAAGCGTTCAACTAGCAGACCATTATCAACAAAA
-            TACTCCAATTGGCGATGGCCCTGTCCTTTTACCAGACAACCATTACCTGTCCACACAATCTGCCCTTTCG
-            AAAGATCCCAACGAAAAGAGAGACCACATGGTCCTTCTTGAGTTTGTAACAGCTGCTGGGATTACACATG
-            GCATGGATGAACTATACAAATAAAAGCTT
-            """.trimIndent()
-        ).copy(name = "GFP_CDS", description = GFP_CDS_SOURCE).withSampleSource(GFP_CDS_SOURCE)
-
-        val PBR322_NCBI: Seq = parsePbr322Resource().let { record ->
-            record.copy(
-                name = "pBR322_NCBI",
-                metadata = record.metadata + mapOf(
-                    SOURCE_METADATA_KEY to PBR322_NCBI_SOURCE,
-                    "ONLINE_ACCESSION" to "J01749.1",
-                    "ONLINE_SOURCE" to "NCBI GenBank",
-                    "ONLINE_URL" to "https://www.ncbi.nlm.nih.gov/nuccore/J01749.1",
-                    "BLAST_VERIFICATION" to "NCBI BLASTN selected accession J01749.1 as the matching pBR322 record",
-                    "BLAST_SELECTED_ACCESSION" to "J01749.1",
-                    "ANNOTATION_SOURCE" to "GenBank feature table from NCBI accession J01749.1",
-                    "PUBMED" to "383387",
-                ),
-            )
-        }
-
-        /** A compact annotated circular construct suitable for map and cloning walkthroughs. */
-        val PLASMID_DEMO: Seq = Seq(
-            name = "pInstaGene_demo",
-            bases = PUC19_MCS.bases + "ATGC".repeat(60),
-            topology = Topology.CIRCULAR,
-            description = PLASMID_DEMO_SOURCE,
-            features = listOf(
-                Feature("lac promoter", "promoter", 0, 20, color = "#1E88E5"),
-                Feature("MCS", "misc_feature", 20, PUC19_MCS.length, color = "#F9A825"),
-                Feature("demo insert", "CDS", PUC19_MCS.length, PUC19_MCS.length + 120, color = "#43A047"),
-                Feature("origin", "rep_origin", PUC19_MCS.length + 120, PUC19_MCS.length + 200, color = "#8E24AA"),
-            ),
-        ).withSampleSource(PLASMID_DEMO_SOURCE)
-
-        /** A ready-to-view aligned FASTA example, including a substitution and a gap. */
-        val ALIGNMENT_DEMO: List<Seq> = listOf(
-            Seq("alignment_reference", "ATGCGTACGTA-CGTTAGCA", description = ALIGNMENT_DEMO_SOURCE)
-                .withSampleSource(ALIGNMENT_DEMO_SOURCE),
-            Seq("alignment_read_1", "ATGCGTACGTAACGTTAGCA", description = ALIGNMENT_DEMO_SOURCE)
-                .withSampleSource(ALIGNMENT_DEMO_SOURCE),
-            Seq("alignment_read_2", "ATGCGTTCGTA-CGTTAGCA", description = ALIGNMENT_DEMO_SOURCE)
-                .withSampleSource(ALIGNMENT_DEMO_SOURCE),
+        val PBR322_NCBI: Seq = sourceRecord(
+            resource = PBR322_RESOURCE,
+            name = "pBR322_NCBI",
+            accession = "J01749.1",
+            sourceUrl = "https://www.ncbi.nlm.nih.gov/nuccore/J01749.1",
+            sourceStatement = PBR322_NCBI_SOURCE,
+            checksum = "02cc9962c0600186d4e1e4055b0de44f2fb0c6a0512e52cf9e5f788f21c180ee",
         )
 
-        /** Synthetic trace data so the chroma/quality UI can be explored without a lab file. */
-        val CHROMATOGRAM_DEMO: ChromatogramRecord = syntheticChromatogram()
+        /** Complete offline pUC19 source record from NCBI GenBank M77789.2. */
+        val PUC19_NCBI_REFERENCE: Seq = sourceRecord(
+            resource = PUC19_REFERENCE_RESOURCE,
+            name = "pUC19_NCBI_reference",
+            accession = "M77789.2",
+            sourceUrl = "https://www.ncbi.nlm.nih.gov/nuccore/M77789.2",
+            sourceStatement = PUC19_NCBI_REFERENCE_SOURCE,
+            checksum = "b2651308eedffa54dfb3a1b6307cacdda959e7164a799bc813c883117a1b40d5",
+        )
 
-        val ALL: List<Seq> = listOf(PUC19_MCS, GFP_CDS, PLASMID_DEMO, PBR322_NCBI)
+        /** Complete offline Aequorea victoria GFP source record from NCBI GenBank L29345.1. */
+        val GFP_AEQUOREA_NCBI_REFERENCE: Seq = sourceRecord(
+            resource = GFP_REFERENCE_RESOURCE,
+            name = "GFP_Aequorea_NCBI_reference",
+            accession = "L29345.1",
+            sourceUrl = "https://www.ncbi.nlm.nih.gov/nuccore/L29345.1",
+            sourceStatement = GFP_AEQUOREA_NCBI_REFERENCE_SOURCE,
+            checksum = "7521e075ea6e1832e4972d3ef457e8b79ff984cc0ade4189549b166bf60317c5",
+        )
 
-        private fun syntheticChromatogram(): ChromatogramRecord {
-            val bases = "ACGTACGTACGT"
-            val peaks = bases.indices.map { 20 + it * 24 }
-            val channels = "ACGT".associateWith { channel ->
-                List(peaks.last() + 24) { sample ->
-                    peaks.mapIndexed { index, peak ->
-                        val distance = abs(sample - peak)
-                        val height = if (bases[index] == channel) 850 else 110
-                        (height - distance * 45).coerceAtLeast(0)
-                    }.maxOrNull() ?: 0
-                }
-            }
-            return ChromatogramRecord(
-                name = "synthetic_chromatogram",
-                bases = bases,
-                qualities = listOf(42, 41, 39, 40, 38, 18, 35, 40, 42, 41, 39, 42),
-                source = CHROMATOGRAM_DEMO_SOURCE,
-                trace = ChromatogramTrace(peaks, channels),
-            )
-        }
+        /** Complete offline pGFPuv source record from NCBI GenBank U62636.1. */
+        val PGFPUV_NCBI_REFERENCE: Seq = sourceRecord(
+            resource = PGFPUV_REFERENCE_RESOURCE,
+            name = "pGFPuv_NCBI_reference",
+            accession = "U62636.1",
+            sourceUrl = "https://www.ncbi.nlm.nih.gov/nuccore/U62636.1",
+            sourceStatement = PGFPUV_NCBI_REFERENCE_SOURCE,
+            checksum = "ea180ed97a540172ff82a6d32b9ba36b3da6d9de79baebc9a7709a104c38c9ac",
+        )
+
+        val ALL: List<Seq> = listOf(
+            PBR322_NCBI,
+            PUC19_NCBI_REFERENCE,
+            GFP_AEQUOREA_NCBI_REFERENCE,
+            PGFPUV_NCBI_REFERENCE,
+        )
 
         fun sourceFor(name: String): String? =
-            (ALL + ALIGNMENT_DEMO).firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ALL.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.metadata
                 ?.get(SOURCE_METADATA_KEY)
-                ?: if (name.equals(CHROMATOGRAM_DEMO.name, ignoreCase = true)) CHROMATOGRAM_DEMO.source else null
 
-        private fun Seq.withSampleSource(source: String): Seq = copy(
-            metadata = metadata + mapOf(
-                SOURCE_METADATA_KEY to source,
-                LICENSE_METADATA_KEY to SAMPLE_LICENSE,
+        private fun sourceRecord(
+            resource: String,
+            name: String,
+            accession: String,
+            sourceUrl: String,
+            sourceStatement: String,
+            checksum: String,
+        ): Seq {
+            val record = parseResource(resource, name)
+            return record.copy(
+                name = name,
+                metadata = record.metadata + mapOf(
+                    SOURCE_METADATA_KEY to sourceStatement,
+                    "ONLINE_ACCESSION" to accession,
+                    "ONLINE_SOURCE" to "NCBI GenBank",
+                    "ONLINE_URL" to sourceUrl,
+                    "SOURCE_RETRIEVED" to "2026-09-01",
+                    "SOURCE_SHA256" to checksum,
+                    "ANNOTATION_SOURCE" to "Complete GenBank feature table from NCBI accession $accession",
+                ),
+                recordMetadata = record.recordMetadata.copy(
+                    references = record.recordMetadata.references.map { reference ->
+                        reference.copy(sourceUrl = reference.sourceUrl ?: sourceUrl)
+                    },
+                ).withResolvedAuthor(),
             )
-        )
+        }
 
         private fun parsePbr322Resource(): Seq {
-            val text = SeqIO::class.java.getResourceAsStream(PBR322_RESOURCE)
+            return parseResource(PBR322_RESOURCE, "pBR322_J01749.1.gb")
+        }
+
+        private fun parseResource(resource: String, defaultName: String): Seq {
+            val text = SeqIO::class.java.getResourceAsStream(resource)
                 ?.bufferedReader()
                 ?.use { it.readText() }
-                ?: error("Missing bundled sample resource: $PBR322_RESOURCE")
-            return parse(text, "pBR322_J01749.1.gb")
+                ?: error("Missing bundled sample resource: $resource")
+            return parse(text, defaultName)
         }
     }
 }

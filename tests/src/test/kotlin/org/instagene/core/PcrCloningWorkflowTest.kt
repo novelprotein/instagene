@@ -1,6 +1,5 @@
 package org.instagene.core
 
-import org.instagene.core.io.SeqIO
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -9,11 +8,8 @@ import kotlin.test.assertTrue
 
 class PcrCloningWorkflowTest {
 
-    private val backbone = SeqIO.Samples.PUC19_MCS.copy(topology = Topology.CIRCULAR)
-    private val insertTemplate = Seq(
-        name = "gfp_without_cloning_sites",
-        bases = SeqIO.Samples.GFP_CDS.bases.removePrefix("GAATTC").removeSuffix("AAGCTT"),
-    )
+    private val backbone = TestSequenceFixtures.restrictionBackbone.copy(topology = Topology.CIRCULAR)
+    private val insertTemplate = TestSequenceFixtures.insertTemplate
     private val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HindIII"))
 
     @Test

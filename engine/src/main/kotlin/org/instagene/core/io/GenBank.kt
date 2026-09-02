@@ -15,8 +15,17 @@ import org.instagene.core.Topology
 import org.instagene.core.FeatureLocationMetadata
 import org.instagene.core.SequenceRecordMetadata
 import org.instagene.core.SequenceReference
+import org.instagene.core.SequenceOrigin
+import org.instagene.core.MethylationSource
+import org.instagene.core.MethylationState
 import java.io.Reader
 import java.io.StringReader
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.util.Locale
 
 /**
  * A pragmatic GenBank flat-file reader/writer.
@@ -82,17 +91,29 @@ object GenBank {
         var sawOrigin = false
         var sawContig = false
         var sawTerminator = false
+        var locusDate: Long? = null
+        var locusDivision: String? = null
+
+        fun canonicalHeaderKey(key: String): String = when (key) {
+            // GenBank header keys occupy twelve columns, so the historical
+            // InstaGene key is emitted as IG_SAMPLE_SO on write. Normalize
+            // both spellings on read so source citations survive a round trip.
+            "IG_SAMPLE_SO" -> "IG_SAMPLE_SOURCE"
+            else -> key
+        }
 
         fun setHeader(key: String, value: String) {
-            metadata[key] = value
-            headerFields += RecordHeaderField(key, value)
+            val canonicalKey = canonicalHeaderKey(key)
+            metadata[canonicalKey] = value
+            headerFields += RecordHeaderField(canonicalKey, value)
         }
 
         fun appendHeaderContinuation(key: String, value: String) {
-            metadata[key] = metadata[key].orEmpty() + " " + value
-            val last = headerFields.indexOfLast { it.key == key }
-            if (last >= 0) headerFields[last] = headerFields[last].copy(value = metadata[key].orEmpty())
-            else headerFields += RecordHeaderField(key, metadata[key].orEmpty())
+            val canonicalKey = canonicalHeaderKey(key)
+            metadata[canonicalKey] = metadata[canonicalKey].orEmpty() + " " + value
+            val last = headerFields.indexOfLast { it.key == canonicalKey }
+            if (last >= 0) headerFields[last] = headerFields[last].copy(value = metadata[canonicalKey].orEmpty())
+            else headerFields += RecordHeaderField(canonicalKey, metadata[canonicalKey].orEmpty())
         }
 
         fun flushFeature() {
@@ -166,7 +187,11 @@ object GenBank {
                         val parts = keywordLine.split(Regex("\\s+")).filter { it.isNotEmpty() }
                         if (parts.size > 1) name = parts[1]
                         if (keywordLine.contains("circular", ignoreCase = true)) topology = Topology.CIRCULAR
-                        if (Regex("\\bRNA\\b").containsMatchIn(keywordLine)) kind = SeqKind.RNA
+                        if (Regex("\\b(?:mRNA|RNA)\\b", RegexOption.IGNORE_CASE).containsMatchIn(keywordLine)) kind = SeqKind.RNA
+                        locusDivision = LOCUS_DIVISION.find(keywordLine)?.groupValues?.get(1)
+                            ?.takeIf(String::isNotBlank)
+                        locusDivision?.let { metadata["DIVISION"] = it }
+                        locusDate = LOCUS_DATE.find(keywordLine)?.groupValues?.get(1)?.let(::parseLocusDate)
                         pendingMetadata = null
                     }
 
@@ -298,9 +323,18 @@ object GenBank {
         val molecule = MoleculeProperties(
             strandedness = metadata["IG_STRANDS"]?.let { runCatching { Strandedness.valueOf(it) }.getOrNull() }
                 ?: if (kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
-            damMethylated = metadata["IG_DAM"].toBoolean(),
-            dcmMethylated = metadata["IG_DCM"].toBoolean(),
-            cpgMethylated = metadata["IG_CPG"].toBoolean(),
+            damMethylated = metadata["IG_DAM"]?.toBooleanStrictOrNull() ?: false,
+            dcmMethylated = metadata["IG_DCM"]?.toBooleanStrictOrNull() ?: false,
+            cpgMethylated = metadata["IG_CPG"]?.toBooleanStrictOrNull() ?: false,
+            methylationSource = (metadata["IG_METHYL_SRC"] ?: metadata["IG_MSRC"])?.let {
+                runCatching { MethylationSource.valueOf(it) }.getOrNull()
+            } ?: MethylationSource.UNKNOWN,
+            damStateOverride = metadata["IG_DAM"]?.takeIf { it.equals("unknown", true) }
+                ?.let { MethylationState.UNKNOWN },
+            dcmStateOverride = metadata["IG_DCM"]?.takeIf { it.equals("unknown", true) }
+                ?.let { MethylationState.UNKNOWN },
+            cpgStateOverride = metadata["IG_CPG"]?.takeIf { it.equals("unknown", true) }
+                ?.let { org.instagene.core.MethylationState.UNKNOWN },
             fivePrimePhosphorylated = metadata["IG_5P"]?.toBooleanStrictOrNull() ?: true,
             threePrimePhosphorylated = metadata["IG_3P"].toBoolean(),
         )
@@ -313,11 +347,22 @@ object GenBank {
             headerFields = headerFields.filterNot { it.key == "LOCUS" },
             comments = headerFields.filter { it.key == "COMMENT" }.map { it.value },
             references = references,
+            freeformReferences = headerFields.filter { it.key == "IG_FREE_REF" || it.key == "IG_FREEFORM_REFERENCE" }.map { it.value },
+            author = metadata["IG_AUTHOR"],
+            nucleicAcidCategory = metadata["IG_NACAT"] ?: metadata["IG_NUCLEIC_ACID_CATEGORY"],
+            labHostType = metadata["IG_HOSTTYPE"] ?: metadata["IG_LAB_HOST_TYPE"],
+            hostStrain = metadata["IG_STRAIN"] ?: metadata["IG_HOST_STRAIN"],
+            origin = metadata["IG_ORIGIN"]?.let { runCatching { SequenceOrigin.valueOf(it) }.getOrNull() }
+                ?: SequenceOrigin.UNKNOWN,
+            originLocked = (metadata["IG_ORLOCK"] ?: metadata["IG_ORIGIN_LOCKED"])?.toBooleanStrictOrNull() ?: false,
+            createdAt = metadata["IG_CREATED"]?.toLongOrNull(),
+            modifiedAt = metadata["IG_MODIFIED"]?.toLongOrNull() ?: locusDate,
+            locusDivision = locusDivision ?: metadata["DIVISION"],
             source = metadata["SOURCE"],
             organism = metadata["ORGANISM"],
             taxonomy = taxonomy,
             databaseReferences = headerFields.filter { it.key == "DBLINK" }.flatMap { it.value.split(';').map(String::trim) }.filter(String::isNotBlank),
-        )
+        ).withResolvedAuthor()
         return Seq(
             name = name,
             bases = seqBases,
@@ -347,6 +392,7 @@ object GenBank {
                 "JOURNAL" -> current = (current ?: SequenceReference()).copy(journal = field.value)
                 "PUBMED" -> current = (current ?: SequenceReference()).copy(pubMed = field.value)
                 "MEDLINE" -> current = (current ?: SequenceReference()).copy(medLine = field.value)
+                "IG_REFURL", "IG_REFERENCE_URL" -> current = (current ?: SequenceReference()).copy(sourceUrl = field.value)
             }
         }
         current?.let { references += it }
@@ -359,77 +405,77 @@ object GenBank {
     fun write(seq: Seq): String = buildString {
         val molecule = if (seq.kind == SeqKind.RNA) "RNA" else "DNA"
         val shape = if (seq.isCircular) "circular" else "linear  "
+        val locusDate = seq.recordMetadata.modifiedAt?.let(::formatLocusDate)
+            ?: seq.recordMetadata.createdAt?.let(::formatLocusDate)
+        val locusDivision = seq.recordMetadata.locusDivision
+            ?: seq.metadata["DIVISION"]
+        val locusSuffix = listOfNotNull(
+            locusDivision?.takeIf(String::isNotBlank),
+            locusDate,
+        ).joinToString(" ")
         append(
-            "LOCUS       %-16s%9d bp    %-6s  %-9s SYN %s\n".format(
-                seq.name.take(16), seq.length, molecule, shape, "01-JAN-1980"
+            "LOCUS       %-16s%9d bp    %-6s  %-9s%s\n".format(
+                seq.name.take(16), seq.length, molecule, shape,
+                if (locusSuffix.isBlank()) "" else " $locusSuffix",
             )
         )
         append("DEFINITION  ${seq.description.ifBlank { seq.name }}\n")
-        val stateMetadata = mapOf(
-            "IG_STRANDS" to seq.molecule.strandedness.name,
-            "IG_DAM" to seq.molecule.damMethylated.toString(),
-            "IG_DCM" to seq.molecule.dcmMethylated.toString(),
-            "IG_CPG" to seq.molecule.cpgMethylated.toString(),
-            "IG_5P" to seq.molecule.fivePrimePhosphorylated.toString(),
-            "IG_3P" to seq.molecule.threePrimePhosphorylated.toString(),
-        ) + if (seq.provenance.isEmpty()) emptyMap() else mapOf(
-            "IG_HISTORY" to seq.provenance.joinToString(" || ") {
+        val stateMetadata = buildMap {
+            put("IG_STRANDS", seq.molecule.strandedness.name)
+            put("IG_DAM", if (seq.molecule.damState == MethylationState.UNKNOWN) "unknown" else seq.molecule.damMethylated.toString())
+            put("IG_DCM", if (seq.molecule.dcmState == MethylationState.UNKNOWN) "unknown" else seq.molecule.dcmMethylated.toString())
+            put("IG_CPG", if (seq.molecule.cpgState == MethylationState.UNKNOWN) "unknown" else seq.molecule.cpgMethylated.toString())
+            // GenBank's header key column is 12 characters wide.
+            put("IG_MSRC", seq.molecule.methylationSource.name)
+            put("IG_5P", seq.molecule.fivePrimePhosphorylated.toString())
+            put("IG_3P", seq.molecule.threePrimePhosphorylated.toString())
+            if (seq.provenance.isNotEmpty()) put("IG_HISTORY", seq.provenance.joinToString(" || ") {
                 "${it.operation.replace('|', '/') }|${it.summary.replace('|', '/')}|${it.timestamp}"
-            }
-        )
-        val metadata = seq.metadata.filterKeys { it !in setOf("LOCUS", "DEFINITION", "FEATURES", "ORIGIN") } + stateMetadata
-        val structuredFields = seq.recordMetadata.headerFields.filterNot {
-            it.key in setOf("LOCUS", "DEFINITION", "FEATURES", "ORIGIN") || it.key in stateMetadata
+            })
+            seq.recordMetadata.author?.let { put("IG_AUTHOR", it) }
+            seq.recordMetadata.nucleicAcidCategory?.let { put("IG_NACAT", it) }
+            seq.recordMetadata.labHostType?.let { put("IG_HOSTTYPE", it) }
+            seq.recordMetadata.hostStrain?.let { put("IG_STRAIN", it) }
+            put("IG_ORIGIN", seq.recordMetadata.origin.name)
+            put("IG_ORLOCK", seq.recordMetadata.originLocked.toString())
+            seq.recordMetadata.createdAt?.let { put("IG_CREATED", it.toString()) }
+            seq.recordMetadata.modifiedAt?.let { put("IG_MODIFIED", it.toString()) }
         }
-        val accession = structuredFields.firstOrNull { it.key == "ACCESSION" }?.value
+        val editedHeaderKeys = setOf(
+            "LOCUS", "DEFINITION", "FEATURES", "ORIGIN", "SOURCE", "ORGANISM",
+            "COMMENT", "REFERENCE", "AUTHORS", "TITLE", "JOURNAL", "PUBMED", "MEDLINE", "DBLINK",
+            "DIVISION", "IG_FREE_REF", "IG_REFURL",
+        )
+        val metadata = seq.metadata.filterKeys {
+            it !in editedHeaderKeys && it !in stateMetadata.keys
+        }
+        val structuredFields = seq.recordMetadata.headerFields.filter {
+            it.key !in editedHeaderKeys && it.key !in stateMetadata.keys
+        }
+        val accession = seq.recordMetadata.headerFields.firstOrNull { it.key == "ACCESSION" }?.value
             ?: metadata["ACCESSION"]
             ?: "."
         appendHeaderField("ACCESSION", accession)
-        if (structuredFields.isNotEmpty()) {
-            structuredFields.filter { it.key != "ACCESSION" && it.key != "ORGANISM" }
-                .forEach { appendHeaderField(it.key, it.value) }
-            structuredFields.firstOrNull { it.key == "ORGANISM" }?.let {
-                appendOrganism(it.value, seq.recordMetadata.taxonomy)
-            } ?: metadata["ORGANISM"]?.let {
-                appendOrganism(it, seq.recordMetadata.taxonomy)
-            }
-            if (structuredFields.none { it.key == "COMMENT" }) {
-                seq.recordMetadata.comments.forEach { appendHeaderField("COMMENT", it) }
-            }
-            if (structuredFields.none { it.key == "REFERENCE" }) {
-                seq.recordMetadata.references.forEach { reference ->
-                    appendHeaderField("REFERENCE", reference.reference)
-                    if (reference.authors.isNotBlank()) appendHeaderField("AUTHORS", reference.authors)
-                    if (reference.title.isNotBlank()) appendHeaderField("TITLE", reference.title)
-                    if (reference.journal.isNotBlank()) appendHeaderField("JOURNAL", reference.journal)
-                    reference.pubMed?.let { appendHeaderField("PUBMED", it) }
-                    reference.medLine?.let { appendHeaderField("MEDLINE", it) }
-                }
-            }
-        } else {
-            metadata.filterKeys { it != "ACCESSION" && it != "ORGANISM" }.forEach { (key, value) -> appendHeaderField(key, value) }
-            metadata["ORGANISM"]?.let { appendOrganism(it, seq.recordMetadata.taxonomy) }
-            if (seq.recordMetadata.comments.isNotEmpty() && "COMMENT" !in metadata) {
-                seq.recordMetadata.comments.forEach { appendHeaderField("COMMENT", it) }
-            }
-            if (seq.recordMetadata.references.isNotEmpty() && "REFERENCE" !in metadata) {
-                seq.recordMetadata.references.forEach { reference ->
-                    appendHeaderField("REFERENCE", reference.reference)
-                    if (reference.authors.isNotBlank()) appendHeaderField("AUTHORS", reference.authors)
-                    if (reference.title.isNotBlank()) appendHeaderField("TITLE", reference.title)
-                    if (reference.journal.isNotBlank()) appendHeaderField("JOURNAL", reference.journal)
-                    reference.pubMed?.let { appendHeaderField("PUBMED", it) }
-                    reference.medLine?.let { appendHeaderField("MEDLINE", it) }
-                }
-            }
+        structuredFields.filter { it.key != "ACCESSION" }.forEach { appendHeaderField(it.key, it.value) }
+        metadata.filterKeys { it != "ACCESSION" }.forEach { (key, value) -> appendHeaderField(key, value) }
+        val source = seq.recordMetadata.source ?: seq.metadata["SOURCE"]
+        source?.takeIf(String::isNotBlank)?.let { appendHeaderField("SOURCE", it) }
+        val organism = seq.recordMetadata.organism ?: seq.metadata["ORGANISM"]
+        organism?.takeIf(String::isNotBlank)?.let { appendOrganism(it, seq.recordMetadata.taxonomy) }
+        seq.recordMetadata.comments.ifEmpty { seq.metadata["COMMENT"]?.let(::listOf).orEmpty() }
+            .forEach { appendHeaderField("COMMENT", it) }
+        seq.recordMetadata.references.forEach { reference ->
+            appendHeaderField("REFERENCE", reference.reference)
+            if (reference.authors.isNotBlank()) appendHeaderField("AUTHORS", reference.authors)
+            if (reference.title.isNotBlank()) appendHeaderField("TITLE", reference.title)
+            if (reference.journal.isNotBlank()) appendHeaderField("JOURNAL", reference.journal)
+            reference.pubMed?.let { appendHeaderField("PUBMED", it) }
+            reference.medLine?.let { appendHeaderField("MEDLINE", it) }
+            reference.sourceUrl?.let { appendHeaderField("IG_REFURL", it) }
         }
-        val hasSource = structuredFields.any { it.key == "SOURCE" } || "SOURCE" in metadata
-        val hasOrganism = structuredFields.any { it.key == "ORGANISM" } || "ORGANISM" in metadata
-        if (!hasSource) appendHeaderField("SOURCE", seq.recordMetadata.source ?: "InstaGene")
-        if (!hasOrganism) appendOrganism(seq.recordMetadata.organism ?: "synthetic construct", seq.recordMetadata.taxonomy)
-        if (structuredFields.none { it.key == "DBLINK" } && seq.recordMetadata.databaseReferences.isNotEmpty()) {
-            seq.recordMetadata.databaseReferences.forEach { appendHeaderField("DBLINK", it) }
-        }
+        seq.recordMetadata.freeformReferences.forEach { appendHeaderField("IG_FREE_REF", it) }
+        seq.recordMetadata.databaseReferences.forEach { appendHeaderField("DBLINK", it) }
+        stateMetadata.forEach { (key, value) -> appendHeaderField(key, value) }
         append("FEATURES             Location/Qualifiers\n")
         val persistedPrimerNames = seq.primers.map { it.name.lowercase() }.toSet()
         val featureRows = seq.features.sortedBy { it.start }.filterNot {
@@ -477,6 +523,21 @@ object GenBank {
             append(key.take(12).padEnd(12)).append(' ').append(value.replace('\n', ' ')).append('\n')
         }
     }
+
+    private fun parseLocusDate(value: String): Long? = runCatching {
+        LocalDate.parse(value.uppercase(Locale.ENGLISH), LOCUS_DATE_FORMATTER)
+            .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    }.getOrNull()
+
+    private fun formatLocusDate(value: Long): String =
+        Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).format(LOCUS_DATE_FORMATTER).uppercase(Locale.ENGLISH)
+
+    private val LOCUS_DATE: Regex get() = Regex("\\b(\\d{2}-[A-Za-z]{3}-\\d{4})\\b")
+    private val LOCUS_DIVISION: Regex get() = Regex("\\b(?:circular|linear)\\s+([A-Za-z]{3})(?=\\s+\\d{2}-[A-Za-z]{3}-\\d{4}\\b|$)", RegexOption.IGNORE_CASE)
+    private val LOCUS_DATE_FORMATTER: DateTimeFormatter get() = DateTimeFormatterBuilder()
+        .parseCaseInsensitive()
+        .appendPattern("dd-MMM-yyyy")
+        .toFormatter(Locale.ENGLISH)
 
     private fun StringBuilder.appendOrganism(value: String, taxonomy: List<String>) {
         appendHeaderField("ORGANISM", value)

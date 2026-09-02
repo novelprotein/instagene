@@ -3,11 +3,14 @@ package org.instagene.core.io
 import org.instagene.core.Alphabet
 import org.instagene.core.Feature
 import org.instagene.core.FeatureLocationMetadata
+import org.instagene.core.MoleculeProperties
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.RecordHeaderField
 import org.instagene.core.SequenceRecordMetadata
 import org.instagene.core.SequenceReference
+import org.instagene.core.SequenceOrigin
+import org.instagene.core.MethylationSource
 import org.instagene.core.Strand
 import org.instagene.core.Topology
 
@@ -95,9 +98,20 @@ object Embl {
                 }
                 line.startsWith("CC   ") -> {
                     val comment = line.drop(5).trim()
-                    comments += comment
-                    metadata["COMMENT"] = sequenceOf(metadata["COMMENT"], comment).filterNotNull().filter(String::isNotBlank).joinToString(" ")
-                    headerFields += RecordHeaderField("COMMENT", comment)
+                    val key = comment.substringBefore('=', "")
+                    if (key.startsWith("IG_") && comment.contains('=')) {
+                        val value = comment.substringAfter('=').trim()
+                        if (key == "IG_REFURL" && currentReference != null) {
+                            currentReference = currentReference.copy(sourceUrl = value)
+                        } else {
+                            metadata[key] = value
+                            headerFields += RecordHeaderField(key, value)
+                        }
+                    } else {
+                        comments += comment
+                        metadata["COMMENT"] = sequenceOf(metadata["COMMENT"], comment).filterNotNull().filter(String::isNotBlank).joinToString(" ")
+                        headerFields += RecordHeaderField("COMMENT", comment)
+                    }
                 }
                 line.startsWith("RN   ") -> {
                     currentReference?.let { references += it }
@@ -115,7 +129,7 @@ object Embl {
                 line.startsWith("RX   ") -> {
                     val rx = line.drop(5).trim()
                     currentReference = (currentReference ?: SequenceReference()).copy(
-                        pubMed = rx.substringAfter("PUBMED;", "").trim().trimEnd(';').ifBlank { null },
+                        pubMed = rx.substringAfter("PUBMED;", "").trim().trimEnd(';', '.').ifBlank { null },
                     )
                 }
                 line.startsWith("FT   ") -> {
@@ -144,10 +158,39 @@ object Embl {
             headerFields = headerFields,
             comments = comments,
             references = references,
+            freeformReferences = headerFields.filter { it.key == "IG_FREE_REF" }.map { it.value },
+            author = metadata["IG_AUTHOR"],
+            nucleicAcidCategory = metadata["IG_NACAT"],
+            labHostType = metadata["IG_HOSTTYPE"],
+            hostStrain = metadata["IG_STRAIN"],
+            origin = metadata["IG_ORIGIN"]?.let { runCatching { SequenceOrigin.valueOf(it) }.getOrNull() }
+                ?: SequenceOrigin.UNKNOWN,
+            originLocked = metadata["IG_ORLOCK"]?.toBooleanStrictOrNull() ?: false,
+            createdAt = metadata["IG_CREATED"]?.toLongOrNull(),
+            modifiedAt = metadata["IG_MODIFIED"]?.toLongOrNull(),
+            source = metadata["IG_SOURCE"],
             organism = metadata["ORGANISM"],
             taxonomy = taxonomy,
             databaseReferences = databaseReferences,
-        )
+        ).withResolvedAuthor()
+        val molecule = MoleculeProperties(
+            strandedness = metadata["IG_STRANDS"]?.let { runCatching { org.instagene.core.Strandedness.valueOf(it) }.getOrNull() }
+                ?: if (kind == SeqKind.PROTEIN) org.instagene.core.Strandedness.SINGLE else org.instagene.core.Strandedness.DOUBLE,
+            damMethylated = metadata["IG_DAM"]?.toBooleanStrictOrNull() ?: false,
+            dcmMethylated = metadata["IG_DCM"]?.toBooleanStrictOrNull() ?: false,
+            cpgMethylated = metadata["IG_CPG"]?.toBooleanStrictOrNull() ?: false,
+            methylationSource = metadata["IG_METHYL_SRC"]?.let {
+                runCatching { MethylationSource.valueOf(it) }.getOrNull()
+            } ?: MethylationSource.UNKNOWN,
+            damStateOverride = metadata["IG_DAM"]?.takeIf { it.equals("unknown", true) }
+                ?.let { org.instagene.core.MethylationState.UNKNOWN },
+            dcmStateOverride = metadata["IG_DCM"]?.takeIf { it.equals("unknown", true) }
+                ?.let { org.instagene.core.MethylationState.UNKNOWN },
+            cpgStateOverride = metadata["IG_CPG"]?.takeIf { it.equals("unknown", true) }
+                ?.let { org.instagene.core.MethylationState.UNKNOWN },
+            fivePrimePhosphorylated = metadata["IG_5P"]?.toBooleanStrictOrNull() ?: true,
+            threePrimePhosphorylated = metadata["IG_3P"]?.toBooleanStrictOrNull() ?: false,
+            )
         return Seq(
             name = name,
             bases = sequence,
@@ -159,6 +202,7 @@ object Embl {
             },
             description = description,
             metadata = metadata,
+            molecule = molecule,
             recordMetadata = recordMetadata,
         )
     }
@@ -169,15 +213,37 @@ object Embl {
         append("ID   ${seq.name}; SV 1; ${seq.topology.name.lowercase()}; $molecule; STD; UNC; ${seq.length} $unit.\n")
         append("DE   ${seq.description.ifBlank { seq.name }}\n")
         seq.metadata["ACCESSION"]?.let { append("AC   $it;\n") }
-        seq.metadata["ORGANISM"]?.let { append("OS   $it\n") }
+        (seq.recordMetadata.organism ?: seq.metadata["ORGANISM"])?.let { append("OS   $it\n") }
+        seq.recordMetadata.taxonomy.forEach { append("OC   ${it.replace('\n', ' ')}\n") }
         val comments = seq.recordMetadata.comments.ifEmpty { seq.metadata["COMMENT"]?.let(::listOf).orEmpty() }
         comments.forEach { append("CC   ${it.replace('\n', ' ')}\n") }
+        fun cc(key: String, value: String?) {
+            if (!value.isNullOrBlank()) append("CC   $key=${value.replace('\n', ' ')}\n")
+        }
+        cc("IG_AUTHOR", seq.recordMetadata.author)
+        cc("IG_NACAT", seq.recordMetadata.nucleicAcidCategory)
+        cc("IG_HOSTTYPE", seq.recordMetadata.labHostType)
+        cc("IG_STRAIN", seq.recordMetadata.hostStrain)
+        cc("IG_SOURCE", seq.recordMetadata.source)
+        cc("IG_STRANDS", seq.molecule.strandedness.name)
+        cc("IG_ORIGIN", seq.recordMetadata.origin.name)
+        cc("IG_ORLOCK", seq.recordMetadata.originLocked.toString())
+        cc("IG_CREATED", seq.recordMetadata.createdAt?.toString())
+        cc("IG_MODIFIED", seq.recordMetadata.modifiedAt?.toString())
+        cc("IG_DAM", if (seq.molecule.damState == org.instagene.core.MethylationState.UNKNOWN) "unknown" else seq.molecule.damMethylated.toString())
+        cc("IG_DCM", if (seq.molecule.dcmState == org.instagene.core.MethylationState.UNKNOWN) "unknown" else seq.molecule.dcmMethylated.toString())
+        cc("IG_CPG", if (seq.molecule.cpgState == org.instagene.core.MethylationState.UNKNOWN) "unknown" else seq.molecule.cpgMethylated.toString())
+        cc("IG_METHYL_SRC", seq.molecule.methylationSource.name)
+        cc("IG_5P", seq.molecule.fivePrimePhosphorylated.toString())
+        cc("IG_3P", seq.molecule.threePrimePhosphorylated.toString())
+        seq.recordMetadata.freeformReferences.forEach { cc("IG_FREE_REF", it) }
         seq.recordMetadata.references.forEach { reference ->
             append("RN   ${reference.reference}\n")
             if (reference.authors.isNotBlank()) append("RA   ${reference.authors};\n")
             if (reference.title.isNotBlank()) append("RT   \"${reference.title.replace('"', '\'')}\";\n")
             if (reference.journal.isNotBlank()) append("RL   ${reference.journal}\n")
             reference.pubMed?.let { append("RX   PUBMED; $it.\n") }
+            reference.sourceUrl?.let { cc("IG_REFURL", it) }
         }
         append("FH   Key             Location/Qualifiers\n")
         append("FH\n")

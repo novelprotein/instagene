@@ -13,16 +13,65 @@ enum class Topology { LINEAR, CIRCULAR }
 /** Whether a nucleic-acid molecule is represented as one or two strands. */
 enum class Strandedness { SINGLE, DOUBLE }
 
+/** Whether a sequence record is known to be natural or synthetic. */
+@Serializable
+enum class SequenceOrigin { UNKNOWN, NATURAL, SYNTHETIC }
+
+/** A methylation state with an explicit unknown value for uncharacterized hosts. */
+@Serializable
+enum class MethylationState {
+    UNKNOWN, METHYLATED, UNMETHYLATED;
+
+    override fun toString(): String = name.lowercase().replaceFirstChar(Char::uppercaseChar)
+}
+
+/** How the current methylation values were selected. */
+@Serializable
+enum class MethylationSource { UNKNOWN, INFERRED, MANUAL }
+
 /** Persisted molecule chemistry used to validate restriction and cloning workflows. */
 @Serializable
 data class MoleculeProperties(
     val strandedness: Strandedness = Strandedness.DOUBLE,
+    /** Kept Boolean for API compatibility; [damState] exposes explicit unknown. */
     val damMethylated: Boolean = false,
     val dcmMethylated: Boolean = false,
     val cpgMethylated: Boolean = false,
+    val methylationSource: MethylationSource = MethylationSource.UNKNOWN,
     val fivePrimePhosphorylated: Boolean = true,
     val threePrimePhosphorylated: Boolean = false,
-)
+    /** Preserves an explicit unknown Dam state while retaining the legacy Boolean field. */
+    val damStateOverride: MethylationState? = null,
+    /** Preserves an explicit unknown Dcm state while retaining the legacy Boolean field. */
+    val dcmStateOverride: MethylationState? = null,
+    /** Preserves an explicit unknown CpG state while retaining the legacy Boolean field. */
+    val cpgStateOverride: MethylationState? = null,
+) {
+    val damState: MethylationState get() = damStateOverride ?: damMethylated.toMethylationState(methylationSource)
+    val dcmState: MethylationState get() = dcmStateOverride ?: dcmMethylated.toMethylationState(methylationSource)
+    val cpgState: MethylationState get() = cpgStateOverride ?: cpgMethylated.toMethylationState(methylationSource)
+
+    fun withMethylation(
+        dam: Boolean?,
+        dcm: Boolean?,
+        cpg: Boolean?,
+        source: MethylationSource = MethylationSource.MANUAL,
+    ): MoleculeProperties = copy(
+        damMethylated = dam ?: false,
+        dcmMethylated = dcm ?: false,
+        cpgMethylated = cpg ?: false,
+        methylationSource = source,
+        damStateOverride = if (dam == null) MethylationState.UNKNOWN else null,
+        dcmStateOverride = if (dcm == null) MethylationState.UNKNOWN else null,
+        cpgStateOverride = if (cpg == null) MethylationState.UNKNOWN else null,
+    )
+}
+
+private fun Boolean.toMethylationState(source: MethylationSource): MethylationState = when {
+    this -> MethylationState.METHYLATED
+    source == MethylationSource.MANUAL || source == MethylationSource.INFERRED -> MethylationState.UNMETHYLATED
+    else -> MethylationState.UNKNOWN
+}
 
 
 /** Which strand of the double helix a coordinate, cut or feature refers to. */
@@ -207,6 +256,7 @@ data class SequenceReference(
     val journal: String = "",
     val pubMed: String? = null,
     val medLine: String? = null,
+    val sourceUrl: String? = null,
 )
 
 /** Structured record-level metadata while [Seq.metadata] remains the compatibility map. */
@@ -215,11 +265,37 @@ data class SequenceRecordMetadata(
     val headerFields: List<RecordHeaderField> = emptyList(),
     val comments: List<String> = emptyList(),
     val references: List<SequenceReference> = emptyList(),
+    val freeformReferences: List<String> = emptyList(),
+    val author: String? = null,
+    /** The selected sequence class; the legacy property name is retained for serialized compatibility. */
+    val nucleicAcidCategory: String? = null,
+    val labHostType: String? = null,
+    val hostStrain: String? = null,
+    val origin: SequenceOrigin = SequenceOrigin.UNKNOWN,
+    val originLocked: Boolean = false,
+    /** UTC epoch milliseconds; null means the source did not provide a record date. */
+    val createdAt: Long? = null,
+    val modifiedAt: Long? = null,
+    /** GenBank LOCUS division code, when the source record supplied one. */
+    val locusDivision: String? = null,
     val source: String? = null,
     val organism: String? = null,
     val taxonomy: List<String> = emptyList(),
     val databaseReferences: List<String> = emptyList(),
-)
+) {
+    /** The first bibliographic author list is the best source-level attribution when no creator is stored. */
+    val primaryReferenceAuthors: String?
+        get() = references.asSequence()
+            .map { it.authors.trim() }
+            .firstOrNull { it.isNotEmpty() }
+
+    /** Resolves source provenance without inventing an author or scientific citation. */
+    fun resolvedAuthor(): String? = author?.trim()?.takeIf { it.isNotEmpty() }
+        ?: primaryReferenceAuthors
+
+    /** Returns metadata with a source-derived author while preserving all source references. */
+    fun withResolvedAuthor(): SequenceRecordMetadata = copy(author = resolvedAuthor())
+}
 
 /**
  * An immutable nucleotide (or protein) sequence with annotations.

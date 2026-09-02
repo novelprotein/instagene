@@ -69,19 +69,31 @@ data class Fragment(
 object Digest {
 
     /** All cut sites of [enzymes] in [seq], sorted by top-strand cut position. */
-    fun cutSites(seq: Seq, enzymes: Collection<Enzyme>): List<CutSite> {
+    fun cutSites(seq: Seq, enzymes: Collection<Enzyme>): List<CutSite> =
+        cutSites(seq, enzymes, MethylationProfile.from(seq.molecule))
+
+    /** All unfiltered cut sites of [enzymes] in [seq]. */
+    private fun rawCutSites(seq: Seq, enzymes: Collection<Enzyme>): List<CutSite> {
         if (enzymes.size <= 4) {
             // Small pools: sequential is faster than coroutine dispatch overhead.
             val sites = ArrayList<CutSite>()
-            for (enzyme in enzymes) sites += cutSites(seq, enzyme)
+            for (enzyme in enzymes) sites += rawCutSites(seq, enzyme)
             return sites.sortedWith(compareBy({ it.topCut }, { it.enzyme.name }))
         }
-        val sites = Parallel.map(enzymes.toList()) { cutSites(seq, it) }.flatten()
+        val sites = Parallel.map(enzymes.toList()) { rawCutSites(seq, it) }.flatten()
         return sites.sortedWith(compareBy({ it.topCut }, { it.enzyme.name }))
     }
 
+    /** All cut sites that remain available under the sequence's methylation state. */
+    fun cutSites(seq: Seq, enzymes: Collection<Enzyme>, profile: MethylationProfile): List<CutSite> =
+        rawCutSites(seq, enzymes).filterNot { MethylationRules.isBlocked(seq, it, profile) }
+
     /** All cut sites of [enzyme] in [seq], sorted by top-strand cut position. */
-    fun cutSites(seq: Seq, enzyme: Enzyme): List<CutSite> {
+    fun cutSites(seq: Seq, enzyme: Enzyme): List<CutSite> =
+        cutSites(seq, enzyme, MethylationProfile.from(seq.molecule))
+
+    /** All unfiltered cut sites of [enzyme] in [seq]. */
+    private fun rawCutSites(seq: Seq, enzyme: Enzyme): List<CutSite> {
         val out = ArrayList<CutSite>()
         scanSites(seq, enzyme) { i, forward, topCut, bottomCut ->
             out += if (seq.isCircular) {
@@ -105,6 +117,10 @@ object Digest {
         return out.sortedBy { it.topCut }
     }
 
+    /** Cut sites for one enzyme after applying methylation blocking rules. */
+    fun cutSites(seq: Seq, enzyme: Enzyme, profile: MethylationProfile): List<CutSite> =
+        rawCutSites(seq, enzyme).filterNot { MethylationRules.isBlocked(seq, it, profile) }
+
     /**
      * The number of times [enzyme] cuts [seq], without building any [CutSite]
      * objects, so whole catalogs of enzymes can be scanned cheaply.
@@ -116,9 +132,31 @@ object Digest {
         cancellationRequested: () -> Boolean = { false },
         /** Receives scanned and total candidate positions at bounded intervals. */
         progress: ((scanned: Int, total: Int) -> Unit)? = null,
+    ): Int = countSites(
+        seq,
+        enzyme,
+        MethylationProfile.from(seq.molecule),
+        cancellationRequested,
+        progress,
+    )
+
+    /** Counts available sites after applying methylation state. */
+    fun countSites(
+        seq: Seq,
+        enzyme: Enzyme,
+        profile: MethylationProfile,
+        cancellationRequested: () -> Boolean = { false },
+        progress: ((scanned: Int, total: Int) -> Unit)? = null,
     ): Int {
         var count = 0
-        scanSites(seq, enzyme, cancellationRequested, progress) { _, _, _, _ -> count++ }
+        scanSites(seq, enzyme, cancellationRequested, progress) { i, forward, topCut, bottomCut ->
+            val site = if (seq.isCircular) {
+                CutSite(enzyme, i, normalize(topCut, seq.length), normalize(bottomCut, seq.length), if (forward) Strand.FORWARD else Strand.REVERSE)
+            } else {
+                CutSite(enzyme, i, topCut, bottomCut, if (forward) Strand.FORWARD else Strand.REVERSE)
+            }
+            if (!MethylationRules.isBlocked(seq, site, profile)) count++
+        }
         return count
     }
 
@@ -264,6 +302,10 @@ object Digest {
 
         return digestAtSites(seq, sites)
     }
+
+    /** Digests [seq] after removing sites blocked by its explicit methylation profile. */
+    fun digest(seq: Seq, enzymes: Collection<Enzyme>, profile: MethylationProfile): List<Fragment> =
+        digestAtSites(seq, cutSites(seq, enzymes, profile).distinctBy { it.topCut }.sortedBy { it.topCut })
 
     /** Digests using an explicit subset of mapped sites, useful for partial-digest simulation. */
     fun digestSites(seq: Seq, sites: Collection<CutSite>): List<Fragment> =

@@ -51,3 +51,5 @@ baseline.json
 
 ### MkDocs ###
 site/
+/.copilot/skills/bioinformatics-researcher/skill.md
+/todo.md

@@ -1,6 +1,7 @@
 package org.instagene.app.cli
 
 import org.instagene.core.Topology
+import org.instagene.core.TestSequenceFixtures
 import org.instagene.core.WorkflowRecipes
 import org.instagene.core.GenericZipElnAdapter
 import org.instagene.core.io.SeqFormat
@@ -13,6 +14,7 @@ import javax.imageio.ImageIO
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CliTest {
@@ -157,7 +159,7 @@ class CliTest {
 
     @Test
     fun sampleWritesFasta() {
-        val (code, out) = capture { Cli.run(listOf("sample", "GFP_CDS")) }
+        val (code, out) = capture { Cli.run(listOf("sample", "GFP_Aequorea_NCBI_reference")) }
         assertEquals(0, code)
         assertTrue(out.contains(">"))
         assertTrue(out.contains("ATG") || out.contains("GAATTC"))
@@ -167,11 +169,17 @@ class CliTest {
     fun sampleListingIncludesSourceCitations() {
         val (code, out) = capture { Cli.run(listOf("sample")) }
         assertEquals(0, code)
-        assertTrue(out.contains("pInstaGene_demo"))
-        assertTrue(out.contains("Synthetic circular construct authored for InstaGene"))
-        assertTrue(out.contains("synthetic_chromatogram"))
+        assertFalse(out.contains("pInstaGene_demo"))
+        assertFalse(out.contains("synthetic_chromatogram"))
+        assertFalse(out.contains("alignment_demo"))
         assertTrue(out.contains("pBR322_NCBI"))
         assertTrue(out.contains("J01749.1"))
+        assertTrue(out.contains("pUC19_NCBI_reference"))
+        assertTrue(out.contains("M77789.2"))
+        assertTrue(out.contains("GFP_Aequorea_NCBI_reference"))
+        assertTrue(out.contains("L29345.1"))
+        assertTrue(out.contains("pGFPuv_NCBI_reference"))
+        assertTrue(out.contains("U62636.1"))
     }
 
     @Test
@@ -350,9 +358,9 @@ class CliTest {
         val dir = createTempDirectory("cli-recipe").toFile()
         try {
             val backbone = File(dir, "vector.gb").apply {
-                writeText(SeqIO.write(SeqIO.Samples.PUC19_MCS.copy(topology = Topology.CIRCULAR), SeqFormat.GENBANK))
+                writeText(SeqIO.write(TestSequenceFixtures.restrictionBackbone.copy(topology = Topology.CIRCULAR), SeqFormat.GENBANK))
             }
-            val insert = File(dir, "insert.fa").apply { writeText(SeqIO.write(SeqIO.Samples.GFP_CDS, SeqFormat.FASTA)) }
+            val insert = File(dir, "insert.fa").apply { writeText(SeqIO.write(TestSequenceFixtures.restrictionInsert, SeqFormat.FASTA)) }
             val recipe = File(dir, "clone.recipe.json")
             val firstProduct = File(dir, "first.gb")
             val replayedProduct = File(dir, "replayed.gb")

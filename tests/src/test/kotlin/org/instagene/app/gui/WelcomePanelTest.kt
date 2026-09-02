@@ -130,8 +130,10 @@ class WelcomePanelTest {
         }
 
         assertEquals(WelcomeExample.entries.map { it.label }, panel.exampleButtons().map { it.text })
-        assertTrue(panel.exampleButtons().all { it.toolTipText.contains("example.") })
-        assertTrue(panel.exampleButtons().any { it.toolTipText.contains("J01749.1") })
+        assertTrue(panel.exampleButtons().all { it.toolTipText.contains("complete source record") })
+        listOf("J01749.1", "M77789.2", "U62636.1", "L29345.1").forEach { accession ->
+            assertTrue(panel.exampleButtons().any { it.toolTipText.contains(accession) })
+        }
         onEdt { panel.exampleButtons().forEach { it.doClick() } }
         assertEquals(WelcomeExample.entries.toList(), opened)
     }

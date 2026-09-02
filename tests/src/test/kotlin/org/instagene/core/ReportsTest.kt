@@ -66,8 +66,8 @@ class ReportsTest {
 
     @Test
     fun cloningReportsMergeEngineNormalizedParametersBeforeExport() {
-        val backbone = org.instagene.core.io.SeqIO.Samples.PUC19_MCS.copy(topology = Topology.CIRCULAR)
-        val insert = org.instagene.core.io.SeqIO.Samples.GFP_CDS
+        val backbone = TestSequenceFixtures.restrictionBackbone.copy(topology = Topology.CIRCULAR)
+        val insert = TestSequenceFixtures.restrictionInsert
         val result = CloningWorkflows.restriction(
             backbone,
             insert,

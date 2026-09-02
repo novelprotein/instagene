@@ -1,6 +1,5 @@
 package org.instagene.core
 
-import org.instagene.core.io.SeqIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -44,7 +43,7 @@ class DigestTest {
 
     @Test
     fun linearDoubleDigestFragmentCount() {
-        val seq = SeqIO.Samples.PUC19_MCS
+        val seq = TestSequenceFixtures.restrictionBackbone
         val enzymes = listOf(Enzymes.require("EcoRI"), Enzymes.require("HindIII"))
         val sites = Digest.cutSites(seq, enzymes)
         val frags = Digest.digest(seq, enzymes)
@@ -95,7 +94,7 @@ class DigestTest {
 
     @Test
     fun enzymesCuttingAndCutCountsOnMcs() {
-        val seq = SeqIO.Samples.PUC19_MCS
+        val seq = TestSequenceFixtures.restrictionBackbone
         val unique = Digest.enzymesCutting(seq, times = 1)
         assertTrue(unique.any { it.name == "EcoRI" })
         assertTrue(unique.any { it.name == "BamHI" })

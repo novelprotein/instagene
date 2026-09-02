@@ -14,6 +14,7 @@ import org.instagene.core.Digest
 import org.instagene.core.Enzyme
 import org.instagene.core.Enzymes
 import org.instagene.core.Fragment
+import org.instagene.core.MethylationProfile
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.app.gui.prefs.SavedContext
@@ -564,9 +565,10 @@ class DigestPanel(
             updateDigestResultsLabel()
             return
         }
+        val profile = MethylationProfile.from(doc.seq.molecule)
         matches = cutSitesCache[enzyme]
-            ?: doc.cutSites.filter { it.enzyme == enzyme }.takeIf { it.isNotEmpty() }
-            ?: Digest.cutSites(doc.seq, enzyme)
+            ?: doc.cutSites.filter { it.enzyme == enzyme && !org.instagene.core.MethylationRules.isBlocked(doc.seq, it, profile) }.takeIf { it.isNotEmpty() }
+            ?: Digest.cutSites(doc.seq, enzyme, profile)
         rebuildMergedRows()
         restoreMergedSelection(matchToRestore)
         updateDigestResultsLabel()
@@ -575,7 +577,7 @@ class DigestPanel(
     private fun rebuildMergedRows() {
         val previousRow = mergedRows.getOrNull(digestTable.selectedRow)
         val previewFragments = if (matches.isNotEmpty() && matches.none { site -> fragments.any { it.start == site.topCut } }) {
-            Digest.digest(doc.seq, matches.map { it.enzyme }.distinct())
+            Digest.digest(doc.seq, matches.map { it.enzyme }.distinct(), MethylationProfile.from(doc.seq.molecule))
         } else {
             fragments
         }
@@ -658,6 +660,7 @@ class DigestPanel(
                             Digest.countSites(
                                 seq,
                                 enzyme,
+                                MethylationProfile.from(seq.molecule),
                                 cancellationRequested = { cancellation.get() || Thread.currentThread().isInterrupted },
                             )
                         } catch (_: java.util.concurrent.CancellationException) {
@@ -671,7 +674,7 @@ class DigestPanel(
                         // enzyme-selection handler can serve from cache instead of
                         // rescanning on the EDT.
                         if (seq.length < asyncDigestThreshold && count > 0) {
-                            val sites = runCatching { Digest.cutSites(seq, enzyme) }.getOrDefault(emptyList())
+                            val sites = runCatching { Digest.cutSites(seq, enzyme, MethylationProfile.from(seq.molecule)) }.getOrDefault(emptyList())
                             cutSitesCache[enzyme] = sites
                             partialOverhangs[enzyme] = sites
                                 .map { Digest.stickyEnd(seq, it).overhang }
@@ -983,8 +986,9 @@ class DigestPanel(
         // and tests rely on fragments being ready immediately); large ones are
         // scanned and cut on a background thread so the EDT never stalls.
         if (doc.seq.length < asyncDigestThreshold) {
-            val sites = Digest.cutSites(doc.seq, active)
-            val frags = Digest.digest(doc.seq, active)
+            val profile = MethylationProfile.from(doc.seq.molecule)
+            val sites = Digest.cutSites(doc.seq, active, profile)
+            val frags = Digest.digest(doc.seq, active, profile)
             doc.applyMappedEnzymes(active, sites)
             applyDigestResult(frags, active)
         } else {
@@ -992,8 +996,9 @@ class DigestPanel(
             val sourceDoc = doc
             val sourceSeq = sourceDoc.seq
             countPool.submit {
-                val sites = Digest.cutSites(sourceSeq, active)
-                val frags = Digest.digest(sourceSeq, active)
+                val profile = MethylationProfile.from(sourceSeq.molecule)
+                val sites = Digest.cutSites(sourceSeq, active, profile)
+                val frags = Digest.digest(sourceSeq, active, profile)
                 SwingUtilities.invokeLater {
                     if (version != digestVersion || doc !== sourceDoc || sourceDoc.seq !== sourceSeq) return@invokeLater
                     sourceDoc.applyMappedEnzymes(active, sites)
@@ -1012,9 +1017,12 @@ class DigestPanel(
         enzymeModel.fireTableDataChanged()
         prefs.update { it.copy(selectedEnzymes = active.map { enzyme -> enzyme.name }) }
         val total = fragments.sumOf { it.length }
+        val methylationWarning = org.instagene.core.MethylationRules.uncertainty(
+            MethylationProfile.from(doc.seq.molecule),
+        )?.let { " — $it Potential sites are retained." }.orEmpty()
         updateDigestResultsLabel()
         summary.text = "${active.joinToString(", ") { it.name }}  ->  ${doc.cutSites.size} site(s) in whole sequence, " +
-                "${fragments.size} fragment(s), total $total bp"
+                "${fragments.size} fragment(s), total $total bp$methylationWarning"
     }
 
     private fun revealFirstSiteOfSelectedEnzyme() {
@@ -1024,7 +1032,7 @@ class DigestPanel(
 
     private fun revealFirstSiteOfEnzyme(row: Int) {
         val enzyme = visibleEnzymes.getOrNull(row) ?: return
-        val site = (cutSitesCache[enzyme] ?: Digest.cutSites(doc.seq, enzyme)).firstOrNull() ?: return
+        val site = (cutSitesCache[enzyme] ?: Digest.cutSites(doc.seq, enzyme, MethylationProfile.from(doc.seq.molecule))).firstOrNull() ?: return
         onReveal(site.recognitionStart, site.recognitionStart + enzyme.siteLength)
     }
 

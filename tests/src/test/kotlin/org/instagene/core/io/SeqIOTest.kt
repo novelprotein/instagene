@@ -5,10 +5,12 @@ import org.instagene.core.Seq
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import java.io.File
+import java.security.MessageDigest
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SeqIOTest {
@@ -64,34 +66,73 @@ class SeqIOTest {
     }
 
     @Test
-    fun bundledSamplesCoverPlasmidGeneAlignmentAndChromatogramWorkflows() {
-        val samples = SeqIO.Samples
-        assertEquals(Topology.CIRCULAR, samples.PLASMID_DEMO.topology)
-        assertTrue(samples.PLASMID_DEMO.features.isNotEmpty())
-        assertTrue(samples.GFP_CDS.length > 100)
-        assertEquals(3, samples.ALIGNMENT_DEMO.size)
-        assertEquals(1, samples.ALIGNMENT_DEMO.map { it.length }.toSet().size)
-        assertEquals(true, samples.CHROMATOGRAM_DEMO.trace?.hasSignal())
-        assertTrue("pInstaGene_demo" in samples.ALL.map { it.name })
+    fun bundledSamplesAreCompleteSourceRecords() {
+        assertEquals(4, SeqIO.Samples.ALL.size)
+        assertTrue(SeqIO.Samples.ALL.all { it.metadata["ONLINE_ACCESSION"].orEmpty().isNotBlank() })
+        assertTrue(SeqIO.Samples.ALL.all { it.metadata["ONLINE_URL"].orEmpty().startsWith("https://www.ncbi.nlm.nih.gov/nuccore/") })
+        assertTrue(SeqIO.Samples.ALL.all { it.metadata["SOURCE_SHA256"].orEmpty().length == 64 })
+        assertTrue(SeqIO.Samples.ALL.all { it.recordMetadata.references.isNotEmpty() })
+        assertTrue(SeqIO.Samples.ALL.all { it.recordMetadata.author.orEmpty().isNotBlank() })
+        assertFalse(SeqIO.Samples.ALL.any { it.name.contains("synthetic", ignoreCase = true) })
+        assertFalse(SeqIO.Samples.ALL.any { it.name.contains("demo", ignoreCase = true) })
     }
 
     @Test
-    fun bundledExamplesCarryExplicitSourceCitations() {
-        val samples = SeqIO.Samples.ALL + SeqIO.Samples.ALIGNMENT_DEMO
+    fun bundledExamplesCarryOnlyOriginalSourceCitations() {
+        val samples = SeqIO.Samples.ALL
         samples.forEach { sample ->
             val source = sample.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()
             assertTrue(source.isNotBlank(), "${sample.name} is missing a source citation")
+            assertTrue(source.contains(sample.metadata.getValue("ONLINE_ACCESSION")), "${sample.name} citation must identify its accession")
+            assertTrue(sample.recordMetadata.references.any { reference ->
+                reference.authors.isNotBlank() && reference.title.isNotBlank() && reference.journal.isNotBlank()
+            }, "${sample.name} has no complete original reference")
         }
-        (listOf(SeqIO.Samples.PUC19_MCS, SeqIO.Samples.GFP_CDS, SeqIO.Samples.PLASMID_DEMO) + SeqIO.Samples.ALIGNMENT_DEMO)
-            .forEach { sample ->
-                val source = sample.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()
-                assertTrue(source.contains("InstaGene"), "${sample.name} is missing an InstaGene source citation")
-                assertTrue(!source.contains("NCBI", ignoreCase = true), "${sample.name} must not imply an external accession")
-                assertTrue(sample.metadata[SeqIO.Samples.LICENSE_METADATA_KEY].orEmpty().contains("MIT"))
-                assertEquals(source, sample.description, "${sample.name} must put the citation in the file description")
-            }
-        assertTrue(SeqIO.Samples.PBR322_NCBI.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty().contains("J01749.1"))
-        assertTrue(SeqIO.Samples.CHROMATOGRAM_DEMO.source.contains("Generated synthetic chromatogram"))
+        assertFalse(samples.any { it.metadata.values.any { value -> value.contains("BLAST", ignoreCase = true) } })
+    }
+
+    @Test
+    fun bundledSourceChecksumsMatchTheCheckedInRecords() {
+        val resources = mapOf(
+            "pBR322_NCBI" to "/org/instagene/core/samples/pBR322_J01749.1.gb",
+            "pUC19_NCBI_reference" to "/org/instagene/core/samples/pUC19_M77789.2.gb",
+            "GFP_Aequorea_NCBI_reference" to "/org/instagene/core/samples/GFP_L29345.1.gb",
+            "pGFPuv_NCBI_reference" to "/org/instagene/core/samples/pGFPuv_U62636.1.gb",
+        )
+        resources.forEach { (name, resource) ->
+            val bytes = requireNotNull(SeqIO::class.java.getResourceAsStream(resource)) { resource }.readBytes()
+            val checksum = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val sample = SeqIO.Samples.ALL.first { it.name == name }
+            assertEquals(checksum, sample.metadata["SOURCE_SHA256"], name)
+        }
+    }
+
+    @Test
+    fun bundledSamplesKeepSourceCommentsAndDoNotTurnProvenanceIntoComments() {
+        val resources = mapOf(
+            "pBR322_NCBI" to "/org/instagene/core/samples/pBR322_J01749.1.gb",
+            "pUC19_NCBI_reference" to "/org/instagene/core/samples/pUC19_M77789.2.gb",
+            "GFP_Aequorea_NCBI_reference" to "/org/instagene/core/samples/GFP_L29345.1.gb",
+            "pGFPuv_NCBI_reference" to "/org/instagene/core/samples/pGFPuv_U62636.1.gb",
+        )
+        resources.forEach { (name, resource) ->
+            val sourceText = requireNotNull(SeqIO::class.java.getResourceAsStream(resource)) { resource }
+                .bufferedReader()
+                .use { it.readText() }
+            val source = GenBank.parse(sourceText)
+            val sample = SeqIO.Samples.ALL.first { it.name == name }
+
+            assertEquals(source.recordMetadata.comments, sample.recordMetadata.comments, name)
+            assertEquals(source.recordMetadata.author, sample.recordMetadata.author, name)
+            assertEquals(source.recordMetadata.locusDivision, sample.recordMetadata.locusDivision, name)
+            assertTrue(sample.recordMetadata.comments.none { it.contains("Complete source record bundled") }, name)
+            assertTrue(
+                GenBank.write(sample).lineSequence()
+                    .filter { it.trimStart().startsWith("COMMENT") }
+                    .none { it.contains("Complete source record bundled") },
+                name,
+            )
+        }
     }
 
     @Test
@@ -103,9 +144,12 @@ class SeqIOTest {
         assertEquals("J01749.1", sample.metadata["VERSION"])
         assertEquals("J01749.1", sample.metadata["ONLINE_ACCESSION"])
         assertTrue(sample.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty().contains("NCBI GenBank"))
-        assertEquals("J01749.1", sample.metadata["BLAST_SELECTED_ACCESSION"])
-        assertTrue(sample.metadata["BLAST_VERIFICATION"].orEmpty().contains("NCBI BLASTN"))
+        assertEquals("https://www.ncbi.nlm.nih.gov/nuccore/J01749.1", sample.metadata["ONLINE_URL"])
+        assertEquals("02cc9962c0600186d4e1e4055b0de44f2fb0c6a0512e52cf9e5f788f21c180ee", sample.metadata["SOURCE_SHA256"])
         assertTrue(sample.metadata["ANNOTATION_SOURCE"].orEmpty().contains("GenBank feature table"))
+        assertEquals("Sutcliffe,J.G.", sample.recordMetadata.author)
+        assertTrue(sample.recordMetadata.references.any { it.pubMed == "383387" })
+        assertTrue(sample.recordMetadata.references.all { it.sourceUrl == sample.metadata["ONLINE_URL"] })
         assertTrue(sample.features.size >= 48, "expected at least 48 features after source filtering, got ${sample.features.size}")
         val types = sample.features.map { it.type }.toSet()
         assertTrue("CDS" in types)
@@ -115,23 +159,82 @@ class SeqIOTest {
     }
 
     @Test
-    fun realPbr322DocsExplainBlastAndGenBankAnnotationRoles() {
+    fun bundledExamplesDocsExplainOriginalSourceAttribution() {
         val docs = sequenceOf(File("docs/examples.md"), File("../docs/examples.md"))
             .first(File::isFile)
             .readText()
             .replace(Regex("\\s+"), " ")
-        assertTrue(docs.contains("BLAST is used as the record-selection check"))
-        assertTrue(docs.contains("feature annotations come from the selected GenBank record"))
-        assertTrue(docs.contains("BLAST reports alignments rather than complete feature tables"))
+        assertTrue(docs.contains("Complete NCBI GenBank record"))
+        assertFalse(docs.contains("BLAST-verified"))
     }
 
     @Test
-    fun bundledExampleCitationsAreWrittenInFastaHeadersAndGenBankDefinitions() {
-        val fasta = Fasta.write(SeqIO.Samples.GFP_CDS)
-        assertTrue(fasta.lineSequence().first().contains(SeqIO.Samples.GFP_CDS.description))
+    fun completeReferenceSamplesRetainSourceRecordsAndDoNotLookLikeSyntheticSamples() {
+        val pUC19 = SeqIO.Samples.PUC19_NCBI_REFERENCE
+        assertEquals("pUC19_NCBI_reference", pUC19.name)
+        assertEquals(2686, pUC19.length)
+        assertEquals(Topology.CIRCULAR, pUC19.topology)
+        assertEquals("M77789.2", pUC19.metadata["VERSION"])
+        assertEquals("M77789.2", pUC19.metadata["ONLINE_ACCESSION"])
+        assertEquals("Cloning vector pUC19", pUC19.recordMetadata.organism)
+        assertEquals("Norrander,J., Kempe,T. and Messing,J.", pUC19.recordMetadata.author)
+        assertEquals("https://www.ncbi.nlm.nih.gov/nuccore/M77789.2", pUC19.metadata["ONLINE_URL"])
+        assertEquals("b2651308eedffa54dfb3a1b6307cacdda959e7164a799bc813c883117a1b40d5", pUC19.metadata["SOURCE_SHA256"])
+        assertEquals(4, pUC19.recordMetadata.references.size)
+        assertTrue(pUC19.recordMetadata.references.any { it.pubMed == "6323249" })
+        assertTrue(pUC19.recordMetadata.references.all { it.sourceUrl == pUC19.metadata["ONLINE_URL"] })
+        assertTrue(pUC19.features.any { it.notes.startsWith("polylinker of M13mp19;") && it.notes.contains("HindIII-SphI-PstI") })
 
-        val genBank = GenBank.write(SeqIO.Samples.PLASMID_DEMO)
-        assertTrue(genBank.contains("DEFINITION  ${SeqIO.Samples.PLASMID_DEMO.description}"))
+        val gfp = SeqIO.Samples.GFP_AEQUOREA_NCBI_REFERENCE
+        assertEquals("GFP_Aequorea_NCBI_reference", gfp.name)
+        assertEquals(922, gfp.length)
+        assertEquals(SeqKind.RNA, gfp.kind)
+        assertEquals("L29345.1", gfp.metadata["VERSION"])
+        assertEquals("Aequorea victoria", gfp.recordMetadata.organism)
+        assertEquals("Inouye,S. and Tsuji,F.I.", gfp.recordMetadata.author)
+        assertEquals(2, gfp.recordMetadata.references.size)
+        assertTrue(gfp.recordMetadata.references.any { it.pubMed == "8137953" })
+        assertTrue(gfp.features.any { it.type == "gene" && it.name == "GFP" })
+        assertTrue(gfp.features.any { it.type == "CDS" && it.qualifiers["protein_id"] == listOf("AAA58246.1") })
+
+        val pgfpUv = SeqIO.Samples.PGFPUV_NCBI_REFERENCE
+        assertEquals("pGFPuv_NCBI_reference", pgfpUv.name)
+        assertEquals(3337, pgfpUv.length)
+        assertEquals(SeqKind.DNA, pgfpUv.kind)
+        assertEquals(Topology.LINEAR, pgfpUv.topology)
+        assertEquals("U62636.1", pgfpUv.metadata["VERSION"])
+        assertEquals("Cloning vector pGFPuv", pgfpUv.recordMetadata.organism)
+        assertEquals("Kitts,P.A.", pgfpUv.recordMetadata.author)
+        assertEquals(2, pgfpUv.recordMetadata.references.size)
+        assertTrue(pgfpUv.recordMetadata.references.all { it.authors == "Kitts,P.A." })
+        assertTrue(pgfpUv.features.any { it.type == "gene" && it.name == "gfpuv" })
+        assertTrue(pgfpUv.features.any { it.type == "CDS" && it.qualifiers["protein_id"] == listOf("AAB06048.1") })
+    }
+
+    @Test
+    fun completeReferenceRecordsRoundTripStructuredProvenance() {
+        SeqIO.Samples.ALL.forEach { original ->
+            val restored = SeqIO.parse(SeqIO.write(original, SeqFormat.GENBANK))
+            assertEquals(original.recordMetadata.author, restored.recordMetadata.author)
+            assertEquals(original.recordMetadata.comments, restored.recordMetadata.comments)
+            assertEquals(original.recordMetadata.references, restored.recordMetadata.references)
+            assertEquals(original.recordMetadata.source, restored.recordMetadata.source)
+            assertEquals(original.recordMetadata.organism, restored.recordMetadata.organism)
+            assertEquals(original.recordMetadata.locusDivision, restored.recordMetadata.locusDivision)
+            assertEquals(original.metadata["VERSION"], restored.metadata["VERSION"])
+            assertEquals(original.metadata[SeqIO.Samples.SOURCE_METADATA_KEY], restored.metadata[SeqIO.Samples.SOURCE_METADATA_KEY])
+        }
+    }
+
+    @Test
+    fun sourceRecordExportsRetainOriginalDescriptionAndReferences() {
+        val fasta = Fasta.write(SeqIO.Samples.PGFPUV_NCBI_REFERENCE)
+        assertTrue(fasta.lineSequence().first().contains(SeqIO.Samples.PGFPUV_NCBI_REFERENCE.description))
+
+        val genBank = GenBank.write(SeqIO.Samples.PGFPUV_NCBI_REFERENCE)
+        assertTrue(genBank.contains("DEFINITION  Cloning vector pGFPuv, complete sequence."))
+        assertTrue(genBank.contains("AUTHORS      Kitts,P.A."))
+        assertTrue(genBank.contains("TITLE        pGFPuv complete sequence"))
     }
 
     @Test
@@ -193,13 +296,12 @@ class SeqIOTest {
 
     @Test
     fun samplesAreNonEmptyAndNamed() {
-        assertTrue(SeqIO.Samples.PUC19_MCS.length > 20)
-        assertEquals("pUC19_MCS", SeqIO.Samples.PUC19_MCS.name)
-        assertTrue(SeqIO.Samples.GFP_CDS.length > 100)
-        assertEquals("GFP_CDS", SeqIO.Samples.GFP_CDS.name)
-        assertEquals(4, SeqIO.Samples.ALL.size)
-        assertTrue(SeqIO.Samples.PUC19_MCS.bases.startsWith("GAATTC"))
-        assertTrue(SeqIO.Samples.PUC19_MCS.bases.endsWith("AAGCTT"))
+        assertTrue(SeqIO.Samples.ALL.all { it.length > 100 })
+        assertEquals(
+            listOf("pBR322_NCBI", "pUC19_NCBI_reference", "GFP_Aequorea_NCBI_reference", "pGFPuv_NCBI_reference"),
+            SeqIO.Samples.ALL.map { it.name },
+        )
+        assertEquals(setOf("J01749.1", "M77789.2", "L29345.1", "U62636.1"), SeqIO.Samples.ALL.map { it.metadata["VERSION"] }.toSet())
     }
 
     @Test

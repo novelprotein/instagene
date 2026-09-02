@@ -17,14 +17,22 @@ data class PlasmidSearchResult(val results: List<PlasmidRecord>)
 object PlasmidDatabase {
 
     private val BUILT_IN = listOf(
-        PlasmidRecord("pUC19", 2686, "E. coli", listOf("AmpR"), "pMB1", "High-copy cloning vector"),
+        PlasmidRecord(
+            "pUC19",
+            2686,
+            "E. coli",
+            listOf("AmpR"),
+            "pMB1",
+            "High-copy cloning vector; complete offline source record from NCBI GenBank M77789.2",
+            sampleName = SeqIO.Samples.PUC19_NCBI_REFERENCE.name,
+        ),
         PlasmidRecord(
             "pBR322",
             4361,
             "E. coli",
             listOf("AmpR", "TetR"),
             "pMB1",
-            "Classic cloning vector; BLAST-verified bundled sequence from NCBI GenBank J01749.1",
+            "Classic cloning vector; complete bundled source record from NCBI GenBank J01749.1",
             sampleName = SeqIO.Samples.PBR322_NCBI.name,
         ),
         PlasmidRecord("pET-28a", 5369, "E. coli", listOf("KanR"), "pBR322", "T7 expression vector with N-terminal His-tag"),

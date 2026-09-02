@@ -243,7 +243,7 @@ class FileMenu(
                 }
                 file = File(file.parentFile, file.name + "." + ext)
             }
-            if (wouldLosePlasmidData(file)) {
+            if (wouldLoseRecordData(file)) {
                 when (promptPlasmidLoss(file)) {
                     JOptionPane.YES_OPTION -> saveToFile(
                         File(file.parentFile, file.name.substringBeforeLast('.') + ".gb")
@@ -306,7 +306,7 @@ class FileMenu(
      * the plasmid map: FASTA cannot hold features or circular topology.
      */
     private fun writeToFile(file: File) {
-        if (wouldLosePlasmidData(file)) {
+        if (wouldLoseRecordData(file)) {
             when (promptPlasmidLoss(file)) {
                 JOptionPane.YES_OPTION -> {
                     saveFileAs()
@@ -319,18 +319,19 @@ class FileMenu(
         saveToFile(file)
     }
 
-    /** True when [file] is FASTA but the document carries a plasmid map that FASTA cannot store. */
-    private fun wouldLosePlasmidData(file: File): Boolean {
+    /** True when a simple export would drop the record metadata carried by this document. */
+    private fun wouldLoseRecordData(file: File): Boolean {
         val seqDoc = doc as? SeqDocument ?: return false
-        return SeqIO.preferredSaveFormat(seqDoc.seq) == SeqFormat.GENBANK && SeqIO.formatOf(file) == SeqFormat.FASTA
+        return SeqIO.preferredSaveFormat(seqDoc.seq) == SeqFormat.GENBANK &&
+            SeqIO.formatOf(file) in setOf(SeqFormat.FASTA, SeqFormat.GFF3)
     }
 
-    /** Asks how to proceed when a save target cannot store the plasmid map. */
+    /** Asks how to proceed when a save target cannot store record metadata. */
     private fun promptPlasmidLoss(file: File): Int = JOptionPane.showConfirmDialog(
         frame,
-        "${file.name} is FASTA and cannot store the plasmid map.\n" +
-            "Features and circular topology would be lost when it is reopened.",
-        "Plasmid Data Would Be Lost",
+        "${file.name} cannot store the full record metadata.\n" +
+            "Features, molecule state, references, and record fields may be lost when it is reopened.",
+        "Record Data Would Be Lost",
         JOptionPane.YES_NO_CANCEL_OPTION,
         JOptionPane.WARNING_MESSAGE,
     )

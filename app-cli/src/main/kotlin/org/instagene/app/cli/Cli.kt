@@ -980,10 +980,10 @@ object Cli {
         if (requested == null) {
             out("Bundled samples:")
             SeqIO.Samples.ALL.forEach { seq ->
-                out("- ${seq.name}: ${seq.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()}")
+                val source = seq.metadata[SeqIO.Samples.SOURCE_METADATA_KEY].orEmpty()
+                val url = seq.metadata["ONLINE_URL"].orEmpty()
+                out("- ${seq.name}: $source $url".trim())
             }
-            out("- ${SeqIO.Samples.CHROMATOGRAM_DEMO.name}: ${SeqIO.Samples.CHROMATOGRAM_DEMO.source}")
-            out("- alignment_demo: ${SeqIO.Samples.ALIGNMENT_DEMO_SOURCE}")
             return
         }
         val seq = SeqIO.Samples.ALL.firstOrNull { it.name.equals(requested, ignoreCase = true) }
@@ -1142,7 +1142,7 @@ object Cli {
 
         Examples
           instagene sample pBR322_NCBI --to genbank > pbr322.gb
-          instagene sample GFP_CDS > gfp.fa
+          instagene sample GFP_Aequorea_NCBI_reference > gfp.fa
           cat gfp.fa | instagene translate --stop-at-stop
           instagene digest --enzymes EcoRI,HindIII gfp.fa
           instagene plasmid --backbone puc19.gb --insert gfp.fa --enzymes EcoRI,HindIII -o pGFP.gb

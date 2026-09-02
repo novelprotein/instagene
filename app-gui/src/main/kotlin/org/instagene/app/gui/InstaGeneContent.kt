@@ -381,7 +381,7 @@ class InstaGeneContent(
         }
         featuresPanel = FeaturesPanel(initial, prefs) { start, end -> sequenceView.revealRange(start, end) }
         primersPanel = PrimersPanel(initial, prefs)
-        infoPanel = InfoPanel(initial) { openFile() }
+        infoPanel = InfoPanel(initial, { openFile() }, ncbiClient)
         libraryPanel = LibraryPanel(prefs, initial, sequenceView) { seq ->
             openSequence(seq)
             toolTabs.selectedIndex = toolTabs.indexOfTab("Sequence")
@@ -581,23 +581,10 @@ class InstaGeneContent(
         return doc
     }
 
-    /** Opens a self-contained tutorial input without downloading or creating files. */
+    /** Opens a complete bundled source record without downloading or creating files. */
     private fun openBundledExample(example: WelcomeExample) {
-        when (example) {
-            WelcomeExample.PLASMID -> openSequence(SeqIO.Samples.PLASMID_DEMO)
-            WelcomeExample.REAL_PLASMID -> openSequence(SeqIO.Samples.PBR322_NCBI)
-            WelcomeExample.GENE -> openSequence(SeqIO.Samples.GFP_CDS)
-            WelcomeExample.CHROMATOGRAM -> {
-                val record = SeqIO.Samples.CHROMATOGRAM_DEMO
-                ensureSequenceWorkspace(record.toSeq())
-                analysisPanel.showChromatogram(record)
-            }
-            WelcomeExample.ALIGNMENT -> {
-                val alignment = SeqIO.Samples.ALIGNMENT_DEMO
-                ensureSequenceWorkspace(alignment.first())
-                analysisPanel.showAlignment(alignment)
-            }
-        }
+        SeqIO.Samples.ALL.firstOrNull { it.name.equals(example.sampleName, ignoreCase = true) }
+            ?.let(::openSequence)
     }
 
     /** Opens one or more researcher files or an InstaGene project folder. */

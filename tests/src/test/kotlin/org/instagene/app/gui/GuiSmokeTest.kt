@@ -12,8 +12,8 @@ import org.instagene.core.Enzymes
 import org.instagene.core.Feature
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
+import org.instagene.core.TestSequenceFixtures
 import org.instagene.core.Topology
-import org.instagene.core.io.SeqIO
 import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.app.gui.tool.DigestPanel
 import org.instagene.app.gui.tool.FeaturesPanel
@@ -219,7 +219,7 @@ class GuiSmokeTest {
     @Test
     fun digestAndPlasmidPanelsConstructAndPaint() {
         onEdt {
-            val doc = SeqDocument(SeqIO.Samples.PUC19_MCS)
+            val doc = SeqDocument(TestSequenceFixtures.restrictionBackbone)
             val digest = DigestPanel(doc, onExtractFragment = {}, onReveal = { _, _ -> })
             val map = PlasmidMapPanel(doc)
             doc.setMappedEnzymes(listOf(Enzymes.require("EcoRI")))
@@ -234,7 +234,7 @@ class GuiSmokeTest {
     @Test
     fun statusBarAndMenusConstruct() {
         onEdt {
-            val doc = SeqDocument(SeqIO.Samples.GFP_CDS)
+            val doc = SeqDocument(TestSequenceFixtures.sourceGfpCds)
             val view = SequenceView(doc)
             val digest = DigestPanel(doc, {}, { _, _ -> })
 

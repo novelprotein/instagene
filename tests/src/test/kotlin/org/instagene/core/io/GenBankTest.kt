@@ -235,6 +235,40 @@ class GenBankTest {
     }
 
     @Test
+    fun locusDivisionAndDateArePreservedWhenPresent() {
+        val gb = """
+            LOCUS       source                   4 bp    DNA     linear   CON 02-FEB-2026
+            DEFINITION  referenced sequence
+            ORIGIN
+                     1 acgt
+            //
+        """.trimIndent()
+
+        val parsed = GenBank.parse(gb)
+        assertEquals("CON", parsed.recordMetadata.locusDivision)
+        assertTrue(parsed.recordMetadata.modifiedAt != null, parsed.recordMetadata.toString())
+        val exportedLocus = GenBank.write(parsed).lineSequence().first()
+        assertTrue(exportedLocus.contains("CON 02-FEB-2026"), exportedLocus)
+    }
+
+    @Test
+    fun newRecordsDoNotReceiveSourceOrSyntheticDefaults() {
+        val text = GenBank.write(Seq(name = "new-record", bases = "ACGT"))
+        val locus = text.lineSequence().first()
+
+        assertFalse(text.contains("InstaGene"))
+        assertFalse(text.contains("synthetic construct"))
+        assertFalse(locus.contains(" SYN "))
+        assertFalse(locus.contains("01-JAN-1980"))
+
+        val parsed = GenBank.parse(text)
+        assertEquals(null, parsed.recordMetadata.source)
+        assertEquals(null, parsed.recordMetadata.organism)
+        assertEquals(null, parsed.recordMetadata.locusDivision)
+        assertEquals(null, parsed.recordMetadata.modifiedAt)
+    }
+
+    @Test
     fun featuresBeyondLengthAreClipped() {
         val gb = """
             LOCUS       short                     6 bp    DNA     linear

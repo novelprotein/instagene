@@ -22,6 +22,15 @@ data class NcbiHit(
     val moleculeType: String = "",
 )
 
+/** Publication metadata resolved from a PubMed record. */
+data class NcbiPublication(
+    val pubMed: String,
+    val title: String = "",
+    val authors: String = "",
+    val journal: String = "",
+    val sourceUrl: String = NcbiClient.pubMedUrl(pubMed),
+)
+
 data class NcbiSearchResult(
     val hits: List<NcbiHit>,
     val rawXml: String,
@@ -179,6 +188,28 @@ class NcbiClient(
         ), accession, listOf(genBankResponse.provenance, fastaResponse.provenance))
     }
 
+    /** Resolves bibliographic fields for a PubMed identifier through ESummary. */
+    fun fetchPublication(pubMed: String): NcbiPublication {
+        val id = pubMed.trim()
+        require(id.matches(Regex("\\d+"))) { "Invalid PubMed identifier" }
+        val response = getFetched(
+            "$baseUrl/esummary.fcgi?db=pubmed&retmode=json&id=${encode(id)}",
+            cacheable = true,
+        )
+        val result = json.parseToJsonElement(response.body).jsonObject["result"]?.jsonObject
+            ?: error("NCBI publication response did not contain result")
+        val record = result[id] as? JsonObject ?: error("PubMed record $id was not found")
+        val authors = record["authors"]?.jsonArray.orEmpty().mapNotNull { item ->
+            (item as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull
+        }.joinToString(", ")
+        return NcbiPublication(
+            pubMed = id,
+            title = record.string("title").orEmpty(),
+            authors = authors,
+            journal = record.string("fulljournalname") ?: record.string("source").orEmpty(),
+        )
+    }
+
     /** Submits a nucleotide BLAST search against an NCBI nucleotide database. */
     fun submitBlastN(
         seq: Seq,
@@ -327,5 +358,28 @@ class NcbiClient(
         private val RTOE_PATTERN = Regex("(?im)^\\s*RTOE\\s*=\\s*(\\d+)")
         private val STATUS_PATTERN = Regex("(?im)^\\s*Status\\s*=\\s*(\\S+)")
         private val RID_VALIDATE = Regex("[A-Za-z0-9_.-]+")
+
+        /** Canonical browser URL for a PubMed identifier. */
+        fun pubMedUrl(id: String): String = "https://pubmed.ncbi.nlm.nih.gov/${id.trim()}/"
+
+        /** Canonical browser URL for an NCBI nucleotide accession. */
+        fun nuccoreUrl(accession: String): String = "https://www.ncbi.nlm.nih.gov/nuccore/${accession.trim()}"
+
+        /** Extracts a PubMed ID from a PubMed URL, PMID label, or bare numeric ID. */
+        fun extractPubMedId(raw: String): String? {
+            val value = raw.trim()
+            Regex("(?i)pubmed\\.ncbi\\.nlm\\.nih\\.gov/(\\d+)").find(value)?.let { return it.groupValues[1] }
+            Regex("(?i)(?:www\\.)?ncbi\\.nlm\\.nih\\.gov/(?:pubmed|entrez/pubmed)/(\\d+)").find(value)?.let { return it.groupValues[1] }
+            Regex("(?i)^pmid\\s*[:#]?\\s*(\\d+)$").find(value)?.let { return it.groupValues[1] }
+            return value.takeIf { it.matches(Regex("\\d{4,9}")) }
+        }
+
+        /** Returns a canonical NCBI URL when the input identifies an NCBI record. */
+        fun canonicalReferenceUrl(raw: String): String {
+            val value = raw.trim()
+            extractPubMedId(value)?.let { return pubMedUrl(it) }
+            if (value.matches(Regex("(?i)[A-Z]{1,5}_?\\d+(?:\\.\\d+)?"))) return nuccoreUrl(value)
+            return value
+        }
     }
 }

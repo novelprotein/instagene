@@ -2,8 +2,9 @@ package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.core.Enzymes
+import org.instagene.core.MethylationSource
 import org.instagene.core.Seq
-import org.instagene.core.io.SeqIO
+import org.instagene.core.TestSequenceFixtures
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -120,12 +121,30 @@ class SeqDocumentTest {
 
     @Test
     fun enzymesRefreshCutSites() {
-        val doc = SeqDocument(SeqIO.Samples.PUC19_MCS)
+        val doc = SeqDocument(TestSequenceFixtures.restrictionBackbone)
         assertTrue(doc.cutSites.isEmpty())
         doc.addEnzyme(Enzymes.require("EcoRI"))
         assertEquals(1, doc.cutSites.size)
         doc.clearEnzymes()
         assertTrue(doc.cutSites.isEmpty())
+    }
+
+    @Test
+    fun enzymesRefreshUsingTheDocumentMethylationState() {
+        val doc = SeqDocument(Seq(name = "dpn", bases = "AAGATCAA"))
+        val dpnI = Enzymes.require("DpnI")
+        doc.setMappedEnzymes(listOf(dpnI))
+        assertEquals(1, doc.cutSites.size, "unknown methylation retains a potential site")
+
+        doc.mutate("set unmethylated") {
+            it.copy(molecule = it.molecule.withMethylation(false, null, null, MethylationSource.MANUAL))
+        }
+        assertTrue(doc.cutSites.isEmpty(), "unmethylated DpnI substrate must not cut")
+
+        doc.mutate("set methylated") {
+            it.copy(molecule = it.molecule.withMethylation(true, null, null, MethylationSource.MANUAL))
+        }
+        assertEquals(1, doc.cutSites.size, "methylated DpnI substrate must cut")
     }
 
     @Test

@@ -110,6 +110,27 @@ class NcbiClientTest {
     }
 
     @Test
+    fun resolvesPubMedReferenceMetadataAndBuildsCanonicalLinks() {
+        withServer { base ->
+            val client = NcbiClient(
+                http = HttpClient.newHttpClient(),
+                baseUrl = "$base/entrez/eutils",
+                blastBaseUrl = "$base/Blast.cgi",
+            )
+
+            val publication = client.fetchPublication("12345678")
+            assertEquals("12345678", publication.pubMed)
+            assertEquals("An example paper", publication.title)
+            assertEquals("Author One, Author Two", publication.authors)
+            assertEquals("Example Journal", publication.journal)
+            assertEquals("https://pubmed.ncbi.nlm.nih.gov/12345678/", publication.sourceUrl)
+            assertEquals("12345678", NcbiClient.extractPubMedId("PMID: 12345678"))
+            assertEquals("12345678", NcbiClient.extractPubMedId("https://www.ncbi.nlm.nih.gov/pubmed/12345678"))
+            assertEquals("https://www.ncbi.nlm.nih.gov/nuccore/J01636.1", NcbiClient.canonicalReferenceUrl("J01636.1"))
+        }
+    }
+
+    @Test
     fun submitsPollsAndParsesBlastTabularResults() {
         withServer { base ->
             val client = NcbiClient(
@@ -180,7 +201,9 @@ class NcbiClientTest {
                 path.endsWith("/esearch.fcgi") ->
                     """{"header":{"type":"esearch"},"esearchresult":{"count":"1","idlist":["J01636.1"]}}"""
                 path.endsWith("/esummary.fcgi") ->
-                    if (numericSummary) {
+                    if (query.contains("db=pubmed")) {
+                        """{"result":{"uids":["12345678"],"12345678":{"uid":"12345678","title":"An example paper","fulljournalname":"Example Journal","authors":[{"name":"Author One"},{"name":"Author Two"}]}}}"""
+                    } else if (numericSummary) {
                         """{"result":{"uids":["12345"],"12345":{"uid":"12345","accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""
                     } else {
                         """{"result":{"uids":["J01636.1"],"J01636.1":{"accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""

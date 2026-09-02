@@ -9,6 +9,7 @@ import org.instagene.app.gui.theme.Palette
 import org.instagene.core.Feature
 import org.instagene.core.Enzymes
 import org.instagene.core.Seq
+import org.instagene.core.TestSequenceFixtures
 import org.instagene.core.Topology
 import org.instagene.core.io.SeqIO
 import java.awt.Color
@@ -927,7 +928,7 @@ class PlasmidMapPanelTest {
     @Test
     fun restrictionSiteToggleInvalidatesAndHidesTheMapLayer() {
         SwingUtilities.invokeAndWait {
-            val doc = SeqDocument(SeqIO.Samples.PUC19_MCS)
+            val doc = SeqDocument(TestSequenceFixtures.restrictionBackbone)
             doc.addEnzyme(Enzymes.require("EcoRI"))
             val map = PlasmidMapPanel(doc)
             map.setSize(500, 500)

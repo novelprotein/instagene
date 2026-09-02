@@ -1,6 +1,5 @@
 package org.instagene.core
 
-import org.instagene.core.io.SeqIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -9,8 +8,8 @@ class WorkflowReplayTest {
 
     @Test
     fun replaysEveryBuiltInCloningOperationWithIdentityMatchedInputs() {
-        val backbone = SeqIO.Samples.PUC19_MCS.copy(topology = Topology.CIRCULAR)
-        val insert = SeqIO.Samples.GFP_CDS
+        val backbone = TestSequenceFixtures.restrictionBackbone.copy(topology = Topology.CIRCULAR)
+        val insert = TestSequenceFixtures.restrictionInsert
         assertReplays(
             CloningWorkflows.restriction(backbone, insert, listOf(Enzymes.require("EcoRI"), Enzymes.require("HindIII")), "pGFP"),
             listOf(backbone, insert),
@@ -60,11 +59,8 @@ class WorkflowReplayTest {
 
     @Test
     fun replaysPcrRestrictionCloningAndRestoresCapturedBackboneTopology() {
-        val backbone = SeqIO.Samples.PUC19_MCS.copy(topology = Topology.CIRCULAR)
-        val template = Seq(
-            "gfp_without_cloning_sites",
-            SeqIO.Samples.GFP_CDS.bases.removePrefix("GAATTC").removeSuffix("AAGCTT"),
-        )
+        val backbone = TestSequenceFixtures.restrictionBackbone.copy(topology = Topology.CIRCULAR)
+        val template = TestSequenceFixtures.insertTemplate
         val result = PcrCloningWorkflows.designAndClone(
             PcrCloningRequest(
                 backbone,

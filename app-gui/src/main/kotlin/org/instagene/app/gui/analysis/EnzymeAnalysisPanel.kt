@@ -5,6 +5,8 @@ import org.instagene.core.EnzymeAnalysis
 import org.instagene.core.EnzymeSetCatalog
 import org.instagene.core.Enzymes
 import org.instagene.core.MethylationProfile
+import org.instagene.core.MethylationSource
+import org.instagene.core.MethylationState
 import java.awt.BorderLayout
 import javax.swing.*
 
@@ -40,7 +42,19 @@ internal class EnzymeAnalysisPanel : BoundAnalysisPanel() {
             toolTipText = "Persist Dam/Dcm methylation on the current molecule for later restriction checks."
             addActionListener {
                 doc.mutate("update methylation state") { seq ->
-                    seq.copy(molecule = seq.molecule.copy(damMethylated = dam.isSelected, dcmMethylated = dcm.isSelected))
+                    val cpg = when (seq.molecule.cpgState) {
+                        MethylationState.METHYLATED -> true
+                        MethylationState.UNMETHYLATED -> false
+                        MethylationState.UNKNOWN -> null
+                    }
+                    seq.copy(
+                        molecule = seq.molecule.withMethylation(
+                            dam = dam.isSelected,
+                            dcm = dcm.isSelected,
+                            cpg = cpg,
+                            source = MethylationSource.MANUAL,
+                        ),
+                    )
                 }
             }
         }
@@ -54,8 +68,8 @@ internal class EnzymeAnalysisPanel : BoundAnalysisPanel() {
     }
 
     override fun refreshDocument() {
-        dam.isSelected = doc.seq.molecule.damMethylated
-        dcm.isSelected = doc.seq.molecule.dcmMethylated
+        dam.isSelected = doc.seq.molecule.damMethylated == true
+        dcm.isSelected = doc.seq.molecule.dcmMethylated == true
         updateScopeLabel()
     }
 

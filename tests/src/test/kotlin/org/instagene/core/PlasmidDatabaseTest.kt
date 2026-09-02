@@ -48,4 +48,14 @@ class PlasmidDatabaseTest {
         assertTrue(sequence.features.isNotEmpty())
         assertEquals("J01749.1", sequence.metadata["ONLINE_ACCESSION"])
     }
+
+    @Test
+    fun puc19DatabaseRecordUsesCompleteBundledReferenceSequence() {
+        val sequence = PlasmidDatabase.sequenceFor("pUC19")
+        assertNotNull(sequence)
+        assertEquals("pUC19_NCBI_reference", sequence.name)
+        assertEquals(2686, sequence.length)
+        assertEquals("M77789.2", sequence.metadata["ONLINE_ACCESSION"])
+        assertTrue(sequence.recordMetadata.references.isNotEmpty())
+    }
 }

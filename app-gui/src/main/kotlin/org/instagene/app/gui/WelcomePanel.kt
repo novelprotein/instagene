@@ -16,13 +16,12 @@ import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
 
-/** Bundled tutorial inputs available from the welcome screen. */
-enum class WelcomeExample(val label: String) {
-    PLASMID("Plasmid"),
-    REAL_PLASMID("Real plasmid"),
-    GENE("Gene"),
-    CHROMATOGRAM("Chromatogram"),
-    ALIGNMENT("Alignment"),
+/** Complete source records available from the welcome screen. */
+enum class WelcomeExample(val label: String, val sampleName: String) {
+    PBR322("pBR322 (J01749.1)", SeqIO.Samples.PBR322_NCBI.name),
+    PUC19("pUC19 (M77789.2)", SeqIO.Samples.PUC19_NCBI_REFERENCE.name),
+    PGFPUV("pGFPuv (U62636.1)", SeqIO.Samples.PGFPUV_NCBI_REFERENCE.name),
+    AEQUOREA_GFP("Aequorea GFP (L29345.1)", SeqIO.Samples.GFP_AEQUOREA_NCBI_REFERENCE.name),
 }
 
 /**
@@ -80,7 +79,7 @@ class WelcomePanel(
         examplesBox.isOpaque = false
         WelcomeExample.entries.forEach { example ->
             examplesBox.add(JButton(example.label).apply {
-                toolTipText = "Open the bundled ${example.label.lowercase()} example. ${example.sourceStatement()}"
+                toolTipText = "Open the complete source record ${example.label}. ${example.sourceStatement()}"
                 addActionListener { onOpenExample(example) }
             })
         }
@@ -129,7 +128,7 @@ class WelcomePanel(
     /** The "open recent project" buttons currently shown, most recent first. */
     fun recentProjectButtons(): List<JButton> = recentProjectsBox.components.filterIsInstance<JButton>()
 
-    /** Buttons for the four bundled tutorial inputs, in [WelcomeExample] order. */
+    /** Buttons for the bundled source records, in [WelcomeExample] order. */
     fun exampleButtons(): List<JButton> = examplesBox.components.filterIsInstance<JButton>()
 
     private fun rebuildRecents() {
@@ -174,10 +173,10 @@ class WelcomePanel(
     }
 }
 
-private fun WelcomeExample.sourceStatement(): String = when (this) {
-    WelcomeExample.PLASMID -> SeqIO.Samples.sourceFor(SeqIO.Samples.PLASMID_DEMO.name)
-    WelcomeExample.REAL_PLASMID -> SeqIO.Samples.sourceFor(SeqIO.Samples.PBR322_NCBI.name)
-    WelcomeExample.GENE -> SeqIO.Samples.sourceFor(SeqIO.Samples.GFP_CDS.name)
-    WelcomeExample.CHROMATOGRAM -> SeqIO.Samples.CHROMATOGRAM_DEMO.source
-    WelcomeExample.ALIGNMENT -> SeqIO.Samples.ALIGNMENT_DEMO_SOURCE
-}.orEmpty()
+private fun WelcomeExample.sourceStatement(): String {
+    val sample = SeqIO.Samples.ALL.firstOrNull { it.name.equals(sampleName, ignoreCase = true) }
+    return listOfNotNull(
+        sample?.metadata?.get(SeqIO.Samples.SOURCE_METADATA_KEY),
+        sample?.metadata?.get("ONLINE_URL"),
+    ).joinToString(" ")
+}

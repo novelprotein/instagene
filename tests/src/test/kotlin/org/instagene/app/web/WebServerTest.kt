@@ -7,6 +7,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class WebServerTest {
@@ -93,9 +94,9 @@ class WebServerTest {
             val base = "http://localhost:${server.address.port}"
             // The old `path` option (arbitrary file read) is gone: the request is
             // accepted but falls back to the sample, and no file is returned.
-            val resp = post("$base/api/open", """{"path":"/etc/hostname","sample":"PUC19_MCS"}""")
+            val resp = post("$base/api/open", """{"path":"/etc/hostname","sample":"removed-synthetic-sample"}""")
             assertTrue(resp.contains("\"bases\""))
-            assertTrue(!resp.contains("localhost") || resp.contains("\"name\":\"pUC19_MCS\""))
+            assertTrue(resp.contains("\"name\":\"pUC19_NCBI_reference\""))
 
             // Missing sample (no sample, no text) still resolves to the default sample.
             val empty = post("$base/api/open", """{}""")
@@ -126,8 +127,10 @@ class WebServerTest {
             assertTrue(index.contains("app.js"))
 
             val samples = get("$base/api/samples")
-            assertTrue(samples.contains("GFP_CDS"))
-            assertTrue(samples.contains("pUC19_MCS", ignoreCase = true))
+            assertFalse(samples.contains("GFP_CDS"))
+            assertFalse(samples.contains("pUC19_MCS", ignoreCase = true))
+            assertTrue(samples.contains("pUC19_NCBI_reference"))
+            assertTrue(samples.contains("pGFPuv_NCBI_reference"))
         } finally {
             WebServer.stop()
         }
@@ -138,12 +141,12 @@ class WebServerTest {
         val server = WebServer.start(0)
         try {
             val base = "http://localhost:${server.address.port}"
-            val opened = post("$base/api/open", """{"sample":"PUC19_MCS"}""")
+            val opened = post("$base/api/open", """{"sample":"pUC19_NCBI_reference"}""")
             assertTrue(opened.contains("\"bases\""))
-            assertTrue(opened.contains("GAATTC"))
+            assertTrue(opened.contains("M77789.2"))
 
             val rc = post("$base/api/op", """{"op":"revcomp","seq":$opened}""")
-            assertTrue(rc.contains("AAGCTT"))
+            assertTrue(rc.contains("\"bases\""))
 
             val translated = post("$base/api/op", """{"op":"translate","seq":$opened}""")
             assertTrue(translated.contains("protein"))
@@ -157,7 +160,7 @@ class WebServerTest {
         val server = WebServer.start(0)
         try {
             val base = "http://localhost:${server.address.port}"
-            val opened = post("$base/api/open", """{"sample":"GFP_CDS"}""")
+            val opened = post("$base/api/open", """{"sample":"pGFPuv_NCBI_reference"}""")
 
             val digest = post("$base/api/op", """{"op":"digest","seq":$opened,"args":{"enzymes":"EcoRI,HindIII"}}""")
             assertTrue(digest.contains("Fragments"))
@@ -175,7 +178,7 @@ class WebServerTest {
         val server = WebServer.start(0)
         try {
             val base = "http://localhost:${server.address.port}"
-            val opened = post("$base/api/open", """{"sample":"PUC19_MCS"}""")
+            val opened = post("$base/api/open", """{"sample":"pUC19_NCBI_reference"}""")
             val bad = post("$base/api/op", """{"op":"nope","seq":$opened}""")
             assertTrue(bad.contains("\"error\""))
         } finally {

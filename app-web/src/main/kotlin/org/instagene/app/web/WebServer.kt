@@ -130,7 +130,7 @@ object WebServer {
         val seq = when {
             !req.text.isNullOrBlank() -> SeqIO.parse(req.text, "pasted")
             else -> SeqIO.Samples.ALL.firstOrNull { it.name.equals(req.sample, ignoreCase = true) }
-                ?: SeqIO.Samples.PUC19_MCS
+                ?: SeqIO.Samples.PUC19_NCBI_REFERENCE
         }
         respondJson(exchange, 200, json.encodeToString(seq))
     }
