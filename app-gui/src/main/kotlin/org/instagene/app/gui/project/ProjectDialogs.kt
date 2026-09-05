@@ -366,6 +366,7 @@ class BatchOperationPanel(
         damMethylated = dam.isSelected,
         dcmMethylated = dcm.isSelected,
         cpgMethylated = cpg.isSelected,
+        methylationSource = org.instagene.core.MethylationSource.MANUAL,
         fivePrimePhosphorylated = fivePrime.isSelected,
         threePrimePhosphorylated = threePrime.isSelected,
     )

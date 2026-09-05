@@ -25,6 +25,7 @@ object HostMethylationInferenceRules {
 
     private val damDcmPositive = setOf(
         "dh5alpha", "dh5a", "top10", "xl1blue", "jm109", "bl21", "bl21de3", "stbl3",
+        "neb5alpha", "rosetta", "rosettade3",
     )
     private val damDcmNegative = setOf(
         "jm110", "scs110", "gm2163", "er1821",
@@ -34,7 +35,9 @@ object HostMethylationInferenceRules {
         val normalizedType = hostType.orEmpty().normalizeHostText()
         val normalizedStrain = strain.orEmpty().normalizeHostText()
         val typeKey = normalizedType.compactHostText()
-        if (typeKey != "bacterial" && typeKey != "ecoli" && typeKey != "escherichiacoli") {
+        val strainKey = normalizedStrain.compactHostText()
+        val knownBacterialStrain = strainKey in damDcmPositive || strainKey in damDcmNegative
+        if (!knownBacterialStrain && typeKey != "bacterial" && typeKey != "ecoli" && typeKey != "escherichiacoli") {
             return HostMethylationInference(MethylationProfile.unknown(), null)
         }
         if (normalizedStrain.contains("dam-") || normalizedStrain.contains("dam negative")) {
@@ -43,7 +46,6 @@ object HostMethylationInferenceRules {
         if (normalizedStrain.contains("dcm-") || normalizedStrain.contains("dcm negative")) {
             return HostMethylationInference(MethylationProfile(dam = false, dcm = false, cpg = null), strain)
         }
-        val strainKey = normalizedStrain.compactHostText()
         return when {
             strainKey in damDcmPositive -> HostMethylationInference(
                 MethylationProfile(dam = true, dcm = true, cpg = null), strain,

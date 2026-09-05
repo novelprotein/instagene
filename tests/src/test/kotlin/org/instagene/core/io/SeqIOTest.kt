@@ -1,7 +1,10 @@
 package org.instagene.core.io
 
 import org.instagene.core.Feature
+import org.instagene.core.MethylationProfile
+import org.instagene.core.MethylationSource
 import org.instagene.core.Seq
+import org.instagene.core.SequenceOrigin
 import org.instagene.core.SeqKind
 import org.instagene.core.Topology
 import java.io.File
@@ -75,6 +78,46 @@ class SeqIOTest {
         assertTrue(SeqIO.Samples.ALL.all { it.recordMetadata.author.orEmpty().isNotBlank() })
         assertFalse(SeqIO.Samples.ALL.any { it.name.contains("synthetic", ignoreCase = true) })
         assertFalse(SeqIO.Samples.ALL.any { it.name.contains("demo", ignoreCase = true) })
+    }
+
+    @Test
+    fun bundledExamplesExposeInferredClassHostAndOrigin() {
+        val pbr322 = SeqIO.Samples.PBR322_NCBI
+        val puc19 = SeqIO.Samples.PUC19_NCBI_REFERENCE
+        val pgfpUv = SeqIO.Samples.PGFPUV_NCBI_REFERENCE
+        val gfp = SeqIO.Samples.GFP_AEQUOREA_NCBI_REFERENCE
+
+        listOf(pbr322, puc19, pgfpUv).forEach { sample ->
+            assertEquals("Plasmid or vector", sample.recordMetadata.nucleicAcidCategory, sample.name)
+            assertEquals("Bacterial", sample.recordMetadata.labHostType, sample.name)
+            assertEquals("E. coli", sample.recordMetadata.hostStrain, sample.name)
+            assertEquals(SequenceOrigin.SYNTHETIC, sample.recordMetadata.origin, sample.name)
+            assertEquals("inferred", sample.metadata["INFERENCE_STATUS"], sample.name)
+        }
+
+        assertEquals("mRNA or transcript", gfp.recordMetadata.nucleicAcidCategory)
+        assertEquals(null, gfp.recordMetadata.hostStrain)
+        assertEquals(SequenceOrigin.NATURAL, gfp.recordMetadata.origin)
+    }
+
+    @Test
+    fun bundledExamplesExposeConservativeMethylationInference() {
+        listOf(
+            SeqIO.Samples.PBR322_NCBI,
+            SeqIO.Samples.PUC19_NCBI_REFERENCE,
+            SeqIO.Samples.PGFPUV_NCBI_REFERENCE,
+        ).forEach { sample ->
+            assertEquals(MethylationSource.INFERRED, sample.molecule.methylationSource, sample.name)
+            assertEquals(
+                MethylationProfile(dam = true, dcm = true, cpg = null),
+                MethylationProfile.from(sample.molecule),
+                sample.name,
+            )
+        }
+
+        val gfp = SeqIO.Samples.GFP_AEQUOREA_NCBI_REFERENCE
+        assertEquals(MethylationSource.UNKNOWN, gfp.molecule.methylationSource)
+        assertEquals(MethylationProfile.unknown(), MethylationProfile.from(gfp.molecule))
     }
 
     @Test
@@ -223,6 +266,8 @@ class SeqIOTest {
             assertEquals(original.recordMetadata.locusDivision, restored.recordMetadata.locusDivision)
             assertEquals(original.metadata["VERSION"], restored.metadata["VERSION"])
             assertEquals(original.metadata[SeqIO.Samples.SOURCE_METADATA_KEY], restored.metadata[SeqIO.Samples.SOURCE_METADATA_KEY])
+            assertEquals(original.molecule.methylationSource, restored.molecule.methylationSource)
+            assertEquals(MethylationProfile.from(original.molecule), MethylationProfile.from(restored.molecule))
         }
     }
 

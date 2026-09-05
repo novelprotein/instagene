@@ -58,6 +58,7 @@ class PrefsStoreTest {
             selectedEnzymes = listOf("EcoRI"),
             primerDefaultTm = 62.5,
             activeTab = 3,
+            hostStrainSuggestions = listOf("My local host", "DH5α"),
             analysisDefaults = AnalysisDefaults(
                 lastTool = "Repeats / Dot Plot",
                 alignmentAlgorithm = "MAFFT",
@@ -119,6 +120,7 @@ class PrefsStoreTest {
         assertEquals(15, reloaded.analysisDefaults.repeatWordSize)
         assertTrue(!reloaded.analysisDefaults.repeatIncludeInverted)
         assertEquals("CACHE_ONLY", reloaded.onlineCacheMode)
+        assertEquals(listOf("My local host", "DH5α"), reloaded.hostStrainSuggestions)
     }
 
     @Test

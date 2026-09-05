@@ -381,7 +381,7 @@ class InstaGeneContent(
         }
         featuresPanel = FeaturesPanel(initial, prefs) { start, end -> sequenceView.revealRange(start, end) }
         primersPanel = PrimersPanel(initial, prefs)
-        infoPanel = InfoPanel(initial, { openFile() }, ncbiClient)
+        infoPanel = InfoPanel(initial, { openFile() }, ncbiClient, prefs = prefs)
         libraryPanel = LibraryPanel(prefs, initial, sequenceView) { seq ->
             openSequence(seq)
             toolTabs.selectedIndex = toolTabs.indexOfTab("Sequence")

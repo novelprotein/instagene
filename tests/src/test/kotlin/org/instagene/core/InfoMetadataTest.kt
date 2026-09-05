@@ -57,6 +57,10 @@ class InfoMetadataTest {
         assertEquals(true, positive.profile.dcm)
         assertEquals("DH5α", positive.matchedHost)
 
+        val strainOnly = HostMethylationInferenceRules.infer(null, "DH5α")
+        assertEquals(true, strainOnly.profile.dam)
+        assertEquals(true, strainOnly.profile.dcm)
+
         val negative = HostMethylationInferenceRules.infer("Bacterial", "JM110")
         assertEquals(false, negative.profile.dam)
         assertEquals(false, negative.profile.dcm)
@@ -184,6 +188,24 @@ class InfoMetadataTest {
             assertEquals(MethylationState.UNKNOWN, restored.molecule.damState)
             assertEquals(MethylationState.UNKNOWN, restored.molecule.dcmState)
             assertEquals(MethylationState.UNKNOWN, restored.molecule.cpgState)
+        }
+
+        @Test
+        fun explicitMethylationWithoutSourceIsMarkedImported() {
+            val original = Seq(
+                name = "imported-chemistry",
+                bases = "AAGATCAA",
+                molecule = MoleculeProperties(
+                    damMethylated = true,
+                    dcmMethylated = false,
+                    cpgMethylated = true,
+                    methylationSource = MethylationSource.UNKNOWN,
+                ),
+            )
+            val genBank = GenBank.write(original).replace("IG_MSRC", "IG_NO_SRC")
+            val embl = Embl.write(original).replace("IG_METHYL_SRC", "IG_NO_SRC")
+            assertEquals(MethylationSource.IMPORTED, GenBank.parse(genBank).molecule.methylationSource)
+            assertEquals(MethylationSource.IMPORTED, Embl.parse(embl).molecule.methylationSource)
         }
 
         val dpnI = Enzymes.require("DpnI")

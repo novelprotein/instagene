@@ -27,7 +27,7 @@ enum class MethylationState {
 
 /** How the current methylation values were selected. */
 @Serializable
-enum class MethylationSource { UNKNOWN, INFERRED, MANUAL }
+enum class MethylationSource { UNKNOWN, IMPORTED, INFERRED, MANUAL }
 
 /** Persisted molecule chemistry used to validate restriction and cloning workflows. */
 @Serializable

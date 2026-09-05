@@ -1013,23 +1013,19 @@ class GuiSmokeTest {
     }
 
     @Test
-    fun infoPanelOffersOpenButtonUntilAFileIsLoaded() {
+    fun infoPanelOmitsFileSectionAndLeavesFileOpeningToTheFileMenu() {
         onEdt {
             var opened = 0
             val doc = SeqDocument(Seq(bases = "ACGT"))
             val panel = InfoPanel(doc) { opened++ }
 
-            // No file yet: the Open File button is the File-row affordance.
-            assertTrue(panel.openFileButton.isVisible)
+            // The Info tab no longer owns file navigation or file metadata.
+            assertFalse(panel.openFileButton.isVisible)
             assertFalse(panel.fileLabel.isVisible)
-            panel.openFileButton.doClick()
-            assertEquals(1, opened)
-
-            // Once a file is present, the path shows and the button disappears.
             doc.file = File("/tmp/example.fasta")
             assertFalse(panel.openFileButton.isVisible)
-            assertTrue(panel.fileLabel.isVisible)
-            assertEquals("/tmp/example.fasta", panel.fileLabel.text)
+            assertFalse(panel.fileLabel.isVisible)
+            assertEquals(0, opened)
         }
     }
 

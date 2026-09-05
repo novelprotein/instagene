@@ -109,6 +109,8 @@ data class UserPrefs(
     val activeTab: Int = 0,
     val library: List<SavedItem> = emptyList(),
     val featureLibrary: List<SavedFeatureDefinition> = emptyList(),
+    /** Recently used host strains shown by the Info panel's local suggestion list. */
+    val hostStrainSuggestions: List<String> = emptyList(),
     val theme: String = "FlatDarculaLaf",
     val fileBrowserVisible: Boolean = true,
     /** ApE-compatible display and analysis defaults. */

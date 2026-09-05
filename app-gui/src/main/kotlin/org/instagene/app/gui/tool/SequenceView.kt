@@ -736,8 +736,9 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
             e.keyCode == KeyEvent.VK_BACK_SPACE -> {
                 if (doc.hasSelection) deleteSelection() else if (doc.caret > 0) {
                     val at = doc.caret
-                    doc.mutate("delete base") { it.deleteRange(at - 1, at) }
-                    doc.moveCaret(at - 1)
+                    if (doc.mutate("delete base") { it.deleteRange(at - 1, at) }) {
+                        doc.moveCaret(at - 1)
+                    }
                 }
             }
 

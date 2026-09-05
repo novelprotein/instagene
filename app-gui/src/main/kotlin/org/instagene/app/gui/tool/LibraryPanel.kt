@@ -50,6 +50,7 @@ class LibraryPanel(
 
     /** The document used as the insertion and source-jump context. */
     private var doc = initial
+    private var docListener: SeqDocument.Listener? = null
 
     private val libraryModel = LibraryTableModel()
     val libraryTable = JTable(libraryModel)
@@ -85,6 +86,12 @@ class LibraryPanel(
             updateActionState()
         }
 
+        val listener = SeqDocument.Listener { _, reason ->
+            if (reason == SeqDocument.Reason.SEQUENCE || reason == SeqDocument.Reason.EDITABILITY) updateActionState()
+        }
+        docListener = listener
+        doc.addListener(listener)
+
         add(buildHeader(), BorderLayout.NORTH)
         add(JScrollPane(libraryTable), BorderLayout.CENTER)
         add(buildActions(), BorderLayout.SOUTH)
@@ -94,7 +101,9 @@ class LibraryPanel(
     /** Binds this panel to another document. */
     fun bindDocument(newDoc: SeqDocument) {
         if (newDoc === doc) return
+        docListener?.let { doc.removeListener(it) }
         doc = newDoc
+        docListener?.let { doc.addListener(it) }
         sequenceView.bindDocument(newDoc)
         updateActionState()
     }
@@ -128,7 +137,7 @@ class LibraryPanel(
     private fun updateActionState() {
         val item = prefs.value.library.getOrNull(libraryTable.selectedRow)
         val hasRow = item != null
-        insertButton.isEnabled = hasRow && doc.seq.kind != SeqKind.PROTEIN
+        insertButton.isEnabled = hasRow && doc.seq.kind != SeqKind.PROTEIN && !doc.sequenceEditingLocked
         copyButton.isEnabled = hasRow
         openButton.isEnabled = hasRow
         jumpButton.isEnabled = item?.context?.sourceName?.isNotBlank() == true
@@ -171,7 +180,7 @@ class LibraryPanel(
         add(ContextMenus.item(
             "Insert at caret",
             "Insert this item's sequence into the active nucleotide document.",
-            hasRow && doc.seq.kind != SeqKind.PROTEIN,
+            hasRow && doc.seq.kind != SeqKind.PROTEIN && !doc.sequenceEditingLocked,
         ) { insertSelected(row ?: -1) })
         add(ContextMenus.item(
             "Copy sequence",
@@ -214,9 +223,9 @@ class LibraryPanel(
         val start = doc.selectionStart
         val end = doc.selectionEnd
         if (item.kind != SavedKind.FEATURE) {
-            doc.mutate("insert library item") { seq ->
+            if (!doc.mutate("insert library item") { seq ->
                 if (end > start) seq.replaceRange(start, end, bases) else seq.insertAt(start, bases)
-            }
+            }) return
             doc.moveCaret(start + bases.length)
             return
         }
@@ -231,14 +240,14 @@ class LibraryPanel(
             notes = item.description,
             qualifiers = metadata.qualifiers,
         )
-        doc.mutate("insert library feature") { seq ->
+        if (!doc.mutate("insert library feature") { seq ->
             val inserted = if (end > start) {
                 seq.replaceRange(start, end, bases)
             } else {
                 seq.insertAt(start, bases)
             }
             inserted.withFeature(annotation)
-        }
+        }) return
         doc.moveCaret(start + bases.length)
     }
 

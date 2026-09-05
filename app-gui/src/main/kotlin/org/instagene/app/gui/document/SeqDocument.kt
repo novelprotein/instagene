@@ -22,8 +22,8 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         fun documentChanged(doc: SeqDocument, reason: Reason)
     }
 
-    /** What changed in the document: the sequence, the selection, or the mapped enzymes. */
-    enum class Reason { SEQUENCE, SELECTION, ENZYMES }
+    /** What changed in the document: the sequence, the selection, mapped enzymes, or editability. */
+    enum class Reason { SEQUENCE, SELECTION, ENZYMES, EDITABILITY }
 
     var seq: Seq = initial
         private set
@@ -35,6 +35,10 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         }
 
     override var isDirty: Boolean = false
+        private set
+
+    /** True when base-changing edits are temporarily blocked by the Info tab safety lock. */
+    var sequenceEditingLocked: Boolean = false
         private set
 
     /** The name shown on the document tab and in the window title. */
@@ -133,11 +137,18 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
 
     // --------------------------------------------------------------- mutation
 
-    /** Applies [transform], recording an undo entry labelled [label]. */
-    fun mutate(label: String, transform: (Seq) -> Seq) {
+    /**
+     * Applies [transform], recording an undo entry labelled [label]. Base-changing transforms
+     * are rejected while [sequenceEditingLocked] is enabled; metadata and annotation changes
+     * remain available in that mode.
+     *
+     * @return true when the document changed, false when the transform was a no-op or blocked.
+     */
+    fun mutate(label: String, transform: (Seq) -> Seq): Boolean {
         val before = seq
         val transformed = transform(seq)
-        if (transformed == seq) return
+        if (transformed == seq) return false
+        if (sequenceEditingLocked && transformed.bases != before.bases) return false
         val next = transformed.withRecordDates(createdAt = before.recordMetadata.createdAt, modifiedAt = System.currentTimeMillis())
         undoStack.addLast(label to seq)
         while (undoStack.size > historyLimit) undoStack.removeFirst()
@@ -149,6 +160,14 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         refreshCutSites()
         notify(Reason.SEQUENCE)
         fireEdit(EditKind.EDIT, label, changeDetail(before, next))
+        return true
+    }
+
+    /** Changes the temporary base-edit safety lock without recording an edit or dirtying the document. */
+    fun setSequenceEditingLocked(locked: Boolean) {
+        if (sequenceEditingLocked == locked) return
+        sequenceEditingLocked = locked
+        notify(Reason.EDITABILITY)
     }
 
     /** Replaces the sequence outright (file load, format change) and clears history. */
@@ -156,6 +175,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         undoStack.clear()
         redoStack.clear()
         seq = next
+        sequenceEditingLocked = false
         recentChangeRange = null
         savedSeq = seq
         file = newFile
@@ -175,14 +195,16 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         fireEdit(if (savedAs) EditKind.SAVE_AS else EditKind.SAVE, null, null)
     }
 
-    fun canUndo(): Boolean = undoStack.isNotEmpty()
-    fun canRedo(): Boolean = redoStack.isNotEmpty()
+    fun canUndo(): Boolean = undoStack.lastOrNull()?.let { !sequenceEditingLocked || it.second.bases == seq.bases } == true
+    fun canRedo(): Boolean = redoStack.lastOrNull()?.let { !sequenceEditingLocked || it.second.bases == seq.bases } == true
     fun undoLabel(): String? = undoStack.lastOrNull()?.first
     fun redoLabel(): String? = redoStack.lastOrNull()?.first
 
     /** Reverts the most recent [mutate], restoring the previous sequence. */
-    fun undo() {
-        val (label, previous) = undoStack.removeLastOrNull() ?: return
+    fun undo(): Boolean {
+        val entry = undoStack.lastOrNull() ?: return false
+        if (sequenceEditingLocked && entry.second.bases != seq.bases) return false
+        val (label, previous) = undoStack.removeLast()
         redoStack.addLast(label to seq)
         val before = seq
         seq = previous
@@ -192,11 +214,14 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         refreshCutSites()
         notify(Reason.SEQUENCE)
         fireEdit(EditKind.UNDO, label, changeDetail(before, previous))
+        return true
     }
 
     /** Re-applies the change most recently reverted by [undo]. */
-    fun redo() {
-        val (label, next) = redoStack.removeLastOrNull() ?: return
+    fun redo(): Boolean {
+        val entry = redoStack.lastOrNull() ?: return false
+        if (sequenceEditingLocked && entry.second.bases != seq.bases) return false
+        val (label, next) = redoStack.removeLast()
         undoStack.addLast(label to seq)
         val before = seq
         seq = next
@@ -206,6 +231,7 @@ class SeqDocument(initial: Seq, file: File? = null) : Doc {
         refreshCutSites()
         notify(Reason.SEQUENCE)
         fireEdit(EditKind.REDO, label, changeDetail(before, next))
+        return true
     }
 
     /** A short summary of what changed between [before] and [after], for the edit history. */

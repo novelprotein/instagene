@@ -31,6 +31,14 @@ data class NcbiPublication(
     val sourceUrl: String = NcbiClient.pubMedUrl(pubMed),
 )
 
+/** Taxonomy metadata resolved from NCBI Taxonomy. */
+data class NcbiTaxonomy(
+    val taxId: String,
+    val scientificName: String,
+    val rank: String = "",
+    val lineage: List<String> = emptyList(),
+)
+
 data class NcbiSearchResult(
     val hits: List<NcbiHit>,
     val rawXml: String,
@@ -207,6 +215,30 @@ class NcbiClient(
             title = record.string("title").orEmpty(),
             authors = authors,
             journal = record.string("fulljournalname") ?: record.string("source").orEmpty(),
+        )
+    }
+
+    /** Resolves a scientific name or taxon identifier through NCBI Taxonomy. */
+    fun fetchTaxonomy(term: String): NcbiTaxonomy {
+        require(term.isNotBlank()) { "NCBI taxonomy term cannot be blank" }
+        val search = getFetched(
+            "$baseUrl/esearch.fcgi?db=taxonomy&retmode=json&retmax=1&term=${encode(term)}",
+            cacheable = true,
+        ).body
+        val ids = json.parseToJsonElement(search).jsonObject["esearchresult"]?.jsonObject
+            ?.get("idlist")?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull }
+        val taxId = ids.firstOrNull() ?: error("NCBI taxonomy record was not found for '$term'")
+        val summary = getFetched(
+            "$baseUrl/esummary.fcgi?db=taxonomy&retmode=json&id=${encode(taxId)}",
+            cacheable = true,
+        ).body
+        val record = json.parseToJsonElement(summary).jsonObject["result"]?.jsonObject
+            ?.get(taxId) as? JsonObject ?: error("NCBI taxonomy record $taxId was not found")
+        return NcbiTaxonomy(
+            taxId = taxId,
+            scientificName = record.string("scientificname") ?: record.string("scientificName") ?: term.trim(),
+            rank = record.string("rank").orEmpty(),
+            lineage = record.string("lineage")?.split(';')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty(),
         )
     }
 

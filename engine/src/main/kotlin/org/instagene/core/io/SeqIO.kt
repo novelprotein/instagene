@@ -2,6 +2,7 @@ package org.instagene.core.io
 
 import org.instagene.core.Alphabet
 import org.instagene.core.ChromatogramReader
+import org.instagene.core.ExampleMetadataInference
 import org.instagene.core.MoleculeProperties
 import org.instagene.core.Seq
 import org.instagene.core.SeqKind
@@ -390,7 +391,7 @@ object SeqIO {
             checksum: String,
         ): Seq {
             val record = parseResource(resource, name)
-            return record.copy(
+            return ExampleMetadataInference.apply(record.copy(
                 name = name,
                 metadata = record.metadata + mapOf(
                     SOURCE_METADATA_KEY to sourceStatement,
@@ -402,11 +403,12 @@ object SeqIO {
                     "ANNOTATION_SOURCE" to "Complete GenBank feature table from NCBI accession $accession",
                 ),
                 recordMetadata = record.recordMetadata.copy(
+                    createdAt = record.recordMetadata.createdAt ?: record.recordMetadata.modifiedAt,
                     references = record.recordMetadata.references.map { reference ->
                         reference.copy(sourceUrl = reference.sourceUrl ?: sourceUrl)
                     },
                 ).withResolvedAuthor(),
-            )
+            ))
         }
 
         private fun parsePbr322Resource(): Seq {

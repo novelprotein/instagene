@@ -320,6 +320,7 @@ object GenBank {
                 if (end > f.start) f.copy(end = end, locationMetadata = if (end == f.end) f.locationMetadata else null) else null
             }
         }
+        val methylationFieldsPresent = metadata.keys.any { it == "IG_DAM" || it == "IG_DCM" || it == "IG_CPG" }
         val molecule = MoleculeProperties(
             strandedness = metadata["IG_STRANDS"]?.let { runCatching { Strandedness.valueOf(it) }.getOrNull() }
                 ?: if (kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
@@ -328,13 +329,13 @@ object GenBank {
             cpgMethylated = metadata["IG_CPG"]?.toBooleanStrictOrNull() ?: false,
             methylationSource = (metadata["IG_METHYL_SRC"] ?: metadata["IG_MSRC"])?.let {
                 runCatching { MethylationSource.valueOf(it) }.getOrNull()
-            } ?: MethylationSource.UNKNOWN,
+            } ?: if (methylationFieldsPresent) MethylationSource.IMPORTED else MethylationSource.UNKNOWN,
             damStateOverride = metadata["IG_DAM"]?.takeIf { it.equals("unknown", true) }
                 ?.let { MethylationState.UNKNOWN },
             dcmStateOverride = metadata["IG_DCM"]?.takeIf { it.equals("unknown", true) }
                 ?.let { MethylationState.UNKNOWN },
             cpgStateOverride = metadata["IG_CPG"]?.takeIf { it.equals("unknown", true) }
-                ?.let { org.instagene.core.MethylationState.UNKNOWN },
+                ?.let { MethylationState.UNKNOWN },
             fivePrimePhosphorylated = metadata["IG_5P"]?.toBooleanStrictOrNull() ?: true,
             threePrimePhosphorylated = metadata["IG_3P"].toBoolean(),
         )

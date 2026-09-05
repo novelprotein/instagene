@@ -276,6 +276,7 @@ class DigestPanel(
                 }
                 SeqDocument.Reason.SELECTION -> updateScopeLabel()
                 SeqDocument.Reason.ENZYMES -> Unit
+                SeqDocument.Reason.EDITABILITY -> Unit
             }
         }
         docListener = initialListener
@@ -307,6 +308,7 @@ class DigestPanel(
                     }
                     SeqDocument.Reason.SELECTION -> updateScopeLabel()
                     SeqDocument.Reason.ENZYMES -> Unit
+                    SeqDocument.Reason.EDITABILITY -> Unit
                 }
             }
             docListener = listener

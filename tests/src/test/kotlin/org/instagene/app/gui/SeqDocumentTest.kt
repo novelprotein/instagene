@@ -193,4 +193,26 @@ class SeqDocumentTest {
         doc.undo()
         assertEquals("AACGGG", doc.seq.bases)
     }
+
+    @Test
+    fun sequenceLockBlocksBaseMutationsAndBaseUndoRedoButAllowsMetadata() {
+        val doc = SeqDocument(Seq(bases = "ACGT"))
+        doc.mutate("insert") { it.insertAt(0, "T") }
+        doc.setSequenceEditingLocked(true)
+
+        assertFalse(doc.canUndo())
+        assertFalse(doc.undo())
+        assertEquals("TACGT", doc.seq.bases)
+        assertFalse(doc.mutate("replace") { it.replaceRange(0, 1, "G") })
+        assertEquals("TACGT", doc.seq.bases)
+
+        assertTrue(doc.mutate("comment") { it.withComment("analysis note") })
+        assertTrue(doc.canUndo())
+        assertTrue(doc.undo())
+        assertEquals(emptyList(), doc.seq.recordMetadata.comments)
+
+        assertTrue(doc.canRedo())
+        assertTrue(doc.redo())
+        assertEquals(listOf("analysis note"), doc.seq.recordMetadata.comments)
+    }
 }

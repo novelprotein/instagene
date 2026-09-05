@@ -15,12 +15,13 @@ object SequenceEditService {
         val clean = clean(doc, text)
         if (clean.isEmpty()) return false
         val start = doc.selectionStart
-        if (doc.hasSelection) {
+        val changed = if (doc.hasSelection) {
             val end = doc.selectionEnd
             doc.mutate("replace ${end - start} bases") { it.replaceRange(start, end, clean) }
         } else {
             doc.mutate("insert ${clean.length} bases") { it.insertAt(start, clean) }
         }
+        if (!changed) return false
         doc.moveCaret(start + clean.length)
         return true
     }
@@ -29,7 +30,7 @@ object SequenceEditService {
         if (!doc.hasSelection) return false
         val start = doc.selectionStart
         val end = doc.selectionEnd
-        doc.mutate("delete ${end - start} bases") { it.deleteRange(start, end) }
+        if (!doc.mutate("delete ${end - start} bases") { it.deleteRange(start, end) }) return false
         doc.moveCaret(start)
         return true
     }
@@ -38,7 +39,7 @@ object SequenceEditService {
         if (!doc.hasSelection) return false
         val start = doc.selectionStart
         val end = doc.selectionEnd
-        doc.mutate("trim selection") { it.deleteRange(start, end) }
+        if (!doc.mutate("trim selection") { it.deleteRange(start, end) }) return false
         doc.moveCaret(start)
         return true
     }

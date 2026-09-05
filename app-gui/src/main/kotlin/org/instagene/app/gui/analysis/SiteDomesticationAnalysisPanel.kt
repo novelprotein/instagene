@@ -58,6 +58,10 @@ internal class SiteDomesticationAnalysisPanel : BoundAnalysisPanel() {
         if (enzymes.isEmpty()) { output.text = "Enter valid Golden Gate enzyme names."; return }
         runCatching {
             val result = SiteDomestication.domesticate(doc.seq, enzymes)
+            if (!doc.mutate("domesticate sites") { result.domesticated }) {
+                output.text = "Sequence editing is locked for this natural record. Unlock sequence editing to apply domestication."
+                return
+            }
             output.text = buildString {
                 appendLine("Domestication complete for ${doc.seq.name}")
                 appendLine("Enzymes: ${enzymes.joinToString { it.name }}")
@@ -66,7 +70,6 @@ internal class SiteDomesticationAnalysisPanel : BoundAnalysisPanel() {
                 appendLine()
                 appendLine("Apply the domesticated sequence? (sequence preview omitted for brevity)")
             }
-            doc.mutate("domesticate sites") { result.domesticated }
         }.onFailure { output.text = it.message ?: "Domestication failed" }
     }
 }

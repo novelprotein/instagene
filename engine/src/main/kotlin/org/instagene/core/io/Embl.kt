@@ -173,6 +173,7 @@ object Embl {
             taxonomy = taxonomy,
             databaseReferences = databaseReferences,
         ).withResolvedAuthor()
+        val methylationFieldsPresent = metadata.keys.any { it == "IG_DAM" || it == "IG_DCM" || it == "IG_CPG" }
         val molecule = MoleculeProperties(
             strandedness = metadata["IG_STRANDS"]?.let { runCatching { org.instagene.core.Strandedness.valueOf(it) }.getOrNull() }
                 ?: if (kind == SeqKind.PROTEIN) org.instagene.core.Strandedness.SINGLE else org.instagene.core.Strandedness.DOUBLE,
@@ -181,7 +182,7 @@ object Embl {
             cpgMethylated = metadata["IG_CPG"]?.toBooleanStrictOrNull() ?: false,
             methylationSource = metadata["IG_METHYL_SRC"]?.let {
                 runCatching { MethylationSource.valueOf(it) }.getOrNull()
-            } ?: MethylationSource.UNKNOWN,
+            } ?: if (methylationFieldsPresent) MethylationSource.IMPORTED else MethylationSource.UNKNOWN,
             damStateOverride = metadata["IG_DAM"]?.takeIf { it.equals("unknown", true) }
                 ?.let { org.instagene.core.MethylationState.UNKNOWN },
             dcmStateOverride = metadata["IG_DCM"]?.takeIf { it.equals("unknown", true) }

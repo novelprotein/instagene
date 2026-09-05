@@ -1,15 +1,22 @@
 package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
+import org.instagene.app.gui.edit.SequenceEditService
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.tool.InfoPanel
 import org.instagene.core.MethylationState
+import org.instagene.core.MethylationSource
 import org.instagene.core.Seq
+import org.instagene.core.io.SeqIO
 import org.instagene.core.SequenceRecordMetadata
 import org.instagene.core.SequenceReference
 import org.instagene.core.SequenceOrigin
 import org.instagene.core.SequenceClassCatalog
 import java.net.URI
+import java.awt.event.FocusEvent
+import javax.swing.JComponent
 import javax.swing.SwingUtilities
+import javax.swing.border.TitledBorder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -54,8 +61,21 @@ class InfoPanelMetadataTest {
 
             assertEquals("", panel.authorField.text)
             assertEquals(0, panel.referencesTable.model.rowCount)
-            assertEquals("-", panel.ncbiSourceLabel.text)
+            assertEquals("", panel.ncbiSourceLabel.text)
             assertEquals(false, panel.openNcbiSourceButton.isEnabled)
+        }
+
+    }
+
+    @Test
+    fun infoPanelUsesResponsiveSizingWithoutExcessiveMargins() {
+        onEdt {
+            val panel = InfoPanel(SeqDocument(Seq(name = "sized", bases = "ACGT")))
+
+            assertTrue(panel.preferredSize.width <= 800)
+            assertTrue(panel.preferredSize.height <= 500)
+            assertTrue(panel.minimumSize.width < panel.preferredSize.width)
+            assertTrue(panel.minimumSize.height < panel.preferredSize.height)
         }
     }
 
@@ -86,7 +106,7 @@ class InfoPanelMetadataTest {
                 SeqDocument(Seq(name = "source", bases = "ACGT", metadata = mapOf("ONLINE_URL" to "https://example.org/record"))),
             )
 
-            assertEquals("-", panel.ncbiSourceLabel.text)
+            assertEquals("https://example.org/record", panel.ncbiSourceLabel.text)
             assertEquals(false, panel.openNcbiSourceButton.isEnabled)
         }
     }
@@ -112,14 +132,31 @@ class InfoPanelMetadataTest {
             assertEquals("Bacterial", document.seq.recordMetadata.labHostType)
             assertEquals("DH5α", document.seq.recordMetadata.hostStrain)
             assertEquals(SequenceOrigin.SYNTHETIC, document.seq.recordMetadata.origin)
-            assertEquals(true, document.seq.recordMetadata.originLocked)
+            assertEquals(false, document.seq.recordMetadata.originLocked)
             assertEquals(listOf("first comment", "second comment"), document.seq.recordMetadata.comments)
             assertEquals(listOf("10.1000/example"), document.seq.recordMetadata.freeformReferences)
             assertEquals(MethylationState.METHYLATED, document.seq.molecule.damState)
             assertEquals(MethylationState.METHYLATED, document.seq.molecule.dcmState)
             assertEquals(MethylationState.UNKNOWN, document.seq.molecule.cpgState)
+            assertEquals(MethylationSource.INFERRED, document.seq.molecule.methylationSource)
             assertNotNull(document.seq.recordMetadata.createdAt)
             assertNotNull(document.seq.recordMetadata.modifiedAt)
+        }
+    }
+
+    @Test
+    fun unknownHostClearsStaleMethylationInference() {
+        onEdt {
+            val panel = InfoPanel(SeqDocument(Seq(name = "record", bases = "AAGATCAA")))
+            panel.labHostTypeCombo.selectedItem = "Bacterial"
+            panel.hostStrainField.text = "DH5α"
+            panel.inferMethylationButton.doClick()
+            assertEquals(MethylationState.METHYLATED, panel.damMethylationCombo.selectedItem)
+
+            panel.hostStrainField.text = "unknown host"
+            panel.inferMethylationButton.doClick()
+            assertEquals(MethylationState.UNKNOWN, panel.damMethylationCombo.selectedItem)
+            assertEquals(MethylationState.UNKNOWN, panel.dcmMethylationCombo.selectedItem)
         }
     }
 
@@ -173,6 +210,134 @@ class InfoPanelMetadataTest {
     }
 
     @Test
+    fun infoPanelConsolidatesPropertiesAndReferencesAndKeepsOnlyRecordDates() {
+        onEdt {
+            val document = SeqDocument(Seq(name = "record", bases = "ACGT"))
+            val panel = InfoPanel(document)
+
+            val titles = titledPanels(panel)
+            assertTrue("Properties" in titles)
+            assertTrue("Record metadata" in titles)
+            assertTrue("Statistics" in titles)
+            assertTrue("References" in titles)
+            assertTrue("Methylation" !in titles)
+            assertTrue("Scientific references" !in titles)
+            assertTrue("File" !in titles)
+            assertTrue(panel.damMethylationCombo.isVisible)
+            assertTrue(panel.commentsArea.closestTitledPanel("Record metadata"))
+            assertTrue(!panel.commentsArea.closestTitledPanel("References"))
+            assertTrue(panel.freeformReferencesArea.closestTitledPanel("References"))
+            assertEquals("5′→3′ / 3′→5′; 5′ phosphorylated", panel.orientationAndEndChemistryLabel.text)
+            assertEquals("-", panel.createdDateLabel.text)
+            assertEquals("-", panel.modifiedDateLabel.text)
+            assertTrue(!panel.openFileButton.isVisible)
+            assertTrue(!panel.fileLabel.isVisible)
+        }
+    }
+
+    @Test
+    fun bundledExamplesExposeBothRecordDates() {
+        onEdt {
+            SeqIO.Samples.ALL.forEach { sample ->
+                val panel = InfoPanel(SeqDocument(sample))
+                assertTrue(panel.createdDateLabel.text != "-", sample.name)
+                assertTrue(panel.modifiedDateLabel.text != "-", sample.name)
+                assertNotNull(sample.recordMetadata.createdAt, sample.name)
+            }
+        }
+    }
+
+    @Test
+    fun infoPanelAppliesAndOpensEditableNcbiAccession() {
+        onEdt {
+            val document = SeqDocument(Seq(name = "record", bases = "ACGT"))
+            val opened = mutableListOf<URI>()
+            val panel = InfoPanel(document, {}, null, { opened += it }, {}, {}, Prefs())
+
+            panel.ncbiSourceField.text = "J01749.1"
+            assertTrue(panel.openNcbiSourceButton.isEnabled)
+            panel.openNcbiSourceButton.doClick()
+            panel.applyMetadataButton.doClick()
+
+            val expected = "https://www.ncbi.nlm.nih.gov/nuccore/J01749.1"
+            assertEquals(listOf(URI.create(expected)), opened)
+            assertEquals(expected, document.seq.metadata["ONLINE_URL"])
+            assertEquals("J01749.1", document.seq.metadata["ONLINE_ACCESSION"])
+
+            panel.ncbiSourceField.text = "https://example.org/not-ncbi"
+            panel.applyMetadataButton.doClick()
+            assertEquals(expected, document.seq.metadata["ONLINE_URL"])
+        }
+    }
+
+    @Test
+    fun hostSuggestionsIncludeCommonValuesAndRememberCustomStrains() {
+        onEdt {
+            val prefs = Prefs()
+            val document = SeqDocument(Seq(name = "record", bases = "ACGT"))
+            val panel = InfoPanel(document, {}, null, {}, {}, {}, prefs)
+
+            assertTrue((0 until panel.labHostTypeCombo.itemCount).map(panel.labHostTypeCombo::getItemAt).contains("Plant"))
+            assertTrue((0 until panel.hostStrainCombo.itemCount).map(panel.hostStrainCombo::getItemAt).contains("DH5α"))
+            assertTrue(panel.hostStrainCombo.itemCount > 5)
+            panel.hostStrainField.text = "My local host"
+            panel.hostStrainField.dispatchEvent(FocusEvent(panel.hostStrainField, FocusEvent.FOCUS_GAINED))
+            assertEquals("My local host", panel.hostStrainField.text)
+            panel.applyMetadataButton.doClick()
+
+            assertTrue(prefs.value.hostStrainSuggestions.contains("My local host"))
+            assertTrue((0 until panel.hostStrainCombo.itemCount).map(panel.hostStrainCombo::getItemAt).contains("My local host"))
+        }
+
+        @Test
+        fun focusingHostFieldRanksTaxonomyMatchedHostsInDropdown() {
+            onEdt {
+                val document = SeqDocument(
+                    Seq(
+                        name = "record",
+                        bases = "ACGT",
+                        recordMetadata = SequenceRecordMetadata(organism = "Escherichia coli"),
+                    ),
+                )
+                val panel = InfoPanel(document)
+
+                panel.hostStrainField.dispatchEvent(FocusEvent(panel.hostStrainField, FocusEvent.FOCUS_GAINED))
+
+                assertEquals("DH5α", panel.hostStrainCombo.getItemAt(1))
+            }
+        }
+    }
+
+    @Test
+    fun naturalSequenceLockBlocksBasesButAllowsMetadataAndAnnotations() {
+        onEdt {
+            val document = SeqDocument(
+                Seq(
+                    name = "natural",
+                    bases = "ACGT",
+                    recordMetadata = SequenceRecordMetadata(origin = SequenceOrigin.NATURAL),
+                ),
+            )
+            val panel = InfoPanel(document)
+
+            assertTrue(panel.originLockCheck.isVisible)
+            assertEquals(false, panel.originLockCheck.isSelected)
+            panel.originLockCheck.doClick()
+            assertTrue(document.sequenceEditingLocked)
+            assertEquals(false, SequenceEditService.insert(document, "A"))
+            assertEquals("ACGT", document.seq.bases)
+            assertTrue(document.mutate("add annotation") { it.withComment("annotated") })
+            assertEquals(listOf("annotated"), document.seq.recordMetadata.comments)
+
+            panel.originCombo.selectedItem = SequenceOrigin.SYNTHETIC
+            assertTrue(!panel.originLockCheck.isVisible)
+            assertTrue(!document.sequenceEditingLocked)
+            assertTrue(SequenceEditService.insert(document, "A"))
+            assertEquals("AACGT", document.seq.bases)
+        }
+    }
+
+    @Test
     fun copyAndApplyIdentityUseReliableInteractionSeamsAndDescriptionStartsCompact() {
         onEdt {
             val document = SeqDocument(Seq(name = "record", bases = "ACGT"))
@@ -214,5 +379,24 @@ class InfoPanelMetadataTest {
         failure?.let { throw it }
         @Suppress("UNCHECKED_CAST")
         return result as T
+    }
+
+    private fun titledPanels(root: JComponent): List<String> = buildList {
+        fun visit(component: java.awt.Component) {
+            val titled = (component as? JComponent)?.border as? TitledBorder
+            titled?.title?.let(::add)
+            if (component is java.awt.Container) component.components.forEach(::visit)
+        }
+        visit(root)
+    }
+
+    private fun JComponent.closestTitledPanel(title: String): Boolean {
+        var current: java.awt.Container? = this
+        while (current != null) {
+            val titled = (current as? JComponent)?.border as? TitledBorder
+            if (titled?.title == title) return true
+            current = current.parent
+        }
+        return false
     }
 }

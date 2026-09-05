@@ -128,6 +128,23 @@ class NcbiClientTest {
             assertEquals("12345678", NcbiClient.extractPubMedId("https://www.ncbi.nlm.nih.gov/pubmed/12345678"))
             assertEquals("https://www.ncbi.nlm.nih.gov/nuccore/J01636.1", NcbiClient.canonicalReferenceUrl("J01636.1"))
         }
+
+        @Test
+        fun resolvesNcbiTaxonomyLineage() {
+            withServer { base ->
+                val client = NcbiClient(
+                    http = HttpClient.newHttpClient(),
+                    baseUrl = "$base/entrez/eutils",
+                    blastBaseUrl = "$base/Blast.cgi",
+                )
+
+                val taxonomy = client.fetchTaxonomy("Escherichia coli")
+                assertEquals("562", taxonomy.taxId)
+                assertEquals("Escherichia coli", taxonomy.scientificName)
+                assertEquals("species", taxonomy.rank)
+                assertEquals(listOf("Bacteria", "Proteobacteria"), taxonomy.lineage)
+            }
+        }
     }
 
     @Test
@@ -199,10 +216,16 @@ class NcbiClientTest {
             val path = exchange.requestURI.path
             val body = when {
                 path.endsWith("/esearch.fcgi") ->
-                    """{"header":{"type":"esearch"},"esearchresult":{"count":"1","idlist":["J01636.1"]}}"""
+                    if (query.contains("db=taxonomy")) {
+                        """{"header":{"type":"esearch"},"esearchresult":{"count":"1","idlist":["562"]}}"""
+                    } else {
+                        """{"header":{"type":"esearch"},"esearchresult":{"count":"1","idlist":["J01636.1"]}}"""
+                    }
                 path.endsWith("/esummary.fcgi") ->
                     if (query.contains("db=pubmed")) {
                         """{"result":{"uids":["12345678"],"12345678":{"uid":"12345678","title":"An example paper","fulljournalname":"Example Journal","authors":[{"name":"Author One"},{"name":"Author Two"}]}}}"""
+                    } else if (query.contains("db=taxonomy")) {
+                        """{"result":{"uids":["562"],"562":{"taxid":"562","scientificname":"Escherichia coli","rank":"species","lineage":"Bacteria;Proteobacteria"}}}"""
                     } else if (numericSummary) {
                         """{"result":{"uids":["12345"],"12345":{"uid":"12345","accessionversion":"J01636.1","caption":"J01636","title":"Example nucleotide record","organism":"Escherichia coli","slen":8,"moltype":"genomic"}}}"""
                     } else {
