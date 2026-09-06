@@ -2,64 +2,58 @@ package org.instagene.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CrisprDesignTest {
-
     @Test
-    fun findsPamSites() {
-        val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
-        val result = CrisprDesign.design(seq)
-        assertTrue(result.guides.isNotEmpty(), "Should find at least one PAM site")
+    fun findsConcreteNgGOnBothStrands() {
+        val sequence = "A".repeat(20) + "AGG" + "CCA" + "C".repeat(20)
+        val guides = CrisprDesign.design(Seq(name = "target", bases = sequence)).guides
+
+        assertEquals(2, guides.size)
+        assertTrue(guides.any { it.strand == Strand.FORWARD && it.sequence == "A".repeat(20) })
+        assertTrue(guides.any { it.strand == Strand.REVERSE && it.pam == "CCA" })
+        assertTrue(guides.all { it.pam[1] == 'G' && it.pam[2] == 'G' || it.pam[0] == 'C' && it.pam[1] == 'C' })
     }
 
     @Test
-    fun scoresGuidesSimple() {
-        val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
-        val result = CrisprDesign.design(seq, scoringMode = ScoringMode.RULESET3_SIMPLE)
-        for ((_, _, onTargetScore, offTargetScore, gcContent, scoringMode) in result.guides) {
-            assertTrue(onTargetScore in 0.0..1.0, "On-target score should be 0-1")
-            assertTrue(offTargetScore in 0.0..1.0, "Off-target score should be 0-1")
-            assertTrue(gcContent in 0.0..1.0, "GC content should be 0-1")
-            assertEquals(ScoringMode.RULESET3_SIMPLE, scoringMode)
-        }
+    fun ignoresAmbiguousPamAndReportsWarning() {
+        val result = CrisprDesign.design(Seq(name = "target", bases = "A".repeat(20) + "NGG"))
+        assertTrue(result.guides.isEmpty())
+        assertTrue(result.warnings.any { it.contains("Ambiguous") })
     }
 
     @Test
-    fun scoresGuidesFull() {
-        val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
-        val result = CrisprDesign.design(seq, scoringMode = ScoringMode.RULESET3_FULL)
-        for ((_, _, onTargetScore, offTargetScore, _, scoringMode) in result.guides) {
-            assertTrue(onTargetScore in 0.0..1.0, "On-target score should be 0-1")
-            assertTrue(offTargetScore in 0.0..1.0, "Off-target score should be 0-1")
-            assertEquals(ScoringMode.RULESET3_FULL, scoringMode)
-        }
+    fun rejectsAmbiguousProtospacers() {
+        val sequence = "A".repeat(19) + "N" + "AGG"
+        val result = CrisprDesign.design(Seq(name = "target", bases = sequence))
+        assertTrue(result.guides.isEmpty())
     }
 
     @Test
-    fun fullAndSimpleRankSimilarly() {
-        val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
-        val full = CrisprDesign.design(seq, scoringMode = ScoringMode.RULESET3_FULL)
-        val simple = CrisprDesign.design(seq, scoringMode = ScoringMode.RULESET3_SIMPLE)
-        val fullTop = full.guides.take(3).map { it.sequence }.toSet()
-        val simpleTop = simple.guides.take(3).map { it.sequence }.toSet()
-        val overlap = fullTop.intersect(simpleTop).size
-        assertTrue(overlap >= 1, "Top guides should largely overlap between modes")
+    fun circularGuideWrapsOriginAndRetainsTraversalCoordinates() {
+        val bases = "C".repeat(30).toCharArray()
+        "AGG".forEachIndexed { index, base -> bases[2 + index] = base }
+        val result = CrisprDesign.design(
+            Seq(name = "circle", bases = String(bases), topology = Topology.CIRCULAR),
+            maxGuides = 100,
+        )
+        val guide = result.guides.first { it.strand == Strand.FORWARD }
+
+        assertEquals(Strand.FORWARD, guide.strand)
+        assertEquals(listOf(12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 0, 1), guide.coordinates)
+        assertEquals(0, guide.start)
+        assertEquals(30, guide.end)
+        assertTrue(guide.warnings.any { it.contains("origin") })
     }
 
     @Test
-    fun respectsMaxGuides() {
-        val seq = Seq(name = "target", bases = "A".repeat(500) + "NGG", kind = SeqKind.DNA)
-        val result = CrisprDesign.design(seq, maxGuides = 5)
-        assertTrue(result.guides.size <= 5)
-    }
-
-    @Test
-    fun defaultModeIsSimple() {
-        val seq = Seq(name = "target", bases = "ATCG".repeat(100) + "NGG", kind = SeqKind.DNA)
-        val result = CrisprDesign.design(seq)
-        for ((_, _, _, _, _, scoringMode) in result.guides) {
-            assertEquals(ScoringMode.RULESET3_SIMPLE, scoringMode)
-        }
+    fun resultsAreOrderedByGenomicCoordinatesAndExposeGc() {
+        val sequence = "G".repeat(20) + "AGG" + "A".repeat(20) + "AGG"
+        val guides = CrisprDesign.design(Seq(name = "target", bases = sequence), maxGuides = 10).guides
+        assertFalse(guides.isEmpty())
+        assertEquals(guides, guides.sortedWith(compareBy<GuideRNA> { it.start }.thenBy { it.end }.thenBy { it.strand.sign }))
+        assertEquals(1.0, guides.first().gcContent)
     }
 }

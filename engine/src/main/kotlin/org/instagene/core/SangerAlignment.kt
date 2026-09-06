@@ -22,6 +22,7 @@ data class SangerOptions(
     val trimQuality: Int = 20,
     val minIdentity: Double = 0.90,
     val minAlignedLength: Int = 20,
+    val alignBothOrientations: Boolean = true,
 )
 
 data class SangerRead(
@@ -41,6 +42,7 @@ data class SangerRead(
 }
 
 enum class ReadConfidence { HIGH, REVIEW, LOW }
+enum class SangerOrientation { FORWARD, REVERSE }
 
 data class AlignedRead(
     val readName: String,
@@ -57,6 +59,7 @@ data class AlignedRead(
     val referenceLength: Int = alignedLength,
     /** Per-base Phred observations that can be reused by quality-aware design workflows. */
     val qualityObservations: List<ReferenceQualityObservation> = emptyList(),
+    val orientation: SangerOrientation = SangerOrientation.FORWARD,
 ) {
     val insertionCount: Int get() = mismatches.count { it.kind == MismatchKind.INSERTION }
     val deletionCount: Int get() = mismatches.count { it.kind == MismatchKind.DELETION }
@@ -84,15 +87,9 @@ object SangerAlignment {
     fun align(reference: Seq, reads: List<SangerRead>, options: SangerOptions = SangerOptions()): SangerAlignmentResult {
         val ref = reference.bases.uppercase()
         val aligned = if (reads.size <= 4) {
-            reads.map { read ->
-                val trimmed = read.trimmed(options.trimQuality)
-                alignOne(ref, trimmed, options, read.bases.length - trimmed.bases.length)
-            }
+            reads.map { alignRead(ref, it, options) }
         } else {
-            Parallel.map(reads) { read ->
-                val trimmed = read.trimmed(options.trimQuality)
-                alignOne(ref, trimmed, options, read.bases.length - trimmed.bases.length)
-            }
+            Parallel.map(reads) { alignRead(ref, it, options) }
         }
         val avgIdentity = if (aligned.isNotEmpty()) aligned.map { it.identity }.average() else 0.0
         val covered = aligned.flatMap { it.referenceStart until (it.referenceStart + it.referenceLength) }.toSet()
@@ -102,12 +99,50 @@ object SangerAlignment {
     fun alignChromatograms(reference: Seq, reads: List<ChromatogramRecord>, options: SangerOptions = SangerOptions()): SangerAlignmentResult =
         align(reference, reads.map { SangerRead(it.name, it.bases, it.qualities) }, options)
 
-    private fun alignOne(ref: String, read: SangerRead, options: SangerOptions, trimmedBases: Int): AlignedRead {
+    private fun alignRead(ref: String, source: SangerRead, options: SangerOptions): AlignedRead {
+        fun candidate(reverse: Boolean): AlignedRead {
+            val orientedBases = if (reverse) Alphabet.reverseComplement(source.bases) else source.bases
+            val orientedQualities = if (reverse && source.qualities.size == source.bases.length) {
+                source.qualities.asReversed()
+            } else source.qualities
+            val oriented = SangerRead(source.name, orientedBases, orientedQualities)
+            val trimmed = oriented.trimmed(options.trimQuality)
+            val trimmedBases = source.bases.length - trimmed.bases.length
+            val basePosition: (Int) -> Int = if (reverse) {
+                { index -> source.sourceOffset + source.bases.length - 1 - (trimmed.sourceOffset + index) }
+            } else {
+                { index -> source.sourceOffset + trimmed.sourceOffset + index }
+            }
+            val boundaryPosition: (Int) -> Int = if (reverse) {
+                { boundary -> source.sourceOffset + source.bases.length - (trimmed.sourceOffset + boundary) }
+            } else {
+                { boundary -> source.sourceOffset + trimmed.sourceOffset + boundary }
+            }
+            return alignOne(ref, trimmed, options, trimmedBases, basePosition, boundaryPosition, if (reverse) SangerOrientation.REVERSE else SangerOrientation.FORWARD)
+        }
+
+        val forward = candidate(false)
+        if (!options.alignBothOrientations) return forward
+        val reverse = candidate(true)
+        return if (reverse.alignedLength > forward.alignedLength ||
+            (reverse.alignedLength == forward.alignedLength && reverse.identity > forward.identity)) reverse else forward
+    }
+
+    private fun alignOne(
+        ref: String,
+        read: SangerRead,
+        options: SangerOptions,
+        trimmedBases: Int,
+        basePosition: (Int) -> Int,
+        boundaryPosition: (Int) -> Int,
+        orientation: SangerOrientation,
+    ): AlignedRead {
         val seq = read.bases.uppercase()
         if (ref.isEmpty() || seq.isEmpty()) return AlignedRead(
             read.name, 0.0, emptyList(), 0,
             lowQualityBases = read.qualities.count { it < options.minQuality }, trimmedBases = trimmedBases,
             minIdentityThreshold = options.minIdentity, minAlignedLengthThreshold = options.minAlignedLength,
+            orientation = orientation,
         )
         val width = seq.length + 1
         val directions = ByteArray((ref.length + 1) * width)
@@ -156,13 +191,13 @@ object SangerAlignment {
                     quality?.let {
                         qualityObservations += ReferenceQualityObservation(
                             referencePosition = refIndex - 1,
-                            readPosition = read.sourceOffset + readIndex - 1,
+                            readPosition = basePosition(readIndex - 1),
                             phred = it,
                         )
                     }
                     if (refBase == readBase) matches++ else {
                         mismatches += AlignmentMismatch(
-                            refIndex - 1, read.sourceOffset + readIndex - 1, refBase, readBase,
+                            refIndex - 1, basePosition(readIndex - 1), refBase, readBase,
                             if (quality != null && quality < options.minQuality) MismatchKind.LOW_QUALITY else MismatchKind.SUBSTITUTION,
                         )
                     }
@@ -172,12 +207,12 @@ object SangerAlignment {
                 2 -> {
                     columns++
                     referenceLength++
-                    mismatches += AlignmentMismatch(refIndex - 1, read.sourceOffset + readIndex, ref[refIndex - 1], '-', MismatchKind.DELETION)
+                    mismatches += AlignmentMismatch(refIndex - 1, boundaryPosition(readIndex), ref[refIndex - 1], '-', MismatchKind.DELETION)
                     refIndex--
                 }
                 3 -> {
                     columns++
-                    mismatches += AlignmentMismatch(refIndex, read.sourceOffset + readIndex - 1, '-', seq[readIndex - 1], MismatchKind.INSERTION)
+                    mismatches += AlignmentMismatch(refIndex, basePosition(readIndex - 1), '-', seq[readIndex - 1], MismatchKind.INSERTION)
                     readIndex--
                 }
             }
@@ -186,9 +221,15 @@ object SangerAlignment {
         qualityObservations.reverse()
         val identity = if (columns > 0) matches.toDouble() / columns else 0.0
         val lowQuality = read.qualities.count { it < options.minQuality }
+        val originalReadStart = if (orientation == SangerOrientation.REVERSE) {
+            if (bestReadEnd > 0) basePosition(bestReadEnd - 1) else boundaryPosition(0)
+        } else {
+            basePosition(readIndex)
+        }
         return AlignedRead(
-            read.name, identity, mismatches, columns, refIndex, read.sourceOffset + readIndex,
+            read.name, identity, mismatches, columns, refIndex, originalReadStart,
             lowQuality, trimmedBases, options.minIdentity, options.minAlignedLength, referenceLength, qualityObservations,
+            orientation = orientation,
         )
     }
 }

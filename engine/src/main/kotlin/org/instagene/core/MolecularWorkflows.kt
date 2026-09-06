@@ -35,6 +35,11 @@ data class MolecularWorkflowResult(
     val primers: List<PrimerAnnotation> = emptyList(),
     /** Normalized invocation values retained independently from display-oriented protocol text. */
     val parameters: Map<String, String> = emptyMap(),
+    val methodMetadata: ScientificMethodMetadata = ScientificMethodMetadata(
+        methodName = "sequence-construction simulation",
+        evidenceStatus = EvidenceStatus.SIMULATION,
+        limitations = listOf("This result models sequence construction and is not a validated wet-lab protocol."),
+    ),
 )
 
 /** Cloning workflows built on the shared assembly primitives. */
@@ -249,7 +254,18 @@ object CloningWorkflows {
                 timestamp = System.currentTimeMillis(),
             )
         )
-        return MolecularWorkflowResult(method, product, steps, diagnostics, parameters = parameters.toSortedMap())
+        return MolecularWorkflowResult(
+            method = method,
+            product = product,
+            steps = steps,
+            diagnostics = diagnostics,
+            parameters = parameters.toSortedMap(),
+            methodMetadata = ScientificMethodMetadata(
+                methodName = "${method.name.lowercase().replace('_', ' ')} sequence-construction simulation",
+                evidenceStatus = EvidenceStatus.SIMULATION,
+                limitations = listOf("Sequence construction is simulated; reaction kinetics and product verification are not predicted."),
+            ),
+        )
     }
 
     private fun uniqueSite(seq: Seq, site: String, label: String): Int {

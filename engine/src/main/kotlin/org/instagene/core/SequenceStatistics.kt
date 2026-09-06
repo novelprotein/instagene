@@ -100,38 +100,26 @@ object SequenceStatistics {
         }
 
         // Dinucleotides — avoid substring allocation, use (char, char) packed as int
-        val dinucMap = IntArray(16 * 16) // ACGT*4 -> index
-        val dinucValues = IntArray(16 * 16)
-        val dinucKeys = ArrayList<String>(16)
+        val dinucValues = IntArray(25)
         val dinucIdx = IntArray(128) { -1 }
         val bases4 = charArrayOf('A', 'C', 'G', 'T', 'U')
         for (i in bases4.indices) dinucIdx[bases4[i].code] = i
-        var dinucUnique = 0
-
         if (length >= 2) {
             for (i in 0 until length - 1) {
-                val b1 = dinucIdx[bases[i].uppercaseChar().code]
-                val b2 = dinucIdx[bases[i + 1].uppercaseChar().code]
+                val b1 = bases[i].uppercaseChar().code.takeIf { it < dinucIdx.size }?.let { dinucIdx[it] } ?: -1
+                val b2 = bases[i + 1].uppercaseChar().code.takeIf { it < dinucIdx.size }?.let { dinucIdx[it] } ?: -1
                 if (b1 >= 0 && b2 >= 0) {
                     val key = b1 * 5 + b2
-                    if (dinucValues[key] == 0 && dinucUnique < 25) {
-                        dinucKeys.add("${bases[i].uppercaseChar()}${bases[i + 1].uppercaseChar()}")
-                        dinucMap[key] = dinucUnique++
-                    }
                     dinucValues[key]++
                 }
             }
         }
         val dinuc = LinkedHashMap<String, Int>()
-        for (i in 0 until dinucUnique) {
-            // find the key for this slot
-            for (j in 0 until 25) {
-                if (dinucMap[j] == i) {
-                    val b1 = bases4[j / 5]
-                    val b2 = bases4[j % 5]
-                    dinuc["$b1$b2"] = dinucValues[j]
-                    break
-                }
+        for (j in dinucValues.indices) {
+            if (dinucValues[j] > 0) {
+                val b1 = bases4[j / 5]
+                val b2 = bases4[j % 5]
+                dinuc["$b1$b2"] = dinucValues[j]
             }
         }
 
@@ -142,9 +130,9 @@ object SequenceStatistics {
         var triUnique = 0
         if (length >= 3) {
             for (i in 0 until length - 2) {
-                val b1 = dinucIdx[bases[i].uppercaseChar().code]
-                val b2 = dinucIdx[bases[i + 1].uppercaseChar().code]
-                val b3 = dinucIdx[bases[i + 2].uppercaseChar().code]
+                val b1 = bases[i].uppercaseChar().code.takeIf { it < dinucIdx.size }?.let { dinucIdx[it] } ?: -1
+                val b2 = bases[i + 1].uppercaseChar().code.takeIf { it < dinucIdx.size }?.let { dinucIdx[it] } ?: -1
+                val b3 = bases[i + 2].uppercaseChar().code.takeIf { it < dinucIdx.size }?.let { dinucIdx[it] } ?: -1
                 if (b1 >= 0 && b2 >= 0 && b3 >= 0) {
                     val key = b1 * 25 + b2 * 5 + b3
                     if (triValues[key] == 0) {
@@ -206,6 +194,7 @@ object SequenceStatistics {
     /** GC content in sliding windows using running counts — no substring allocation. */
     fun gcContentProfile(seq: Seq, windowSize: Int = 100, step: Int = 50): List<XY> {
         require(seq.kind != SeqKind.PROTEIN) { "GC profile requires DNA or RNA" }
+        require(windowSize > 0 && step > 0 && step <= windowSize) { "Window and step must be positive, with step no greater than window size" }
         val bases = seq.bases
         val len = bases.length
         if (len == 0) return emptyList()
@@ -217,15 +206,20 @@ object SequenceStatistics {
             val uc = bases[i].uppercaseChar()
             if (uc == 'G' || uc == 'C' || uc == 'S') gcCount++
         }
-        result += XY(windowSize / 2.0, gcCount * 100.0 / minOf(windowSize, len))
+        val firstWindowSize = minOf(windowSize, len)
+        result += XY(firstWindowSize / 2.0, gcCount * 100.0 / firstWindowSize)
         pos += step
         // Slide window
         while (pos + windowSize <= len) {
             // Remove element leaving window, add element entering window
-            val leaving = bases[pos - 1].uppercaseChar()
-            val entering = bases[pos + windowSize - 1].uppercaseChar()
-            if (leaving == 'G' || leaving == 'C' || leaving == 'S') gcCount--
-            if (entering == 'G' || entering == 'C' || entering == 'S') gcCount++
+            for (i in pos - step until pos) {
+                val leaving = bases[i].uppercaseChar()
+                if (leaving == 'G' || leaving == 'C' || leaving == 'S') gcCount--
+            }
+            for (i in pos + windowSize - step until pos + windowSize) {
+                val entering = bases[i].uppercaseChar()
+                if (entering == 'G' || entering == 'C' || entering == 'S') gcCount++
+            }
             result += XY(pos + windowSize / 2.0, gcCount * 100.0 / windowSize)
             pos += step
         }
@@ -235,6 +229,7 @@ object SequenceStatistics {
     /** GC skew using running counts — no substring allocation. */
     fun gcSkewProfile(seq: Seq, windowSize: Int = 100, step: Int = 50): List<XY> {
         require(seq.kind != SeqKind.PROTEIN) { "GC skew requires DNA or RNA" }
+        require(windowSize > 0 && step > 0 && step <= windowSize) { "Window and step must be positive, with step no greater than window size" }
         val bases = seq.bases
         val len = bases.length
         if (len == 0) return emptyList()
@@ -245,13 +240,18 @@ object SequenceStatistics {
             val uc = bases[i].uppercaseChar()
             if (uc == 'G') g++ else if (uc == 'C') c++
         }
-        result += XY(windowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
+        val firstWindowSize = minOf(windowSize, len)
+        result += XY(firstWindowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
         pos += step
         while (pos + windowSize <= len) {
-            val leaving = bases[pos - 1].uppercaseChar()
-            val entering = bases[pos + windowSize - 1].uppercaseChar()
-            if (leaving == 'G') g-- else if (leaving == 'C') c--
-            if (entering == 'G') g++ else if (entering == 'C') c++
+            for (i in pos - step until pos) {
+                val leaving = bases[i].uppercaseChar()
+                if (leaving == 'G') g-- else if (leaving == 'C') c--
+            }
+            for (i in pos + windowSize - step until pos + windowSize) {
+                val entering = bases[i].uppercaseChar()
+                if (entering == 'G') g++ else if (entering == 'C') c++
+            }
             result += XY(pos + windowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
             pos += step
         }
@@ -262,6 +262,7 @@ object SequenceStatistics {
     @Suppress("DuplicatedCode")
     fun cumulativeGcSkew(seq: Seq, windowSize: Int = 100, step: Int = 50): List<XY> {
         require(seq.kind != SeqKind.PROTEIN) { "GC skew requires DNA or RNA" }
+        require(windowSize > 0 && step > 0 && step <= windowSize) { "Window and step must be positive, with step no greater than window size" }
         val bases = seq.bases
         val len = bases.length
         if (len == 0) return emptyList()
@@ -272,13 +273,18 @@ object SequenceStatistics {
             if (uc == 'G') g++ else if (uc == 'C') c++
         }
         var winStart = 0
-        result += XY(windowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
+        val firstWindowSize = minOf(windowSize, len)
+        result += XY(firstWindowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
         winStart += step
         while (winStart + windowSize <= len) {
-            val leaving = bases[winStart - 1].uppercaseChar()
-            val entering = bases[winStart + windowSize - 1].uppercaseChar()
-            if (leaving == 'G') g-- else if (leaving == 'C') c--
-            if (entering == 'G') g++ else if (entering == 'C') c++
+            for (i in winStart - step until winStart) {
+                val leaving = bases[i].uppercaseChar()
+                if (leaving == 'G') g-- else if (leaving == 'C') c--
+            }
+            for (i in winStart + windowSize - step until winStart + windowSize) {
+                val entering = bases[i].uppercaseChar()
+                if (entering == 'G') g++ else if (entering == 'C') c++
+            }
             result += XY(winStart + windowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
             winStart += step
         }
@@ -332,8 +338,8 @@ object SequenceStatistics {
         val keys = ArrayList<String>(25)
         var unique = 0
         for (i in 0 until len - 1) {
-            val b1 = idx[bases[i].uppercaseChar().code]
-            val b2 = idx[bases[i + 1].uppercaseChar().code]
+            val b1 = bases[i].uppercaseChar().code.takeIf { it < idx.size }?.let { idx[it] } ?: -1
+            val b2 = bases[i + 1].uppercaseChar().code.takeIf { it < idx.size }?.let { idx[it] } ?: -1
             if (b1 >= 0 && b2 >= 0) {
                 val k = b1 * 5 + b2
                 if (values[k] == 0) {
@@ -356,6 +362,7 @@ object SequenceStatistics {
     @Suppress("DuplicatedCode")
     fun meltingTempProfile(seq: Seq, windowSize: Int = 20, step: Int = 10): List<XY> {
         require(seq.kind != SeqKind.PROTEIN) { "Melting temp requires DNA or RNA" }
+        require(windowSize > 0 && step > 0 && step <= windowSize) { "Window and step must be positive, with step no greater than window size" }
         val bases = seq.bases
         val len = bases.length
         if (len == 0) return emptyList()
@@ -370,16 +377,19 @@ object SequenceStatistics {
             }
         }
         val n = at + gc
-        val tm = if (n < 14) 2.0 * at + 4.0 * gc else 81.5 + 16.6 * 0.05 + 41.0 * gc / n - 600.0 / n
-        result += XY(windowSize / 2.0, tm)
+        val tm = if (n == 0) 0.0 else if (n < 14) 2.0 * at + 4.0 * gc else 81.5 + 16.6 * kotlin.math.log10(0.05) + 41.0 * gc / n - 600.0 / n
+        val firstWindowSize = minOf(windowSize, len)
+        result += XY(firstWindowSize / 2.0, tm)
         pos += step
         while (pos + windowSize <= len) {
-            val leaving = bases[pos - 1].uppercaseChar()
-            val entering = bases[pos + windowSize - 1].uppercaseChar()
-            when (leaving) { 'A', 'T', 'U' -> at--; 'C', 'G' -> gc-- }
-            when (entering) { 'A', 'T', 'U' -> at++; 'C', 'G' -> gc++ }
+            for (i in pos - step until pos) {
+                when (bases[i].uppercaseChar()) { 'A', 'T', 'U' -> at--; 'C', 'G' -> gc-- }
+            }
+            for (i in pos + windowSize - step until pos + windowSize) {
+                when (bases[i].uppercaseChar()) { 'A', 'T', 'U' -> at++; 'C', 'G' -> gc++ }
+            }
             val nWin = at + gc
-            val tmWin = if (nWin < 14) 2.0 * at + 4.0 * gc else 81.5 + 16.6 * 0.05 + 41.0 * gc / nWin - 600.0 / nWin
+            val tmWin = if (nWin == 0) 0.0 else if (nWin < 14) 2.0 * at + 4.0 * gc else 81.5 + 16.6 * kotlin.math.log10(0.05) + 41.0 * gc / nWin - 600.0 / nWin
             result += XY(pos + windowSize / 2.0, tmWin)
             pos += step
         }

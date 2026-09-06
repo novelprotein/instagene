@@ -40,7 +40,14 @@ object PlasmidDatabase {
         PlasmidRecord("pGEX-4T-1", 4969, "E. coli", listOf("AmpR"), "pBR322", "GST fusion expression vector"),
         PlasmidRecord("pBlueScript II KS", 2961, "E. coli", listOf("AmpR"), "ColE1", "General cloning and in vitro transcription"),
         PlasmidRecord("pYES2", 6210, "S. cerevisiae", listOf("AmpR", "URA3"), "2 micron", "Yeast expression vector"),
-        PlasmidRecord("pFastBac1", 4774, "E. coli", listOf("KanR"), "pUC ori", "Baculovirus expression system shuttle"),
+        PlasmidRecord(
+            "pFastBac1",
+            4774,
+            "E. coli",
+            listOf("AmpR", "GentR"),
+            "pUC ori",
+            "Baculovirus expression system shuttle; resistance markers follow the manufacturer map",
+        ),
         PlasmidRecord("pLenti-CMV", 7947, "Mammalian", listOf("AmpR", "PuroR"), "HIV-1", "Lentiviral expression vector"),
     )
 

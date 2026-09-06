@@ -25,11 +25,11 @@ class ProteinCalculationsTest {
     }
 
     @Test
-    fun extinctionCoefficientReducesWithDisulfideBonds() {
+    fun extinctionCoefficientIncludesDisulfideBonds() {
         val prot = Seq(name = "twoCys", bases = "ACDEFCC", kind = SeqKind.PROTEIN)
         val ec0 = MolecularCalculators.extinctionCoefficient(prot, disulfideBonds = 0)
         val ec1 = MolecularCalculators.extinctionCoefficient(prot, disulfideBonds = 1)
-        assertTrue(ec0 > ec1, "Disulfide bonds should reduce e280")
+        assertTrue(ec1 > ec0, "Disulfide bonds should contribute to e280")
     }
 
     @Test

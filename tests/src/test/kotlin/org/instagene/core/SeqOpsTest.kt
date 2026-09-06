@@ -1,9 +1,9 @@
 package org.instagene.core
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.test.assertEquals
 
 class SeqOpsTest {
 
@@ -48,6 +48,7 @@ class SeqOpsTest {
         val tmDefault = SeqOps.meltingTemp(long)
         val tmHighSalt = SeqOps.meltingTemp(long, saltMolar = 0.5)
         assertTrue(tmHighSalt > tmDefault)
+        assertFailsWith<IllegalArgumentException> { SeqOps.meltingTemp(long, saltMolar = 0.0) }
     }
 
     @Test
@@ -58,6 +59,22 @@ class SeqOpsTest {
         assertTrue(dna > 0)
         assertTrue(rna > 0)
         assertTrue(dna != rna)
+    }
+
+    @Test
+    fun molecularWeightHonorsStrandsTopologyAndTerminalPhosphates() {
+        val single = Seq(
+            bases = "AT",
+            molecule = MoleculeProperties(
+                strandedness = Strandedness.SINGLE,
+                fivePrimePhosphorylated = false,
+                threePrimePhosphorylated = false,
+            ),
+        )
+        val double = single.copy(molecule = single.molecule.copy(strandedness = Strandedness.DOUBLE))
+        val circular = single.copy(topology = Topology.CIRCULAR)
+        assertEquals(2.0 * SeqOps.molecularWeightDaltons(single), SeqOps.molecularWeightDaltons(double), 0.001)
+        assertTrue(SeqOps.molecularWeightDaltons(circular) > SeqOps.molecularWeightDaltons(single))
     }
 
     @Test

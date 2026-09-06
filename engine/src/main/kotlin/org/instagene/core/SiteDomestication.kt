@@ -2,7 +2,13 @@ package org.instagene.core
 
 data class InternalSite(val enzyme: Enzyme, val position: Int)
 
-data class DomesticateResult(val domesticated: Seq, val mutationsApplied: Int)
+data class DomesticateResult(
+    val domesticated: Seq,
+    val mutationsApplied: Int,
+    val unresolvedSites: List<InternalSite> = emptyList(),
+    /** A reviewable sequence containing the mutations found so far. */
+    val mutationPreview: Seq = domesticated,
+)
 
 object SiteDomestication {
 
@@ -40,18 +46,35 @@ object SiteDomestication {
         return bestEnzyme to bestCount
     }
 
-    fun domesticate(seq: Seq, enzymes: List<Enzyme>): DomesticateResult {
+    /**
+     * Removes recognition sites by synonymous substitutions in explicitly
+     * supplied CDS annotations.  An unannotated sequence is never silently
+     * treated as coding.
+     *
+     * Circular records are rejected because a site or CDS crossing the origin
+     * needs a compound annotation to describe its reading frame unambiguously.
+     */
+    fun domesticate(
+        seq: Seq,
+        enzymes: List<Enzyme>,
+        codingFeatures: List<Feature> = emptyList(),
+    ): DomesticateResult {
+        require(!seq.isCircular) {
+            "Domestication of circular sequences is unsupported; linearize or split origin-spanning features first."
+        }
         val bases = seq.bases.uppercase().toCharArray()
         var mutations = 0
+        val translations = codingFeatures.associateWith { FeatureTranslations.translate(seq, it) }
 
-        for ((_, site) in enzymes) {
+        for (enzyme in enzymes) {
+            val site = enzyme.site.uppercase()
             var changed = true
             while (changed) {
                 changed = false
-                val sites = findPositions(bases, site.uppercase())
+                val sites = findPositionsBothStrands(bases, site)
                 if (sites.isEmpty()) break
                 for (sitePos in sites) {
-                    if (trySilentMutate(bases, sitePos, site)) {
+                    if (trySilentMutate(bases, sitePos, site, codingFeatures, seq, translations)) {
                         mutations++
                         changed = true
                         break
@@ -60,10 +83,15 @@ object SiteDomestication {
             }
         }
 
-        return DomesticateResult(
-            domesticated = seq.copy(bases = bases.joinToString("")),
-            mutationsApplied = mutations,
-        )
+        val preview = seq.copy(bases = bases.joinToString(""))
+        val remaining = enzymes.flatMap { enzyme ->
+            findPositionsBothStrands(bases, enzyme.site.uppercase()).map { InternalSite(enzyme, it) }
+        }.distinctBy { it.enzyme.name to it.position }
+        val finalTranslations = codingFeatures.associateWith { FeatureTranslations.translate(preview, it) }
+        require(translations.all { (feature, before) ->
+            finalTranslations[feature]?.protein == before.protein
+        }) { "A proposed domestication would alter an annotated CDS translation." }
+        return DomesticateResult(preview, mutations, remaining.distinctBy { it.enzyme.name to it.position }, preview)
     }
 
     private fun findPositions(bases: CharArray, site: String): List<Int> {
@@ -80,6 +108,12 @@ object SiteDomestication {
         return positions
     }
 
+    private fun findPositionsBothStrands(bases: CharArray, site: String): List<Int> {
+        val rc = Alphabet.reverseComplement(site)
+        return (findPositions(bases, site) + if (rc == site) emptyList() else findPositions(bases, rc))
+            .distinct().sorted()
+    }
+
     private fun matchesSite(bases: CharArray, pos: Int, site: String): Boolean {
         for (j in site.indices) {
             if (bases[pos + j] != site[j]) return false
@@ -87,31 +121,51 @@ object SiteDomestication {
         return true
     }
 
-    private fun trySilentMutate(bases: CharArray, sitePos: Int, site: String): Boolean {
-        val siteLen = site.length
-        val codonStart = (sitePos / 3) * 3
-        val codonEnd = ((sitePos + siteLen - 1) / 3 + 1) * 3
-        val codonPositions = (codonStart until codonEnd step 3).toList()
-
-        for (codonPos in codonPositions) {
-            if (codonPos + 3 > bases.size) continue
-            val originalCodon = String(bases, codonPos, 3)
-            val originalAA = CodonTable.STANDARD.translate(originalCodon)
-            if (originalAA == '*' || originalAA == 'X') continue
-
-            val synonymous = SYNONYMOUS_CODONS[originalAA] ?: continue
-            for (syn in synonymous) {
-                if (syn == originalCodon) continue
-                val saved = CharArray(3) { bases[codonPos + it] }
-                for (k in 0..2) bases[codonPos + k] = syn[k]
-                // Only check the local neighborhood — mutations in codonPos can
-                // only affect recognition sites that overlap codonPos..codonPos+2.
-                val localStart = (sitePos - siteLen + 1).coerceAtLeast(0)
-                val localEnd = (codonPos + 3).coerceAtMost(bases.size - siteLen + 1)
-                val siteStillPresent = (localStart until localEnd).any { matchesSite(bases, it, site.uppercase()) }
-                if (!siteStillPresent) return true
-                for (k in 0..2) bases[codonPos + k] = saved[k]
-            }
+    private fun trySilentMutate(
+        bases: CharArray,
+        sitePos: Int,
+        site: String,
+        codingFeatures: List<Feature>,
+        originalSeq: Seq,
+        translations: Map<Feature, FeatureTranslationResult>,
+    ): Boolean {
+        val siteEnd = sitePos + site.length
+        val feature = codingFeatures.firstOrNull { f ->
+            f.type.equals("CDS", true) && f.strand == Strand.FORWARD &&
+                f.locationSegments.size == 1 && sitePos >= f.start && siteEnd <= f.end
+        } ?: codingFeatures.firstOrNull { f ->
+            f.type.equals("CDS", true) && f.strand == Strand.REVERSE &&
+                f.locationSegments.size == 1 && sitePos >= f.start && siteEnd <= f.end
+        } ?: return false
+        val codonIndex = if (feature.strand == Strand.FORWARD) {
+            (sitePos - feature.start - feature.translationStartOffset) / 3
+        } else {
+            (feature.end - siteEnd - feature.translationStartOffset) / 3
+        }
+        if (codonIndex < 0) return false
+        val codonPositions = if (feature.strand == Strand.FORWARD) {
+            val start = feature.start + feature.translationStartOffset + codonIndex * 3
+            listOf(start, start + 1, start + 2)
+        } else {
+            val start = feature.end - feature.translationStartOffset - (codonIndex + 1) * 3
+            listOf(start + 2, start + 1, start)
+        }
+        if (codonPositions.any { it !in bases.indices }) return false
+        val originalCodon = codonPositions.joinToString("") { bases[it].toString() }
+            .let { if (feature.strand == Strand.REVERSE) Alphabet.reverseComplement(it) else it }
+        val originalAA = CodonTable.byId(feature.geneticCodeId).translate(originalCodon)
+        if (originalAA == '*' || originalAA == 'X') return false
+        val synonymous = SYNONYMOUS_CODONS[originalAA] ?: return false
+        for (syn in synonymous) {
+            if (syn == originalCodon) continue
+            val saved = codonPositions.map { bases[it] }
+            val replacement = if (feature.strand == Strand.REVERSE) Alphabet.reverseComplement(syn) else syn
+            codonPositions.forEachIndexed { index, position -> bases[position] = replacement[index] }
+            val candidate = originalSeq.copy(bases = bases.concatToString())
+            val translated = FeatureTranslations.translate(candidate, feature)
+            val localSites = findPositionsBothStrands(bases, site)
+            if (translated.protein == translations[feature]?.protein && sitePos !in localSites) return true
+            codonPositions.forEachIndexed { index, position -> bases[position] = saved[index] }
         }
         return false
     }

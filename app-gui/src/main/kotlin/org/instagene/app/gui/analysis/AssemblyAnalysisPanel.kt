@@ -130,11 +130,8 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
                     if (overhangList.isNotEmpty()) {
                         val fidelity = GoldenGateFidelity.score(overhangList)
                         append("\n\n--- Golden Gate Fidelity Report ---\n")
-                        append("Set fidelity: ${"%.4f".format(fidelity.setFidelity * 100)}%\n")
-                        append("Weakest overhang: ${fidelity.weakestOverhang ?: "none (all >= 99%)"}\n")
-                        fidelity.perOverhangFidelity.forEach { (oh, fi) ->
-                            append("  $oh: ${"%.4f".format(fi * 100)}%\n")
-                        }
+                        append("Quantitative fidelity: unavailable without enzyme, temperature, concentration, and substrate conditions\n")
+                        append("Weakest overhang: ${fidelity.weakestOverhang ?: "not assigned"}\n")
                         if (fidelity.warnings.isNotEmpty()) {
                             append("\nWarnings:\n")
                             fidelity.warnings.forEach { append("  \u26a0 $it\n") }

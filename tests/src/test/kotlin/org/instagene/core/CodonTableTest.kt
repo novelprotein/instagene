@@ -10,8 +10,6 @@ class CodonTableTest {
 
     @Test
     fun standardTableHasSixtyFourCodons() {
-        assertEquals(64, CodonTable.STANDARD.translate("TTT").let { 64 }) // sanity
-        // Probe corners of the map via known translations
         assertEquals('F', CodonTable.STANDARD.translate("TTT"))
         assertEquals('F', CodonTable.STANDARD.translate("TTC"))
         assertEquals('M', CodonTable.STANDARD.translate("ATG"))
@@ -21,6 +19,8 @@ class CodonTableTest {
         assertEquals('*', CodonTable.STANDARD.translate("TGA"))
         assertEquals('X', CodonTable.STANDARD.translate("NNN"))
         assertEquals('X', CodonTable.STANDARD.translate("ATH"))
+        assertEquals('X', CodonTable.STANDARD.translate("ATGG"))
+        assertEquals('X', CodonTable.STANDARD.translate(""))
     }
 
     @Test
@@ -29,6 +29,8 @@ class CodonTableTest {
         assertFalse(CodonTable.STANDARD.isStart("GTG"))
         assertTrue(CodonTable.BACTERIAL.isStart("GTG"))
         assertTrue(CodonTable.BACTERIAL.isStart("TTG"))
+        assertTrue(CodonTable.BACTERIAL.isStart("CTG"))
+        assertFalse(CodonTable.STANDARD.isStart("ATGG"))
         assertTrue(CodonTable.STANDARD.isStop("TAA"))
         assertFalse(CodonTable.STANDARD.isStop("ATG"))
     }
@@ -54,24 +56,42 @@ class CodonTableTest {
     }
 
     @Test
+    fun mitochondrialTablesUseNcbIAssignmentsAndStarts() {
+        assertEquals('M', CodonTable.VERTEBRATE_MITOCHONDRIAL.translate("ATA"))
+        assertEquals('*', CodonTable.VERTEBRATE_MITOCHONDRIAL.translate("AGA"))
+        assertTrue(CodonTable.VERTEBRATE_MITOCHONDRIAL.isStart("AUA"))
+        assertTrue(CodonTable.YEAST.isStart("GTG"))
+        assertEquals('R', CodonTable.MOLD.translate("AGA"))
+        assertTrue(CodonTable.MOLD.isStart("ATC"))
+        assertTrue(CodonTable.INVERTEBRATE.isStart("ATC"))
+        assertTrue(CodonTable.ALTERNATIVE_YEAST.isStart("CTG"))
+        assertEquals('C', CodonTable.EUPLOTID.translate("TGA"))
+        assertEquals('S', CodonTable.ALTERNATIVE_YEAST.translate("CTG"))
+    }
+
+    @Test
     fun invertebrateTableTranslatesAGAToSerine() {
         assertEquals('S', CodonTable.INVERTEBRATE.translate("AGA"))
         assertEquals('S', CodonTable.INVERTEBRATE.translate("AGG"))
     }
 
     @Test
-    fun codonTablesCountSeven() {
-        assertEquals(7, CodonTable.ALL.size)
+    fun codonTablesUseUniqueNcbIIds() {
+        assertEquals(9, CodonTable.ALL.size)
+        assertEquals(9, CodonTable.ALL.map { it.id }.toSet().size)
     }
 
     @Test
     fun byIdFindsAllBundledTables() {
         assertEquals(CodonTable.byId(1), CodonTable.STANDARD)
-        assertEquals(CodonTable.byId(2), CodonTable.MOLD)
+        assertEquals(CodonTable.byId(2), CodonTable.VERTEBRATE_MITOCHONDRIAL)
         assertEquals(CodonTable.byId(3), CodonTable.YEAST)
+        assertEquals(CodonTable.byId(4), CodonTable.MOLD)
         assertEquals(CodonTable.byId(5), CodonTable.INVERTEBRATE)
+        assertEquals(CodonTable.byId(9), CodonTable.ECHINODERM)
+        assertEquals(CodonTable.byId(10), CodonTable.EUPLOTID)
         assertEquals(CodonTable.byId(11), CodonTable.BACTERIAL)
-        assertEquals(CodonTable.byId(12), CodonTable.SPIROPLASMA)
+        assertEquals(CodonTable.byId(12), CodonTable.ALTERNATIVE_YEAST)
     }
 
     @Test

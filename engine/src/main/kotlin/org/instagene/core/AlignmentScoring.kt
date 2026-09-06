@@ -36,20 +36,31 @@ internal object AlignmentScores {
         """.trimIndent(),
     )
 
-    /** A conservative PAM-like preset for protein alignments. */
-    private val pam250 = BLOSUM_ALPHABET.associateWith { row ->
-        BLOSUM_ALPHABET.associateWith { column ->
-            when (row) {
-                column -> 3.0
-                in "STNQ" if column in "STNQ" -> 1.0
-                in "AILMV" if column in "AILMV" -> 1.0
-                in "DE" if column in "DE" -> 2.0
-                in "KR" if column in "KR" -> 2.0
-                in "FWY" if column in "FWY" -> 2.0
-                else -> -2.0
-            }
-        }
-    }
+    /** PAM250, Dayhoff et al., in the same residue order as [BLOSUM_ALPHABET]. */
+    private val pam250 = matrix(
+        """
+         2 -2  0  0 -2  0  0  1 -1 -1 -2 -1 -1 -3  1  1 -1 -3  0 -2
+        -2  6  0 -1 -4  1 -1 -3  2 -2 -2  3  0 -4  0  0 -1  2 -4 -2
+         0  0  2  1 -2  0  1  0  2 -2 -2  1  0 -2  0  1  0 -2 -2 -2
+         0 -1  1  4 -3  0  1  1  2 -1 -1  0 -1 -6 -1  0  0 -3 -3 -2
+        -2 -4 -2 -3 12 -5 -3 -3 -5 -2 -2 -5 -5 -4 -3  0 -2 -8  0 -2
+         0  1  0  0 -5  4  2 -1  1 -2 -2  1 -1 -5  0 -1 -1 -5 -4 -2
+         0 -1  1  1 -3  2  4  0  1 -2 -2  0 -1 -5 -1  0 -1 -7 -4 -2
+         1 -3  0  1 -3 -1  0  5 -2 -3 -3 -2 -2 -5 -1  0 -1 -7 -5 -1
+        -1  2  2  2 -5  1  1 -2  6 -2 -2  0 -2 -2  0 -1 -1 -3  0 -2
+        -1 -2 -2 -1 -2 -2 -2 -3 -2  5  2 -2  2  0 -2 -1  0 -5 -1  4
+        -2 -2 -2 -1 -2 -2 -2 -3 -2  2  6 -3  4  0 -3 -3 -1 -2 -1  2
+        -1  3  1  0 -5  1  0 -2  0 -2 -3  5  0 -5 -1  0 -1 -3 -4 -2
+        -1  0  0 -1 -5 -1 -1 -2 -2  2  4  0  6  0 -2 -2 -1 -4 -2  2
+        -3 -4 -2 -6 -4 -5 -5 -5 -2  0  0 -5  0  9  0 -2 -1 -3  7 -1
+         1  0  0 -1 -3  0 -1 -1  0 -2 -3 -1 -2  0  6  1  0 -6 -5 -2
+         1  0  1  0  0 -1  0  0 -1 -1 -3  0 -2 -2  1  2  1 -2 -3 -1
+        -1 -1  0  0 -2 -1 -1 -1 -1  0 -1 -1 -1 -1  0  1  3 -5 -3  0
+        -3  2 -2 -3 -8 -5 -7 -7 -3 -5 -2 -3 -4 -3 -6 -2 -5 17  0 -6
+         0 -4 -2 -3  0 -4 -4 -5  0 -1 -1 -4 -2  7 -5 -3 -3  0 10 -2
+        -2 -2 -2 -2 -2 -2 -2 -1 -2  4  2 -2  2 -1 -2 -1  0 -6 -2  4
+        """.trimIndent(),
+    )
 
     private val nucleotideSets = mapOf(
         'A' to setOf('A'), 'C' to setOf('C'), 'G' to setOf('G'), 'T' to setOf('T'), 'U' to setOf('T'),
@@ -81,7 +92,7 @@ internal object AlignmentScores {
                 if (l != null && r != null && l.intersect(r).isNotEmpty()) 1.0 else -1.0
             }
             AlignmentScoring.BLOSUM62 -> matrixScore(blosum62, left, right)
-            AlignmentScoring.PAM250 -> pam250[left.uppercaseChar()]?.get(right.uppercaseChar()) ?: -2.0
+            AlignmentScoring.PAM250 -> matrixScore(pam250, left, right)
             AlignmentScoring.AUTO, AlignmentScoring.CUSTOM -> error("Unresolved alignment scoring preset")
         }
     }
@@ -93,7 +104,7 @@ internal object AlignmentScores {
     }
 
     private fun matrix(values: String): Array<DoubleArray> {
-        val numbers = values.split(Regex("\\s+")).map(String::toDouble)
+        val numbers = values.trim().split(Regex("\\s+")).filter(String::isNotBlank).map(String::toDouble)
         require(numbers.size == BLOSUM_ALPHABET.length * BLOSUM_ALPHABET.length)
         return Array(BLOSUM_ALPHABET.length) { row ->
             DoubleArray(BLOSUM_ALPHABET.length) { column -> numbers[row * BLOSUM_ALPHABET.length + column] }

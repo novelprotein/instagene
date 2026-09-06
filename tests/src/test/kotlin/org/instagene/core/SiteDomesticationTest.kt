@@ -40,9 +40,22 @@ class SiteDomesticationTest {
             bases = "ATG" + "TGT" + "GGTCTC" + "TGT" + "TGT" + "TGT" + "TAA",
             kind = SeqKind.DNA,
         )
-        val result = SiteDomestication.domesticate(seq, listOf(Enzyme("BsaI", "GGTCTC", 1, 5)))
+        val coding = Feature("cds", "CDS", 0, seq.bases.length)
+        val result = SiteDomestication.domesticate(
+            seq,
+            listOf(Enzyme("BsaI", "GGTCTC", 1, 5)),
+            listOf(coding),
+        )
         val sitesAfter = Digest.countSites(result.domesticated, Enzyme("BsaI", "GGTCTC", 1, 5))
         assertEquals(0, sitesAfter, "All BsaI sites should be removed")
+    }
+
+    @Test
+    fun doesNotAssumeUnannotatedSequenceIsCoding() {
+        val seq = Seq(name = "unannotated", bases = "ATGGGTCTC", kind = SeqKind.DNA)
+        val result = SiteDomestication.domesticate(seq, listOf(Enzyme("BsaI", "GGTCTC", 1, 5)))
+        assertEquals(seq.bases, result.domesticated.bases)
+        assertTrue(result.unresolvedSites.isNotEmpty())
     }
 
     @Test

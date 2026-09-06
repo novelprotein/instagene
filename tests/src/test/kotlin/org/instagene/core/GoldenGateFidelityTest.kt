@@ -1,18 +1,18 @@
 package org.instagene.core
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GoldenGateFidelityTest {
 
     @Test
-    fun scoresStandardSet() {
+    fun screensStandardSetWithoutFabricatingPercentages() {
         val score = GoldenGateFidelity.score(
             listOf("GGAG", "TGAC", "TCCC", "TACT", "CCAT", "AATG", "AGCC", "TTCG", "GCTT", "GGTA", "CGCT"),
         )
-        assertTrue(score.setFidelity > 0.99, "Plant standard set should have >99% fidelity")
+        assertNull(score.setFidelity)
+        assertTrue(!score.quantitativeFidelityAvailable)
         assertNull(score.weakestOverhang)
     }
 
@@ -36,11 +36,9 @@ class GoldenGateFidelityTest {
     }
 
     @Test
-    fun reportsPerOverhangScores() {
+    fun doesNotReportUnsupportedPerOverhangScores() {
         val score = GoldenGateFidelity.score(listOf("GGAG", "TGAC", "TCCC", "AATG"))
-        assertEquals(4, score.perOverhangFidelity.size)
-        for ((_, fi) in score.perOverhangFidelity) {
-            assertTrue(fi > 0.0, "Per-overhang fidelity should be positive")
-        }
+        assertTrue(score.perOverhangFidelity.isEmpty())
+        assertNull(score.weakestFidelity)
     }
 }

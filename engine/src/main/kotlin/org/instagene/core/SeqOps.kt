@@ -113,6 +113,7 @@ object SeqOps {
      * RNA uracil counts as thymine, so the formula works for RNA oligos too.
      */
     fun meltingTemp(bases: String, saltMolar: Double = 0.05): Double {
+        require(saltMolar.isFinite() && saltMolar > 0.0) { "Salt molarity must be positive and finite" }
         var n = 0
         var at = 0
         var gc = 0
@@ -162,18 +163,21 @@ object SeqOps {
             if (residues == 0.0) 0.0 else residues + 18.02 // + water
         }
 
-        SeqKind.RNA -> {
+        SeqKind.RNA, SeqKind.DNA -> {
+            val table = if (seq.kind == SeqKind.RNA) RNA_WEIGHT_TABLE else DNA_WEIGHT_TABLE
             var sum = 0.0
-            for (c in seq.bases) if (c.code < 256) sum += RNA_WEIGHT_TABLE[c.code]
-            // Linear single strands carry a free 5' phosphate correction.
-            if (sum == 0.0) 0.0 else sum - 61.96
-        }
-
-        else -> {
-            var sum = 0.0
-            for (c in seq.bases) if (c.code < 256) sum += DNA_WEIGHT_TABLE[c.code]
-            // Linear single strands carry a free 5' phosphate correction.
-            if (sum == 0.0) 0.0 else sum - 61.96
+            for (c in seq.bases) if (c.code < 256) sum += table[c.code]
+            if (sum == 0.0) 0.0 else {
+                val strands = if (seq.molecule.strandedness == Strandedness.DOUBLE) 2 else 1
+                val strandMass = if (seq.topology == Topology.CIRCULAR) {
+                    sum
+                } else {
+                    sum - 61.96 +
+                        if (seq.molecule.fivePrimePhosphorylated) 79.97 else 0.0 +
+                        if (seq.molecule.threePrimePhosphorylated) 79.97 else 0.0
+                }
+                strandMass * strands
+            }
         }
     }
 

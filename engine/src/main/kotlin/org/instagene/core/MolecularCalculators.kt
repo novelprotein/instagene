@@ -45,7 +45,7 @@ object MolecularCalculators {
             val trimmed = token.trim()
             if (trimmed.isEmpty()) return@mapNotNull null
             val match = Regex("^(.+?)\\s+([0-9]+(?:\\.[0-9]+)?)\\s*(?:mM|M)?$", RegexOption.IGNORE_CASE).find(trimmed)
-                ?: return@mapNotNull null
+                ?: error("Invalid recipe component '$trimmed'; expected '<name> <amount>'")
             match.groupValues[1].trim() to match.groupValues[2].toDouble()
         }
 
@@ -72,10 +72,11 @@ object MolecularCalculators {
             'C' -> cys++
         }
         // Gill & von Hippel (1990) coefficients
-        val base = trp * 5500.0 + tyr * 1490.0 + cys * 125.0
-        // Disulfide bond correction: -2.0 * disulfideBonds * 125.0
         val ds = if (disulfideBonds >= 0) disulfideBonds else cys / 2
-        return base - 2.0 * ds * 125.0
+        require(ds >= 0 && ds * 2 <= cys) { "Disulfide bonds must not exceed half the cysteine count" }
+        // Gill & von Hippel: free cysteine contributes nothing; each cystine
+        // (disulfide bond) contributes 125 M^-1 cm^-1.
+        return trp * 5500.0 + tyr * 1490.0 + ds * 125.0
     }
 
     /**

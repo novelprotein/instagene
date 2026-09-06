@@ -57,4 +57,31 @@ class SangerAlignmentTest {
         assertEquals(1, insertion.insertionCount)
         assertEquals(1, deletion.deletionCount)
     }
+
+    @Test
+    fun alignsReverseOrientationAndReportsOriginalReadCoordinates() {
+        val reference = Seq(name = "ref", bases = "ACGTCGAA", kind = SeqKind.DNA)
+        val reverseRead = SangerRead("reverse", Alphabet.reverseComplement(reference.bases), listOf(31, 32, 33, 34, 35, 36, 37, 38))
+
+        val aligned = SangerAlignment.align(reference, listOf(reverseRead), SangerOptions(trimQuality = 0)).reads.single()
+
+        assertEquals(SangerOrientation.REVERSE, aligned.orientation)
+        assertEquals(1.0, aligned.identity)
+        assertEquals((0 until 8).toSet(), aligned.qualityObservations.map { it.readPosition }.toSet())
+    }
+
+    @Test
+    fun canRestrictAlignmentToForwardOrientation() {
+        val reference = Seq(name = "ref", bases = "ACGTCGAA", kind = SeqKind.DNA)
+        val reverseRead = SangerRead("reverse", Alphabet.reverseComplement(reference.bases))
+
+        val aligned = SangerAlignment.align(
+            reference,
+            listOf(reverseRead),
+            SangerOptions(trimQuality = 0, alignBothOrientations = false),
+        ).reads.single()
+
+        assertEquals(SangerOrientation.FORWARD, aligned.orientation)
+        assertTrue(aligned.alignedLength < reference.length)
+    }
 }

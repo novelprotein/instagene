@@ -45,6 +45,9 @@ object PrimerThermodynamics {
 
     private fun nnParams(seq: String): Pair<Double, Double> {
         val upper = seq.uppercase().replace('U', 'T')
+        require(upper.isNotEmpty() && upper.all { it in "ACGT" }) {
+            "Primer sequence must contain only A, C, G, T, or U"
+        }
         var dh = 0.0
         var ds = 0.0
         for (i in 0 until upper.length - 1) {
@@ -57,6 +60,20 @@ object PrimerThermodynamics {
 
     private fun deltaG37(dh: Double, ds: Double): Double {
         return dh - 310.15 * ds / 1000.0
+    }
+
+    private fun duplexThermodynamics(seq: String, selfComplementary: Boolean = false): Pair<Double, Double> {
+        val (nnDh, nnDs) = nnParams(seq)
+        // SantaLucia's initiation terms (SantaLucia, 1998), including the
+        // symmetry penalty for self-complementary duplexes.
+        val dh = nnDh + 0.2
+        val ds = nnDs - 5.7 - if (selfComplementary) 2.8 else 0.0
+        return dh to ds
+    }
+
+    private fun duplexDeltaG(seq: String): Double {
+        val (dh, ds) = duplexThermodynamics(seq)
+        return deltaG37(dh, ds)
     }
 
     /**
@@ -100,18 +117,13 @@ object PrimerThermodynamics {
     ): Double {
         if (mgConc <= 0.0) return tmNa
         val freeMg = (mgConc - dntpConc).coerceAtLeast(0.0)
-        val sqrtFreeMg = sqrt(freeMg)
-        val cMono = naConc / 1000.0 + 3.79 * sqrtFreeMg * sqrtFreeMg * sqrtFreeMg
-        val lnC = log10(cMono.coerceAtLeast(1e-10))
-        val a = 3.92e-5 * lnC / sqrt(freeMg.coerceAtLeast(1e-10))
-        val b = -9.11e-6 * lnC * lnC / freeMg.coerceAtLeast(1e-10)
-        val c = 6.26e-5 * lnC
-        val d = 1.42e-5 * lnC * lnC / (freeMg.coerceAtLeast(1e-10) * sqrt(freeMg.coerceAtLeast(1e-10)))
-        val e = -4.82e-4 * gcFraction
-        val f = 5.25e-4 * gcFraction * gcFraction
-        val correction = a + b + c + d * (e + f)
-        val tmNaK = tmNa + 273.15
-        return (1.0 / (1.0 / tmNaK + correction) - 273.15).coerceIn(0.0, 120.0)
+        if (freeMg == 0.0) return tmNa
+        // The validated monovalent-equivalent approximation used for mixed
+        // Na+/Mg2+ buffers (Owczarzy et al., 2008).  It is preferable to
+        // claiming precision from the published full mixed-salt polynomial
+        // without the required activity and concentration regime metadata.
+        val effectiveNa = naConc + 3.3 * sqrt(freeMg)
+        return correctMonovalent(tmNa, effectiveNa, gcFraction)
     }
 
     /**
@@ -127,7 +139,11 @@ object PrimerThermodynamics {
         dntpConc: Double = 0.0,
     ): ThermodynamicResult {
         val upper = seq.uppercase().replace('U', 'T')
-        val (dh, ds) = nnParams(upper)
+        require(upper.length >= 2) { "Primer sequence must contain at least two bases" }
+        require(naConc.isFinite() && naConc > 0.0) { "Monovalent salt concentration must be positive and finite" }
+        require(mgConc.isFinite() && mgConc >= 0.0) { "Magnesium concentration must be finite and non-negative" }
+        require(dntpConc.isFinite() && dntpConc >= 0.0) { "dNTP concentration must be finite and non-negative" }
+        val (dh, ds) = duplexThermodynamics(upper, Alphabet.reverseComplement(upper) == upper)
         val dg = deltaG37(dh, ds)
         val gcCount = upper.count { it == 'G' || it == 'C' }
         val gcFrac = gcCount.toDouble() / upper.length
@@ -153,12 +169,11 @@ object PrimerThermodynamics {
             var matchLen = 0
             var sumDg = 0.0
             for (j in 0 until overlap) {
-                val pair = "${upper[j]}${rc[j + offset]}"
-                if (pair in NN_DH) {
+                if (upper[j] == rc[j + offset]) {
                     matchLen++
-                    sumDg += deltaG37(NN_DH[pair]!!, NN_DS[pair]!!)
                 } else break
             }
+            if (matchLen > 1) sumDg = duplexDeltaG(upper.substring(0, matchLen))
             if (matchLen > 0 && sumDg < bestDg) {
                 bestDg = sumDg
                 bestLen = matchLen
@@ -179,11 +194,11 @@ object PrimerThermodynamics {
             for (j in s1.indices) {
                 val k = j - offset
                 if (k in rc2.indices) {
-                    val pair = "${s1[j]}${rc2[k]}"
-                    if (pair in NN_DH) {
-                        matchLen++
-                        sumDg += deltaG37(NN_DH[pair]!!, NN_DS[pair]!!)
-                    } else break
+                    if (s1[j] == rc2[k]) matchLen++ else break
+                }
+                if (matchLen > 1) {
+                    val start = (j - matchLen + 1).coerceAtLeast(0)
+                    sumDg = duplexDeltaG(s1.substring(start, j + 1))
                 }
             }
             if (matchLen > 0 && sumDg < bestDg) {
@@ -205,16 +220,15 @@ object PrimerThermodynamics {
                 var a = i
                 var b = j
                 while (a < b) {
-                    val pair = "${upper[a]}${Alphabet.complement(upper[b], SeqKind.DNA)}"
-                    val rcPair = "${upper[b]}${Alphabet.complement(upper[a], SeqKind.DNA)}"
-                    val dh = NN_DH[pair] ?: NN_DH[rcPair]
-                    val ds = NN_DS[pair] ?: NN_DS[rcPair]
-                    if (dh != null && ds != null) {
-                        stemDg += deltaG37(dh, ds)
+                    if (upper[a] == Alphabet.complement(upper[b], SeqKind.DNA)) {
                         stemLen++
                         a++
                         b--
                     } else break
+                }
+                if (stemLen >= 3) {
+                    val stem = upper.substring(i, i + stemLen)
+                    stemDg = duplexDeltaG(stem)
                 }
                 if (stemLen >= 3 && stemDg < bestStemDg) {
                     bestStemDg = stemDg
@@ -223,7 +237,7 @@ object PrimerThermodynamics {
             }
         }
         val assessment = assessDgRisk(bestStemDg)
-        return StructureReport(assessment, "Hairpin stem ${bestStemLen}bp dG=${"%.2f".format(bestStemDg)} kcal/mol")
+        return StructureReport(assessment, "Complementary-stem screen: ${bestStemLen}bp, estimated dG=${"%.2f".format(bestStemDg)} kcal/mol")
     }
 
     fun assessSelfDimer(seq: String): StructureReport {

@@ -1,137 +1,138 @@
 package org.instagene.core
 
-import kotlin.math.exp
-
-enum class ScoringMode { RULESET3_FULL, RULESET3_SIMPLE }
-
+/**
+ * A concrete SpCas9 target. Coordinates are zero-based and half-open, and
+ * [start] and [end] are ordered genomic bounds. [coordinates] retains the
+ * exact guide traversal order for origin-spanning circular targets.
+ */
 data class GuideRNA(
     val sequence: String,
-    val pamPosition: Int,
-    val onTargetScore: Double,
-    val offTargetScore: Double,
+    val strand: Strand,
+    val pam: String,
+    val start: Int,
+    val end: Int,
+    val pamStart: Int,
+    val pamEnd: Int,
     val gcContent: Double,
-    val scoringMode: ScoringMode = ScoringMode.RULESET3_SIMPLE,
+    val warnings: List<String> = emptyList(),
+    val coordinates: List<Int> = emptyList(),
+) {
+    /** Kept as a read-only compatibility alias for callers that used the PAM start. */
+    @Deprecated("Use pamStart")
+    val pamPosition: Int get() = pamStart
+}
+
+data class CrisprDesignResult(
+    val guides: List<GuideRNA>,
+    val warnings: List<String> = emptyList(),
 )
 
-data class CrisprDesignResult(val guides: List<GuideRNA>)
-
 object CrisprDesign {
-
     private const val GUIDE_LEN = 20
+    private const val PAM_LEN = 3
 
-    // Full Ruleset 3 position-specific nucleotide weights (Doench 2016, Table S3)
-    // Rows: positions 1-20 (1=PAM-proximal, 20=distal), Columns: A,C,G,T
-    private val FULL_WEIGHTS = arrayOf(
-        doubleArrayOf( 0.037, -0.329,  0.198, -0.069),  // pos 1
-        doubleArrayOf(-0.102, -0.275,  0.075,  0.043),  // pos 2
-        doubleArrayOf(-0.047, -0.149,  0.054, -0.017),  // pos 3
-        doubleArrayOf(-0.032,  0.064, -0.037,  0.028),  // pos 4
-        doubleArrayOf(-0.033,  0.044,  0.027, -0.060),  // pos 5
-        doubleArrayOf(-0.031, -0.015,  0.051, -0.014),  // pos 6
-        doubleArrayOf( 0.049, -0.088,  0.039, -0.012),  // pos 7
-        doubleArrayOf(-0.033,  0.098, -0.064, -0.010),  // pos 8
-        doubleArrayOf( 0.015,  0.056, -0.038, -0.034),  // pos 9
-        doubleArrayOf( 0.012,  0.032, -0.043, -0.009),  // pos 10
-        doubleArrayOf( 0.048, -0.052, -0.018,  0.025),  // pos 11
-        doubleArrayOf( 0.031,  0.028, -0.059, -0.003),  // pos 12
-        doubleArrayOf(-0.012,  0.042,  0.028, -0.058),  // pos 13
-        doubleArrayOf( 0.033, -0.028,  0.017, -0.016),  // pos 14
-        doubleArrayOf(-0.012,  0.015, -0.040,  0.037),  // pos 15
-        doubleArrayOf(-0.028, -0.013,  0.057, -0.018),  // pos 16
-        doubleArrayOf( 0.043, -0.039, -0.022,  0.016),  // pos 17
-        doubleArrayOf( 0.014,  0.028, -0.015, -0.026),  // pos 18
-        doubleArrayOf(-0.016, -0.025,  0.040, -0.002),  // pos 19
-        doubleArrayOf(-0.003,  0.029, -0.017, -0.010),  // pos 20
-    )
+    private fun complement(base: Char): Char = when (base) {
+        'A' -> 'T'
+        'C' -> 'G'
+        'G' -> 'C'
+        'T' -> 'A'
+        else -> base
+    }
 
-    // Simplified: top-impact positions only (1-3 proximal, 16-20 distal)
-    private val SIMPLE_WEIGHTS = arrayOf(
-        doubleArrayOf( 0.037, -0.329,  0.198, -0.069),  // pos 1
-        doubleArrayOf(-0.102, -0.275,  0.075,  0.043),  // pos 2
-        doubleArrayOf(-0.047, -0.149,  0.054, -0.017),  // pos 3
-        doubleArrayOf(-0.028, -0.013,  0.057, -0.018),  // pos 16
-        doubleArrayOf( 0.043, -0.039, -0.022,  0.016),  // pos 17
-        doubleArrayOf( 0.014,  0.028, -0.015, -0.026),  // pos 18
-        doubleArrayOf(-0.016, -0.025,  0.040, -0.002),  // pos 19
-        doubleArrayOf(-0.003,  0.029, -0.017, -0.010),  // pos 20
-    )
+    private fun reverseComplement(sequence: String): String =
+        sequence.reversed().map(::complement).joinToString("")
 
-    private val NUCLEOTIDE_INDEX = mapOf('A' to 0, 'C' to 1, 'G' to 2, 'T' to 3)
-    private const val FULL_INTERCEPT = 0.588
-    private const val SIMPLE_INTERCEPT = 0.442
+    private fun circularBase(sequence: String, index: Int): Char =
+        sequence[Math.floorMod(index, sequence.length)]
 
-    private fun sigmoid(x: Double): Double = 1.0 / (1.0 + exp(-x))
+    private fun circularSlice(sequence: String, start: Int, length: Int): String =
+        (0 until length).joinToString("") { circularBase(sequence, start + it).toString() }
 
-    private fun positionWeights(seq: String, weights: Array<DoubleArray>, intercept: Double): Double {
-        var sum = intercept
-        for (i in weights.indices) {
-            val nucIdx = NUCLEOTIDE_INDEX[seq[i]] ?: continue
-            sum += weights[i][nucIdx]
+    private fun guideWarnings(sequence: String, originSpanning: Boolean): List<String> = buildList {
+        val gc = sequence.count { it == 'G' || it == 'C' } / GUIDE_LEN.toDouble()
+        if (gc < 0.4 || gc > 0.6) add("GC content is outside the typical 40–60% range")
+        if (sequence.contains("TTTT")) add("Contains a poly-T run")
+        if (originSpanning) add("Guide spans the circular sequence origin")
+    }
+
+    fun design(target: Seq, maxGuides: Int = 10): CrisprDesignResult {
+        require(maxGuides >= 0) { "maxGuides must not be negative" }
+        val sequence = target.bases.uppercase().replace('U', 'T')
+        if (sequence.isEmpty() || target.kind == SeqKind.PROTEIN) {
+            return CrisprDesignResult(
+                emptyList(),
+                listOf("SpCas9 design requires a non-empty DNA or RNA sequence"),
+            )
         }
-        return sum
-    }
 
-    private fun gcPenalty(gc: Double): Double {
-        val deviation = gc - 0.5
-        return -4.0 * deviation * deviation
-    }
-
-    private fun polyTPenalty(seq: String): Double {
-        var maxRun = 0; var run = 0
-        for (c in seq) {
-            if (c == 'T') { run++; if (run > maxRun) maxRun = run }
-            else run = 0
-        }
-        return if (maxRun >= 4) -0.3 * (maxRun - 3) else 0.0
-    }
-
-    private fun onTargetScore(seq: String, mode: ScoringMode): Double {
-        val (weights, intercept) = when (mode) {
-            ScoringMode.RULESET3_FULL -> FULL_WEIGHTS to FULL_INTERCEPT
-            ScoringMode.RULESET3_SIMPLE -> SIMPLE_WEIGHTS to SIMPLE_INTERCEPT
-        }
-        val baseScore = positionWeights(seq, weights, intercept)
-        val gc = seq.count { it == 'G' || it == 'C' } / GUIDE_LEN.toDouble()
-        val gcAdj = gcPenalty(gc) * 0.15
-        val ttPenalty = polyTPenalty(seq)
-        return sigmoid(baseScore + gcAdj + ttPenalty).coerceIn(0.01, 0.99)
-    }
-
-    private fun offTargetScore(seq: String, target: String): Double {
-        val seed = seq.takeLast(12)
-        val targetSeed = target.takeLast(12)
-        var mismatches = 0
-        var penaltySum = 0.0
-        for (i in seed.indices) {
-            if (seed[i] != targetSeed[i]) {
-                mismatches++
-                val positionWeight = 1.0 + i * 0.15
-                penaltySum += positionWeight
+        val invalid = sequence.filter { it !in "ACGT" }.toSet()
+        val resultWarnings = buildList {
+            if (invalid.isNotEmpty()) {
+                add("Ambiguous or unsupported bases were ignored while scanning: ${invalid.sorted().joinToString("")}")
+            }
+            if (!target.isCircular && sequence.length < GUIDE_LEN + PAM_LEN) {
+                add("Sequence is shorter than a 20-base guide plus NGG PAM")
             }
         }
-        return when (mismatches) {
-            0 -> 0.0
-            1 -> sigmoid(-1.5 + penaltySum * 0.3)
-            else -> sigmoid(-2.0 + penaltySum * 0.2).coerceAtMost(0.5)
-        }
-    }
 
-    fun design(target: Seq, maxGuides: Int = 10, scoringMode: ScoringMode = ScoringMode.RULESET3_SIMPLE): CrisprDesignResult {
-        val seq = target.bases.uppercase().replace('U', 'T')
+        val circular = target.isCircular
+        val pamStarts = if (circular) 0 until sequence.length
+        else 0..(sequence.length - PAM_LEN).coerceAtLeast(-1)
         val guides = mutableListOf<GuideRNA>()
-        for (i in GUIDE_LEN..seq.length - 3) {
-            if (seq[i] == 'N' && seq[i + 1] == 'G' && seq[i + 2] == 'G') {
-                val start = i - GUIDE_LEN
-                val grna = seq.substring(start, i)
-                if (grna.all { it in "ACGT" }) {
-                    val gc = grna.count { it == 'G' || it == 'C' } / GUIDE_LEN.toDouble()
-                    val onTarget = onTargetScore(grna, scoringMode)
-                    val offTarget = offTargetScore(grna, seq)
-                    guides.add(GuideRNA(grna, i, onTarget, offTarget, gc, scoringMode))
+
+        for (pamStart in pamStarts) {
+            val pam = circularSlice(sequence, pamStart, PAM_LEN).takeIf { it.length == PAM_LEN } ?: continue
+            if (!(pam[0] in "ACGT" && pam[1] == 'G' && pam[2] == 'G')) {
+                // On the opposite strand, a forward-recorded PAM is CCN.
+                if (!(pam[0] == 'C' && pam[1] == 'C' && pam[2] in "ACGT")) continue
+                if (!circular && pamStart + GUIDE_LEN + PAM_LEN > sequence.length) continue
+                val guideStart = pamStart + PAM_LEN
+                val coordinates = (0 until GUIDE_LEN).map { index ->
+                    if (circular) Math.floorMod(guideStart + index, sequence.length) else guideStart + index
                 }
+                val protospacer = coordinates.joinToString("") { sequence[it].toString() }
+                val guide = reverseComplement(protospacer)
+                if (guide.any { it !in "ACGT" }) continue
+                val start = coordinates.minOrNull() ?: continue
+                val end = (coordinates.maxOrNull() ?: -1) + 1
+                guides += GuideRNA(
+                    sequence = guide,
+                    strand = Strand.REVERSE,
+                    pam = pam,
+                    start = start,
+                    end = end,
+                    pamStart = pamStart,
+                    pamEnd = if (circular) Math.floorMod(pamStart + PAM_LEN, sequence.length) else pamStart + PAM_LEN,
+                    gcContent = guide.count { it == 'G' || it == 'C' } / GUIDE_LEN.toDouble(),
+                    warnings = guideWarnings(guide, circular && coordinates.zipWithNext().any { it.second != it.first + 1 }),
+                    coordinates = coordinates,
+                )
+                continue
             }
+            if (!circular && pamStart - GUIDE_LEN < 0) continue
+            val coordinates = (0 until GUIDE_LEN).map { index ->
+                if (circular) Math.floorMod(pamStart - GUIDE_LEN + index, sequence.length)
+                else pamStart - GUIDE_LEN + index
+            }
+            val guide = coordinates.joinToString("") { sequence[it].toString() }
+            if (guide.any { it !in "ACGT" }) continue
+            val start = coordinates.minOrNull() ?: continue
+            val end = (coordinates.maxOrNull() ?: -1) + 1
+            guides += GuideRNA(
+                sequence = guide,
+                strand = Strand.FORWARD,
+                pam = pam,
+                start = start,
+                end = end,
+                pamStart = pamStart,
+                pamEnd = if (circular) Math.floorMod(pamStart + PAM_LEN, sequence.length) else pamStart + PAM_LEN,
+                gcContent = guide.count { it == 'G' || it == 'C' } / GUIDE_LEN.toDouble(),
+                warnings = guideWarnings(guide, circular && coordinates.zipWithNext().any { it.second != it.first + 1 }),
+                coordinates = coordinates,
+            )
         }
-        val sorted = guides.sortedByDescending { it.onTargetScore }.take(maxGuides)
-        return CrisprDesignResult(sorted)
+
+        val sorted = guides.sortedWith(compareBy<GuideRNA> { it.start }.thenBy { it.end }.thenBy { it.strand.sign })
+        return CrisprDesignResult(sorted.take(maxGuides), resultWarnings)
     }
 }

@@ -2,6 +2,8 @@ package org.instagene.core
 
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class SequenceStatisticsTest {
 
@@ -47,5 +49,26 @@ class SequenceStatisticsTest {
         val seq = Seq(name = "short", bases = "CG", kind = SeqKind.DNA)
         val profile = SequenceStatistics.cpgDensityProfile(seq, windowSize = 100)
         assertTrue(profile.isEmpty(), "Short sequence should return empty profile")
+    }
+
+    @Test
+    fun profilesUpdateCorrectlyForMultiBaseSteps() {
+        val seq = Seq(bases = "GGGGCCCC", kind = SeqKind.DNA)
+        assertEquals(listOf(100.0, 100.0, 100.0), SequenceStatistics.gcContentProfile(seq, 4, 2).map { it.y })
+        assertEquals(listOf(1.0, 0.0, -1.0), SequenceStatistics.gcSkewProfile(seq, 4, 2).map { it.y })
+    }
+
+    @Test
+    fun profileParametersMustBePositive() {
+        val seq = Seq(bases = "ATGC", kind = SeqKind.DNA)
+        assertFailsWith<IllegalArgumentException> { SequenceStatistics.gcContentProfile(seq, 0, 1) }
+        assertFailsWith<IllegalArgumentException> { SequenceStatistics.meltingTempProfile(seq, 2, 0) }
+        assertFailsWith<IllegalArgumentException> { SequenceStatistics.gcContentProfile(seq, 2, 3) }
+    }
+
+    @Test
+    fun dinucleotidesCountCaseInsensitivelyAndSkipAmbiguity() {
+        val stats = SequenceStatistics.computeStats(Seq(bases = "aTNC", kind = SeqKind.DNA))
+        assertEquals(mapOf("AT" to 1), stats.dinucleotideCounts)
     }
 }
