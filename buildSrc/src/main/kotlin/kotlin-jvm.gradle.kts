@@ -20,7 +20,6 @@ tasks.withType<Test>().configureEach {
     testLogging {
         events(
             TestLogEvent.FAILED,
-            TestLogEvent.PASSED,
             TestLogEvent.SKIPPED
         )
     }

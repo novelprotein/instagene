@@ -2,6 +2,7 @@ package org.instagene.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class PrimerThermodynamicsTest {
@@ -44,5 +45,15 @@ class PrimerThermodynamicsTest {
     fun fullScreenReturnsMultipleReports() {
         val reports = PrimerThermodynamics.fullScreen("ACGTACGTACGTACGTACGT")
         assertEquals(2, reports.size)
+    }
+
+    @Test
+    fun rejectsInvalidThermodynamicInputs() {
+        assertFailsWith<IllegalArgumentException> {
+            PrimerThermodynamics.thermodynamicResult("ACN")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PrimerThermodynamics.thermodynamicResult("A")
+        }
     }
 }

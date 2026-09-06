@@ -25,7 +25,12 @@ val instageneMemoryProfile = providers.systemProperty("instagene.memoryProfile")
 tasks.test {
 
     maxHeapSize = instageneHeap
-    doNotTrackState("Gradle test binary result files are internal execution output and may be unavailable after failures.")
+    val configuredForks = providers.gradleProperty("instagene.testForks")
+        .orElse("1")
+        .map { it.toIntOrNull() ?: error("instagene.testForks must be an integer") }
+        .get()
+    require(configuredForks > 0) { "instagene.testForks must be positive" }
+    maxParallelForks = configuredForks
     // Swing smoke tests construct components without a display.
     systemProperty("java.awt.headless", "true")
     // Forward the opt-in performance benchmark flag to the test JVM.
