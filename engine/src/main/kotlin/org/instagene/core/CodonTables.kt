@@ -1,8 +1,8 @@
 package org.instagene.core
 
 /**
- * NCBI genetic codes. Only the two that matter for everyday cloning are bundled:
- * the standard code and the bacterial/plasmid code (which differs in its start codons).
+ * Bundled NCBI genetic codes, verified against the 2024-09-23 reference tables.
+ * https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
  */
 class CodonTable(
     val id: Int,
@@ -70,15 +70,23 @@ class CodonTable(
         )
         // NCBI table 3: Yeast (Saccharomyces cerevisiae)
         // Differences from standard: CTN = Thr (not Leu), TGA = Trp
-        private const val AA_YEAST =
-            "FFLLSSSSYY**CCWWTTTTPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
+        private val AA_YEAST = tableWithChanges(
+            mapOf(
+                "ATA" to 'M',
+                "TGA" to 'W',
+                "CTT" to 'T',
+                "CTC" to 'T',
+                "CTA" to 'T',
+                "CTG" to 'T',
+            ),
+        )
         // NCBI table 5: Invertebrate mitochondrial.
         private val AA_INVERTEBRATE = tableWithChanges(
             mapOf("ATA" to 'M', "TGA" to 'W', "AGA" to 'S', "AGG" to 'S'),
         )
         // NCBI table 9: Echinoderm and flatworm mitochondrial.
         private val AA_ECHINODERM = tableWithChanges(
-            mapOf("TGA" to 'W', "AGA" to 'S', "AGG" to 'S'),
+            mapOf("AAA" to 'N', "TGA" to 'W', "AGA" to 'S', "AGG" to 'S'),
         )
         // NCBI table 10: Euplotid nuclear (ciliated protozoa).
         // Difference from standard: TGA = Cys.
@@ -102,7 +110,7 @@ class CodonTable(
             id = 1,
             displayName = "1 - Standard",
             codons = tableOf(AA_STANDARD),
-            startCodons = setOf("ATG"),
+            startCodons = setOf("TTG", "CTG", "ATG"),
         )
 
         /** Table 2: Vertebrate mitochondrial. */
@@ -125,7 +133,7 @@ class CodonTable(
         val YEAST = CodonTable(
             id = 3,
             displayName = "3 - Yeast (S. cerevisiae)",
-            codons = tableOf(AA_YEAST),
+            codons = AA_YEAST,
             startCodons = setOf("ATA", "ATG", "GTG"),
         )
 
@@ -142,7 +150,7 @@ class CodonTable(
             id = 9,
             displayName = "9 - Echinoderm / Flatworm Mitochondrial",
             codons = AA_ECHINODERM,
-            startCodons = setOf("ATA", "ATC", "ATT", "ATG", "GTG"),
+            startCodons = setOf("ATG", "GTG"),
         )
 
         /** Table 10: Euplotid nuclear (ciliated protozoa). */

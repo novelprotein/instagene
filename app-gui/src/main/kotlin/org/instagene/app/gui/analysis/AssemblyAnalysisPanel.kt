@@ -10,7 +10,7 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
     private val mode = JComboBox(arrayOf(
         "Restriction cloning", "Gateway cloning", "Gibson assembly", "NEBuilder HiFi", "In-Fusion cloning",
         "TA cloning", "GC cloning", "TA TOPO", "Directional TOPO", "Blunt TOPO", "Golden Gate", "Homology recombination",
-    ))
+    ).map { "$it — sequence simulation" }.toTypedArray())
     private val parts = JTextField(36)
     private val enzymes = JTextField("EcoRI", 12)
     private val overhangs = JTextField("A,G,A", 12)
@@ -121,6 +121,7 @@ internal class AssemblyAnalysisPanel(private val onOpenSequence: (Seq) -> Unit) 
             product = result.product
             output.text = buildString {
                 append("Product: ${result.product.name}\nLength: ${result.product.length}\nTopology: ${result.product.topology}\n")
+                appendLine(result.methodMetadata.summary())
                 result.diagnostics.forEach { append("${it.severity}: ${it.message}\n") }
                 append('\n')
                 result.steps.forEachIndexed { index, step -> append("${index + 1}. ${step.title}: ${step.detail}\n") }

@@ -71,4 +71,10 @@ class SequenceStatisticsTest {
         val stats = SequenceStatistics.computeStats(Seq(bases = "aTNC", kind = SeqKind.DNA))
         assertEquals(mapOf("AT" to 1), stats.dinucleotideCounts)
     }
+
+    @Test
+    fun cumulativeGcSkewAccumulatesWindowValues() {
+        val values = SequenceStatistics.cumulativeGcSkew(Seq(bases = "GGGGCCCC", kind = SeqKind.DNA), 4, 2).map { it.y }
+        assertEquals(listOf(1.0, 1.0, 0.0), values)
+    }
 }

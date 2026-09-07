@@ -51,22 +51,34 @@ object Alignment {
         } else {
             Parallel.map(queries) { alignPair(reference, it, parameters) }
         }
-        val refLength = aligned.maxOf { it.reference.length }
-        val first = aligned.firstOrNull()
-        val normalizedRef = first?.let { pair ->
-            AlignedSequence(reference.name, pad(pair.reference, refLength), Strand.FORWARD, pair.score, pair.matches, pair.mismatches, pair.gaps)
-        } ?: AlignedSequence(reference.name, reference.bases, Strand.FORWARD, 0.0, 0, 0, 0)
+        // Merge insertions at their reference boundaries, not by padding independent rows.
+        data class Anchored(val bases: CharArray, val insertions: Array<StringBuilder>)
+        val anchored = aligned.map { pair ->
+            val bases = CharArray(reference.length) { '-' }
+            val insertions = Array(reference.length + 1) { StringBuilder() }
+            var position = pair.referenceStart
+            pair.reference.indices.forEach { column ->
+                if (pair.reference[column] == '-') insertions[position].append(pair.query[column])
+                else bases[position++] = pair.query[column]
+            }
+            Anchored(bases, insertions)
+        }
+        val widths = IntArray(reference.length + 1) { boundary -> anchored.maxOf { it.insertions[boundary].length } }
+        val start = if (queries.size == 1) aligned.single().referenceStart else 0
+        val end = if (queries.size == 1) start + aligned.single().reference.count { it != '-' } else reference.length
+        fun render(bases: String, insertions: Array<StringBuilder>?): String = buildString {
+            for (position in start..end) {
+                append(insertions?.get(position)?.toString().orEmpty().padEnd(widths[position], '-'))
+                if (position < end) append(bases[position])
+            }
+        }
+        val first = aligned.first()
+        val normalizedRef = AlignedSequence(reference.name, render(reference.bases.uppercase(), null),
+            Strand.FORWARD, first.score, first.matches, first.mismatches, first.gaps)
         val rows = queries.mapIndexed { index, query ->
             val pair = aligned[index]
-            AlignedSequence(
-                query.name,
-                pad(pair.query, normalizedRef.sequence.length),
-                pair.direction,
-                pair.score,
-                pair.matches,
-                pair.mismatches,
-                pair.gaps,
-            )
+            AlignedSequence(query.name, render(anchored[index].bases.concatToString(), anchored[index].insertions),
+                pair.direction, pair.score, pair.matches, pair.mismatches, pair.gaps)
         }
         return AlignmentResult(normalizedRef, rows, parameters)
     }
@@ -79,6 +91,7 @@ object Alignment {
         val matches: Int,
         val mismatches: Int,
         val gaps: Int,
+        val referenceStart: Int = 0,
     )
 
     internal fun alignPair(reference: Seq, query: Seq, p: AlignmentParameters): PairResult {
@@ -226,6 +239,7 @@ object Alignment {
             matches = matches,
             mismatches = r.length - matches - gaps,
             gaps = gaps,
+            referenceStart = i,
         )
     }
 

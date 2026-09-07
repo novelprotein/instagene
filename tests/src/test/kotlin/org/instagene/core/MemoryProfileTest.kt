@@ -113,7 +113,7 @@ class MemoryProfileTest {
         putInt(4, sampleCount)
         putInt(8, sampleOffset)
         putInt(12, baseCount)
-        putInt(16, baseOffset)
+        putInt(24, baseOffset)
         putInt(40, 1)
         "2.00".encodeToByteArray().copyInto(bytes, 36)
         for (channel in 0 until 4) bytes[sampleOffset + channel * sampleCount] = ((channel + 1) * 20).toByte()

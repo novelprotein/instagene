@@ -80,7 +80,7 @@ object MolecularCalculators {
     }
 
     /**
-     * Absorbance at 280 nm for a 1 mg/mL solution in a 1 cm cuvette.
+     * Absorbance at 280 nm for a 1% (w/v, 10 mg/mL) solution in a 1 cm cuvette.
      *
      * A(1%, 280) = ε₂₈₀ * 10 / MW(Da)
      */

@@ -66,7 +66,7 @@ object ChromatogramReader {
         val version = bytes.copyOfRange(36, 40).decodeToString()
         require(version.startsWith("2.") || version.startsWith("3.")) { "Unsupported SCF version: $version" }
         val baseCount = uint(bytes, 12)
-        val baseOffset = uint(bytes, 16)
+        val baseOffset = uint(bytes, 24)
         require(baseCount > 0 && baseOffset <= bytes.size && baseCount.toLong() * 12L <= bytes.size - baseOffset) {
             "SCF chromatogram has an invalid base table"
         }
@@ -74,13 +74,24 @@ object ChromatogramReader {
         val qualities = ArrayList<Int>(baseCount)
         val peakPositions = ArrayList<Int>(baseCount)
         repeat(baseCount) { index ->
-            val at = baseOffset + index * 12
-            val called = bytes[at + 8].toInt().and(0xff).toChar().uppercaseChar()
+            val at = if (version.startsWith("3")) baseOffset + index * 4 else baseOffset + index * 12
+            val calledOffset = if (version.startsWith("3")) baseOffset + baseCount * 8 + index else at + 8
+            val called = bytes[calledOffset].toInt().and(0xff).toChar().uppercaseChar()
             if (called in Alphabet.DNA_BASES) {
                 bases.append(called)
                 peakPositions += uint(bytes, at)
-                qualities += maxOf(bytes[at + 4].toInt() and 0xff, bytes[at + 5].toInt() and 0xff,
-                    bytes[at + 6].toInt() and 0xff, bytes[at + 7].toInt() and 0xff)
+                val probabilityOffset = if (version.startsWith("3")) baseOffset + baseCount * 4 else at + 4
+                qualities += if (version.startsWith("3")) {
+                    maxOf(
+                        bytes[probabilityOffset + index].toInt() and 0xff,
+                        bytes[probabilityOffset + baseCount + index].toInt() and 0xff,
+                        bytes[probabilityOffset + 2 * baseCount + index].toInt() and 0xff,
+                        bytes[probabilityOffset + 3 * baseCount + index].toInt() and 0xff,
+                    )
+                } else {
+                    maxOf(bytes[probabilityOffset].toInt() and 0xff, bytes[probabilityOffset + 1].toInt() and 0xff,
+                        bytes[probabilityOffset + 2].toInt() and 0xff, bytes[probabilityOffset + 3].toInt() and 0xff)
+                }
             }
         }
         require(bases.isNotEmpty()) { "SCF chromatogram does not contain called bases" }
@@ -129,12 +140,12 @@ object ChromatogramReader {
     }
 
     private fun directory(bytes: ByteArray): List<Entry> {
-        val root = uint(bytes, 26)
-        if (root <= 0 || root > bytes.size - 28) return emptyList()
-        val count = int(bytes, root + 12)
-        val rootDataSize = int(bytes, root + 16)
-        val offset = if (rootDataSize <= 4) root + 20 else uint(bytes, root + 20)
-        if (count <= 0 || count.toLong() * 28L > bytes.size - offset) return emptyList()
+        val rootEntry = 6
+        if (bytes.size < rootEntry + 28) return emptyList()
+        val count = int(bytes, rootEntry + 12)
+        val rootDataSize = int(bytes, rootEntry + 16)
+        val offset = if (rootDataSize <= 4) rootEntry + 20 else uint(bytes, rootEntry + 20)
+        if (count <= 0 || offset < 0 || offset > bytes.size || count.toLong() * 28L > bytes.size - offset) return emptyList()
         return (0 until count).mapNotNull { index ->
             val at = offset + index * 28
             if (at < 0 || at > bytes.size - 28) return@mapNotNull null

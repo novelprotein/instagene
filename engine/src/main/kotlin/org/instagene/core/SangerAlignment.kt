@@ -60,6 +60,7 @@ data class AlignedRead(
     /** Per-base Phred observations that can be reused by quality-aware design workflows. */
     val qualityObservations: List<ReferenceQualityObservation> = emptyList(),
     val orientation: SangerOrientation = SangerOrientation.FORWARD,
+    val alignmentScore: Int = 0,
 ) {
     val insertionCount: Int get() = mismatches.count { it.kind == MismatchKind.INSERTION }
     val deletionCount: Int get() = mismatches.count { it.kind == MismatchKind.DELETION }
@@ -124,8 +125,8 @@ object SangerAlignment {
         val forward = candidate(false)
         if (!options.alignBothOrientations) return forward
         val reverse = candidate(true)
-        return if (reverse.alignedLength > forward.alignedLength ||
-            (reverse.alignedLength == forward.alignedLength && reverse.identity > forward.identity)) reverse else forward
+        return if (reverse.alignmentScore > forward.alignmentScore ||
+            (reverse.alignmentScore == forward.alignmentScore && reverse.identity > forward.identity)) reverse else forward
     }
 
     private fun alignOne(
@@ -230,6 +231,7 @@ object SangerAlignment {
             read.name, identity, mismatches, columns, refIndex, originalReadStart,
             lowQuality, trimmedBases, options.minIdentity, options.minAlignedLength, referenceLength, qualityObservations,
             orientation = orientation,
+            alignmentScore = bestScore,
         )
     }
 }

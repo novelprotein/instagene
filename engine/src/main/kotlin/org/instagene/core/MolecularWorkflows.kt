@@ -262,8 +262,11 @@ object CloningWorkflows {
             parameters = parameters.toSortedMap(),
             methodMetadata = ScientificMethodMetadata(
                 methodName = "${method.name.lowercase().replace('_', ' ')} sequence-construction simulation",
+                methodVersion = "1",
                 evidenceStatus = EvidenceStatus.SIMULATION,
-                limitations = listOf("Sequence construction is simulated; reaction kinetics and product verification are not predicted."),
+                conditions = parameters.toSortedMap() + ("Model" to "Deterministic sequence construction"),
+                limitations = listOf("Sequence construction is simulated; reaction kinetics and product verification are not predicted.",
+                    "Chemistry-specific names describe intended workflows, not experimentally validated products or protocols."),
             ),
         )
     }

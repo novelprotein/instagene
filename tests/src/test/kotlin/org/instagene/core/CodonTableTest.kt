@@ -82,6 +82,14 @@ class CodonTableTest {
     }
 
     @Test
+    fun correctedYeastAndEchinodermAssignmentsMatchNcbi() {
+        assertEquals('M', CodonTable.YEAST.translate("ATA"))
+        assertEquals('T', CodonTable.YEAST.translate("CTG"))
+        assertEquals('N', CodonTable.ECHINODERM.translate("AAA"))
+        assertEquals(setOf("ATG", "GTG"), CodonTable.ECHINODERM.startCodons)
+    }
+
+    @Test
     fun byIdFindsAllBundledTables() {
         assertEquals(CodonTable.byId(1), CodonTable.STANDARD)
         assertEquals(CodonTable.byId(2), CodonTable.VERTEBRATE_MITOCHONDRIAL)

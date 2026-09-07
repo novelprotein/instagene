@@ -76,6 +76,12 @@ object CrisprDesign {
         }
 
         val circular = target.isCircular
+        if (circular && sequence.length < GUIDE_LEN + PAM_LEN) {
+            return CrisprDesignResult(
+                emptyList(),
+                resultWarnings + "Circular sequence is shorter than a 20-base guide plus NGG PAM",
+            )
+        }
         val pamStarts = if (circular) 0 until sequence.length
         else 0..(sequence.length - PAM_LEN).coerceAtLeast(-1)
         val guides = mutableListOf<GuideRNA>()
@@ -87,10 +93,11 @@ object CrisprDesign {
                 if (!(pam[0] == 'C' && pam[1] == 'C' && pam[2] in "ACGT")) continue
                 if (!circular && pamStart + GUIDE_LEN + PAM_LEN > sequence.length) continue
                 val guideStart = pamStart + PAM_LEN
-                val coordinates = (0 until GUIDE_LEN).map { index ->
+                val genomicCoordinates = (0 until GUIDE_LEN).map { index ->
                     if (circular) Math.floorMod(guideStart + index, sequence.length) else guideStart + index
                 }
-                val protospacer = coordinates.joinToString("") { sequence[it].toString() }
+                val coordinates = genomicCoordinates.asReversed()
+                val protospacer = genomicCoordinates.joinToString("") { sequence[it].toString() }
                 val guide = reverseComplement(protospacer)
                 if (guide.any { it !in "ACGT" }) continue
                 val start = coordinates.minOrNull() ?: continue
@@ -104,7 +111,7 @@ object CrisprDesign {
                     pamStart = pamStart,
                     pamEnd = if (circular) Math.floorMod(pamStart + PAM_LEN, sequence.length) else pamStart + PAM_LEN,
                     gcContent = guide.count { it == 'G' || it == 'C' } / GUIDE_LEN.toDouble(),
-                    warnings = guideWarnings(guide, circular && coordinates.zipWithNext().any { it.second != it.first + 1 }),
+                    warnings = guideWarnings(guide, circular && genomicCoordinates.zipWithNext().any { it.second != it.first + 1 }),
                     coordinates = coordinates,
                 )
                 continue

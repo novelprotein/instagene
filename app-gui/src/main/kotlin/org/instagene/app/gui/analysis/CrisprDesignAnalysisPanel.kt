@@ -9,7 +9,7 @@ import javax.swing.*
 import javax.swing.table.DefaultTableModel
 
 internal class CrisprDesignAnalysisPanel : BoundAnalysisPanel() {
-    private val model = DefaultTableModel(arrayOf("Guide coordinates", "Strand", "Guide (20bp)", "PAM", "GC%", "Warnings"), 0)
+    private val model = DefaultTableModel(arrayOf("Guide coordinates", "Strand", "Guide (20bp)", "PAM (forward record)", "GC%", "Warnings"), 0)
     private val table = JTable(model)
     private val output = output()
     private var lastGuides = emptyList<GuideRNA>()
@@ -31,12 +31,13 @@ internal class CrisprDesignAnalysisPanel : BoundAnalysisPanel() {
             model.rowCount = 0
             lastGuides.forEach { g ->
                 model.addRow(arrayOf<Any?>(
-                    "${g.start + 1}..${g.end}", g.strand.symbol, g.sequence, g.pam,
+                    g.coordinates.joinToString(",") { (it + 1).toString() }, g.strand.symbol, g.sequence, g.pam,
                     "%.1f%%".format(g.gcContent * 100), g.warnings.joinToString("; "),
                 ))
             }
             output.text = buildString {
                 append(if (lastGuides.isEmpty()) "No concrete NGG guide RNAs found." else "${lastGuides.size} guide(s) found.")
+                append(" Coordinates are 1-based in guide traversal order. Showing up to 10 targets; activity and off-target scores are unavailable.")
                 if (result.warnings.isNotEmpty()) append(" ${result.warnings.joinToString(" ")}")
             }
         }.onFailure { output.text = it.message ?: "CRISPR design failed" }

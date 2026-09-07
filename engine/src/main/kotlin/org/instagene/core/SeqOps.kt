@@ -168,15 +168,27 @@ object SeqOps {
             var sum = 0.0
             for (c in seq.bases) if (c.code < 256) sum += table[c.code]
             if (sum == 0.0) 0.0 else {
-                val strands = if (seq.molecule.strandedness == Strandedness.DOUBLE) 2 else 1
                 val strandMass = if (seq.topology == Topology.CIRCULAR) {
                     sum
                 } else {
                     sum - 61.96 +
-                        if (seq.molecule.fivePrimePhosphorylated) 79.97 else 0.0 +
-                        if (seq.molecule.threePrimePhosphorylated) 79.97 else 0.0
+                        (if (seq.molecule.fivePrimePhosphorylated) 79.97 else 0.0) +
+                        (if (seq.molecule.threePrimePhosphorylated) 79.97 else 0.0)
                 }
-                strandMass * strands
+                if (seq.molecule.strandedness == Strandedness.DOUBLE) {
+                    val complementMass = seq.bases.sumOf { base ->
+                        val complement = when (base.uppercaseChar()) {
+                            'A' -> if (seq.kind == SeqKind.RNA) 'U' else 'T'
+                            'T', 'U' -> 'A'
+                            'C' -> 'G'
+                            'G' -> 'C'
+                            else -> base
+                        }
+                        if (complement.code < 256) table[complement.code] else 0.0
+                    }
+                    // End chemistry describes each strand of this duplex.
+                    strandMass + complementMass + (strandMass - sum)
+                } else strandMass
             }
         }
     }

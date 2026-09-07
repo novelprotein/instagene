@@ -10,7 +10,7 @@ internal class CalculatorAnalysisPanel : BoundAnalysisPanel() {
     private val a = JTextField("100", 8)
     private val b = JTextField("10", 8)
     private val c = JTextField("100", 8)
-    private val recipe = JTextField("Buffer=2,Water=5", 28)
+    private val recipe = JTextField("Buffer 2,Water 5", 28)
     private val output = output()
 
     init {
@@ -35,7 +35,7 @@ internal class CalculatorAnalysisPanel : BoundAnalysisPanel() {
                 }
                 6 -> {
                     val abs = MolecularCalculators.absorbanceAt1Percent(doc.seq)
-                    "A(1%, 280nm): ${"%.4f".format(abs)}\nAbsorbance of a 1 mg/mL solution in a 1 cm cuvette at 280 nm."
+                    "A(1%, 280nm): ${"%.4f".format(abs)}\nAbsorbance of a 1% (w/v, 10 mg/mL) solution in a 1 cm cuvette at 280 nm."
                 }
                 else -> "Select an operation."
             }

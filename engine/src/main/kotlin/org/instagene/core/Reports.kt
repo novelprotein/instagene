@@ -295,10 +295,10 @@ object Reports {
         product = result.product,
         inputs = inputs,
         parameters = result.parameters + parameters,
-        steps = result.steps.map { "${it.title}: ${it.detail}" },
+        steps = listOf(result.methodMetadata.summary()) + result.steps.map { "${it.title}: ${it.detail}" },
         warnings = result.diagnostics
             .filter { it.severity != DiagnosticSeverity.INFO }
-            .map { it.message },
+            .map { it.message } + result.methodMetadata.limitations,
     )
 
     /** Builds a verification report from the existing alignment result. */

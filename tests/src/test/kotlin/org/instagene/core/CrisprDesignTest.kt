@@ -56,4 +56,10 @@ class CrisprDesignTest {
         assertEquals(guides, guides.sortedWith(compareBy<GuideRNA> { it.start }.thenBy { it.end }.thenBy { it.strand.sign }))
         assertEquals(1.0, guides.first().gcContent)
     }
+
+    @Test
+    fun shortCircularSequencesCannotBeRepeatedToCreateGuides() {
+        val result = CrisprDesign.design(Seq(name = "tiny", bases = "AG", topology = Topology.CIRCULAR))
+        assertTrue(result.guides.isEmpty())
+    }
 }

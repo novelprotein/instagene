@@ -274,7 +274,8 @@ object SequenceStatistics {
         }
         var winStart = 0
         val firstWindowSize = minOf(windowSize, len)
-        result += XY(firstWindowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
+        var cumulative = if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c)
+        result += XY(firstWindowSize / 2.0, cumulative)
         winStart += step
         while (winStart + windowSize <= len) {
             for (i in winStart - step until winStart) {
@@ -285,7 +286,8 @@ object SequenceStatistics {
                 val entering = bases[i].uppercaseChar()
                 if (entering == 'G') g++ else if (entering == 'C') c++
             }
-            result += XY(winStart + windowSize / 2.0, if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c))
+            cumulative += if (g + c == 0) 0.0 else (g - c).toDouble() / (g + c)
+            result += XY(winStart + windowSize / 2.0, cumulative)
             winStart += step
         }
         return result

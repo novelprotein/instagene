@@ -56,7 +56,10 @@ internal class TranslationAnalysisPanel(private val onOpenSequence: (Seq) -> Uni
                         "${it.start + 1}..${it.end}\t${"%.2f".format(it.gcPercent)}% GC"
                     } to null
                     5 -> SecondaryStructure.predict(seq).let {
-                        ("${it.algorithm}: ${it.pairedBases} base pair(s), estimated \u0394G ${"%.1f".format(it.estimatedDeltaG)} kcal/mol\n\n${it.sequence}\n${it.dotBracket}") to null
+                        ("${it.algorithm}: ${it.pairedBases} base pair(s)\n" +
+                            (it.estimatedDeltaG?.let { energy -> "ΔG ${"%.1f".format(energy)} kcal/mol" }
+                                ?: "Free energy unavailable for this pairing heuristic.") +
+                            "\n\n${it.sequence}\n${it.dotBracket}") to null
                     }
                     else -> FeatureTranslations.validateCodingFeatures(seq).joinToString("\n\n") {
                         FeatureTranslations.summary(it, includeCodons = false)

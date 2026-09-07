@@ -13,14 +13,14 @@ data class DomesticateResult(
 object SiteDomestication {
 
     val GOLDEN_GATE_ENZYMES: List<Enzyme> = listOf(
-        Enzyme("BsaI", "GGTCTC", 1, 5),
-        Enzyme("BbsI", "GAAGAC", 2, 6),
-        Enzyme("BsmBI", "CGTCTC", 1, 5),
-        Enzyme("BpiI", "GAAGAC", 2, 6),
-        Enzyme("AarI", "CACCTGC", 1, 5),
-        Enzyme("Esp3I", "CGTCTC", 1, 5),
-        Enzyme("BfuAI", "ACCTGC", 1, 5),
-        Enzyme("BbsI-HF", "GAAGAC", 2, 6),
+        Enzyme("BsaI", "GGTCTC", 7, 11),
+        Enzyme("BbsI", "GAAGAC", 8, 12),
+        Enzyme("BsmBI", "CGTCTC", 7, 11),
+        Enzyme("BpiI", "GAAGAC", 8, 12),
+        Enzyme("AarI", "CACCTGC", 11, 15),
+        Enzyme("Esp3I", "CGTCTC", 7, 11),
+        Enzyme("BfuAI", "ACCTGC", 10, 14),
+        Enzyme("BbsI-HF", "GAAGAC", 8, 12),
     )
 
     fun findInternalSites(seq: Seq, enzymes: List<Enzyme> = GOLDEN_GATE_ENZYMES): List<InternalSite> {
@@ -66,21 +66,20 @@ object SiteDomestication {
         var mutations = 0
         val translations = codingFeatures.associateWith { FeatureTranslations.translate(seq, it) }
 
-        for (enzyme in enzymes) {
-            val site = enzyme.site.uppercase()
-            var changed = true
-            while (changed) {
-                changed = false
-                val sites = findPositionsBothStrands(bases, site)
-                if (sites.isEmpty()) break
-                for (sitePos in sites) {
-                    if (trySilentMutate(bases, sitePos, site, codingFeatures, seq, translations)) {
-                        mutations++
-                        changed = true
-                        break
-                    }
+        require(translations.values.none { it.hasErrors }) { "Resolve CDS translation errors before domestication." }
+        // Each accepted edit strictly removes selected sites and introduces none: this terminates.
+        while (true) {
+            val beforeSites = enzymes.flatMap { enzyme ->
+                findPositionsBothStrands(bases, enzyme.site.uppercase()).map { enzyme.name to it }
+            }.toSet()
+            val changed = enzymes.any { enzyme ->
+                findPositionsBothStrands(bases, enzyme.site.uppercase()).any { position ->
+                    trySilentMutate(bases, position, enzyme.site.uppercase(), codingFeatures, seq, translations,
+                        enzymes, beforeSites)
                 }
             }
+            if (!changed) break
+            mutations++
         }
 
         val preview = seq.copy(bases = bases.joinToString(""))
@@ -100,7 +99,7 @@ object SiteDomestication {
         while (i <= bases.size - site.length) {
             if (matchesSite(bases, i, site)) {
                 positions.add(i)
-                i += site.length
+                i++
             } else {
                 i++
             }
@@ -128,57 +127,52 @@ object SiteDomestication {
         codingFeatures: List<Feature>,
         originalSeq: Seq,
         translations: Map<Feature, FeatureTranslationResult>,
+        enzymes: List<Enzyme>,
+        beforeSites: Set<Pair<String, Int>>,
     ): Boolean {
-        val siteEnd = sitePos + site.length
-        val feature = codingFeatures.firstOrNull { f ->
-            f.type.equals("CDS", true) && f.strand == Strand.FORWARD &&
-                f.locationSegments.size == 1 && sitePos >= f.start && siteEnd <= f.end
-        } ?: codingFeatures.firstOrNull { f ->
-            f.type.equals("CDS", true) && f.strand == Strand.REVERSE &&
-                f.locationSegments.size == 1 && sitePos >= f.start && siteEnd <= f.end
-        } ?: return false
-        val codonIndex = if (feature.strand == Strand.FORWARD) {
-            (sitePos - feature.start - feature.translationStartOffset) / 3
-        } else {
-            (feature.end - siteEnd - feature.translationStartOffset) / 3
-        }
-        if (codonIndex < 0) return false
-        val codonPositions = if (feature.strand == Strand.FORWARD) {
-            val start = feature.start + feature.translationStartOffset + codonIndex * 3
-            listOf(start, start + 1, start + 2)
-        } else {
-            val start = feature.end - feature.translationStartOffset - (codonIndex + 1) * 3
-            listOf(start + 2, start + 1, start)
-        }
-        if (codonPositions.any { it !in bases.indices }) return false
-        val originalCodon = codonPositions.joinToString("") { bases[it].toString() }
-            .let { if (feature.strand == Strand.REVERSE) Alphabet.reverseComplement(it) else it }
-        val originalAA = CodonTable.byId(feature.geneticCodeId).translate(originalCodon)
-        if (originalAA == '*' || originalAA == 'X') return false
-        val synonymous = SYNONYMOUS_CODONS[originalAA] ?: return false
-        for (syn in synonymous) {
-            if (syn == originalCodon) continue
-            val saved = codonPositions.map { bases[it] }
-            val replacement = if (feature.strand == Strand.REVERSE) Alphabet.reverseComplement(syn) else syn
-            codonPositions.forEachIndexed { index, position -> bases[position] = replacement[index] }
-            val candidate = originalSeq.copy(bases = bases.concatToString())
-            val translated = FeatureTranslations.translate(candidate, feature)
-            val localSites = findPositionsBothStrands(bases, site)
-            if (translated.protein == translations[feature]?.protein && sitePos !in localSites) return true
-            codonPositions.forEachIndexed { index, position -> bases[position] = saved[index] }
+        for (feature in codingFeatures.filter { it.type.equals("CDS", true) }) {
+            val table = CodonTable.byId(feature.geneticCodeId)
+            // Reuse translation's biological coordinates, including reverse and joined CDSs.
+            val current = FeatureTranslations.translate(originalSeq.copy(bases = bases.concatToString()), feature)
+            for (codon in current.codons) {
+                val positions = codon.sourcePositions
+                if (positions.none { it in sitePos until sitePos + site.length }) continue
+                if (codon.aminoAcid == '*' || codon.aminoAcid == 'X') continue
+                for (syn in synonymousCodons(table, codon.aminoAcid)) {
+                    if (syn == codon.codon) continue
+                    val saved = positions.map { bases[it] }
+                    positions.forEachIndexed { index, position ->
+                        bases[position] = if (feature.strand == Strand.REVERSE)
+                            Alphabet.complement(syn[index], SeqKind.DNA) else syn[index]
+                    }
+                    val afterSites = enzymes.flatMap { enzyme ->
+                        findPositionsBothStrands(bases, enzyme.site.uppercase()).map { enzyme.name to it }
+                    }.toSet()
+                    val candidate = originalSeq.copy(bases = bases.concatToString())
+                    val safe = afterSites.size < beforeSites.size && beforeSites.containsAll(afterSites) &&
+                        sitePos !in findPositionsBothStrands(bases, site) &&
+                        translations.all { (cds, before) ->
+                            FeatureTranslations.translate(candidate, cds).protein == before.protein
+                        }
+                    if (safe) return true
+                    positions.forEachIndexed { index, position -> bases[position] = saved[index] }
+                }
+            }
         }
         return false
     }
 
-    /** Precomputed map of amino acid to its synonymous codons (zero-allocation lookup). */
-    private val SYNONYMOUS_CODONS: Map<Char, List<String>> = buildMap {
+    private val SYNONYMOUS_CODONS: Map<CodonTable, Map<Char, List<String>>> = CodonTable.ALL.associateWith { table ->
         val bases = "TCAG"
         val codons = Array(64) { "${bases[it / 16]}${bases[(it / 4) % 4]}${bases[it % 4]}" }
-        for (codon in codons) {
-            val aa = CodonTable.STANDARD.translate(codon)
-            if (aa != '*' && aa != 'X') {
-                getOrPut(aa) { mutableListOf() }.let { (it as MutableList).add(codon) }
+        buildMap {
+            for (codon in codons) {
+                val aa = table.translate(codon)
+                if (aa != '*' && aa != 'X') getOrPut(aa) { mutableListOf() }.let { (it as MutableList).add(codon) }
             }
         }
     }
+
+    private fun synonymousCodons(table: CodonTable, aminoAcid: Char): List<String> =
+        SYNONYMOUS_CODONS[table]?.get(aminoAcid).orEmpty()
 }

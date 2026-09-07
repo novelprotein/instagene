@@ -82,6 +82,8 @@ internal class SangerAlignmentAnalysisPanel(private val prefs: Prefs) : BoundAna
                 output.text = buildString {
                     append("${read.readName}: ${read.alignedLength} aligned bases\n")
                     append("Identity: ${"%.2f".format(read.identity * 100)}%  Confidence: ${read.confidence()}\n")
+                    append("Orientation: ${read.orientation}; alignment score: ${read.alignmentScore}\n")
+                    append("Read positions refer to the original trace; read bases are shown in reference orientation.\n")
                     append("Low-quality bases: ${read.lowQualityBases}\n\n")
                     read.qualityObservations.minOfOrNull { it.phred }?.let { append("Worst aligned Phred: Q$it\n\n") }
                     if (read.mismatches.isEmpty()) append("No mismatches.")

@@ -23,8 +23,12 @@ internal class PrimerThermodynamicsAnalysisPanel : BoundAnalysisPanel() {
         val selfDimer = PrimerThermodynamics.assessSelfDimer(seq)
         appendLine("=== $label Primer ===")
         appendLine("Sequence: $seq")
+        appendLine("DNA/DNA model (U treated as T); Allawi–SantaLucia 1997, Owczarzy 2004/2008")
+        appendLine("Na: 50 mM; Mg: 0; dNTP: 0; total strands: 250 nM")
+        appendLine("Equimolar complementary strands; self-complementary symmetry handled automatically.")
+        appendLine("Sources: https://doi.org/10.1021/bi9724873 ; https://doi.org/10.1021/bi702363u")
         appendLine("Length: ${seq.length} bp")
-        appendLine("\u0394G: ${"%.2f".format(thermo.deltaG)} kcal/mol")
+        appendLine("Standard duplex ΔG at 37 °C, 1 M Na: ${"%.2f".format(thermo.deltaG)} kcal/mol")
         appendLine("Tm: ${"%.1f".format(thermo.tm)} \u00b0C")
         appendLine("Hairpin: ${hairpin.assessment} \u2014 ${hairpin.details}")
         appendLine("Self-dimer: ${selfDimer.assessment} \u2014 ${selfDimer.details}")
@@ -44,7 +48,7 @@ internal class PrimerThermodynamicsAnalysisPanel : BoundAnalysisPanel() {
                     val tmFwd = PrimerThermodynamics.thermodynamicResult(fwd).tm
                     val tmRev = PrimerThermodynamics.thermodynamicResult(rev).tm
                     appendLine("=== Hetero-dimer ===")
-                    appendLine("\u0394G: ${"%.2f".format(hetero.deltaG)} kcal/mol")
+                    appendLine("Heuristic complementary-stem energy: ${"%.2f".format(hetero.deltaG)} kcal/mol (not full dimer ΔG)")
                     appendLine("Length: ${hetero.length} bp")
                     appendLine("\u0394Tm: ${"%.1f".format(kotlin.math.abs(tmFwd - tmRev))} \u00b0C")
                 }

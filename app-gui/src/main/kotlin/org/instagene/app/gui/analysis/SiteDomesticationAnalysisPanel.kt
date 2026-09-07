@@ -6,6 +6,7 @@ import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JScrollPane
 import javax.swing.JTextField
+import javax.swing.JOptionPane
 
 internal class SiteDomesticationAnalysisPanel : BoundAnalysisPanel() {
     private val enzymeField = JTextField("BsaI,BbsI,BsmBI", 24)
@@ -59,6 +60,23 @@ internal class SiteDomesticationAnalysisPanel : BoundAnalysisPanel() {
         runCatching {
             val codingFeatures = doc.seq.features.filter { it.type.equals("CDS", ignoreCase = true) }
             val result = SiteDomestication.domesticate(doc.seq, enzymes, codingFeatures)
+            val choice = JOptionPane.showConfirmDialog(
+                this,
+                JScrollPane(javax.swing.JTextArea(buildString {
+                    appendLine("Proposed edits: ${result.mutationsApplied}; unresolved sites: ${result.unresolvedSites.size}")
+                    appendLine("Base changes (1-based):")
+                    doc.seq.bases.indices.filter { doc.seq.bases[it].uppercaseChar() != result.domesticated.bases[it] }
+                        .forEach { appendLine("${it + 1}: ${doc.seq.bases[it]} → ${result.domesticated.bases[it]}") }
+                    appendLine("Apply these changes? Unresolved sites will remain.")
+                }, 14, 60).apply { isEditable = false }),
+                "Apply domesticated sequence",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+            )
+            if (choice != JOptionPane.YES_OPTION) {
+                output.text = "Domestication cancelled; no sequence changes were applied."
+                return
+            }
             if (!doc.mutate("domesticate sites") { result.domesticated }) {
                 output.text = "Sequence editing is locked for this natural record. Unlock sequence editing to apply domestication."
                 return
@@ -69,8 +87,7 @@ internal class SiteDomesticationAnalysisPanel : BoundAnalysisPanel() {
                 appendLine("Mutations applied: ${result.mutationsApplied}")
                 appendLine("Unresolved sites: ${result.unresolvedSites.size}")
                 appendLine("Domesticated sequence length: ${result.domesticated.length} bp")
-                appendLine()
-                appendLine("Apply the domesticated sequence? (sequence preview omitted for brevity)")
+                appendLine("Sequence changes applied after confirmation.")
             }
         }.onFailure { output.text = it.message ?: "Domestication failed" }
     }

@@ -183,7 +183,7 @@ class CoreWorkflowTest {
         putInt(4, 4)
         putInt(8, 128)
         putInt(12, 2)
-        putInt(16, 144)
+        putInt(24, 144)
         putInt(40, 1)
         "2.00".encodeToByteArray().copyInto(bytes, 36)
         // SCF v2 sample data is interleaved A/C/G/T.

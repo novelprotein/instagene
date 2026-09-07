@@ -18,7 +18,7 @@ class ChromatogramReaderTest {
         putInt(4, 2)
         putInt(8, 128)
         putInt(12, 1)
-        putInt(16, 136)
+        putInt(24, 136)
         "3.00".encodeToByteArray().copyInto(bytes, 36)
         putInt(40, 1)
         // Each channel has two second-order deltas: [10, 0] restores [10, 20].
