@@ -88,6 +88,7 @@ data class AnalysisDefaults(
  */
 @Serializable
 data class UserPrefs(
+    val detailedSequenceGraphics: Boolean = true,
     val windowX: Int? = null,
     val windowY: Int? = null,
     val windowWidth: Int = 1400,
@@ -112,6 +113,9 @@ data class UserPrefs(
     /** Recently used host strains shown by the Info panel's local suggestion list. */
     val hostStrainSuggestions: List<String> = emptyList(),
     val theme: String = "FlatDarculaLaf",
+    /** Null family and zero size follow the selected theme's interface font. */
+    val interfaceFontFamily: String? = null,
+    val interfaceFontSize: Int = 0,
     val fileBrowserVisible: Boolean = true,
     /** ApE-compatible display and analysis defaults. */
     val inlineFeatureMode: Boolean = true,

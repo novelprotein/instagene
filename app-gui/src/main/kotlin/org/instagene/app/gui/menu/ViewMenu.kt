@@ -119,7 +119,7 @@ class ViewMenu(
         return JMenuItem("Reset Zoom", KeyEvent.VK_0).apply {
             accelerator = menuShortcut(KeyEvent.VK_0)
             addActionListener {
-                sequenceView.setFontSize(14)
+                sequenceView.resetZoom()
             }
         }
     }

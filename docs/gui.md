@@ -23,6 +23,19 @@ instagene gui plasmid.gb
 The optional file argument opens when the application starts. You can also
 open files later from the welcome screen, the File menu, or drag-and-drop.
 
+## Interface font
+
+Open **File → Preferences → General** to choose an **Interface font** and
+**Font size**. The preview shows the selected font before you apply it.
+Click **OK** to update the interface and remember the choice for future launches;
+**Cancel** leaves your current settings unchanged. Choose **Theme default** to
+follow the selected theme again. The interface font family applies to menus and
+controls; the sequence editor keeps a monospaced grid so every column stays
+aligned, and follows your chosen font size, updating its base spacing
+immediately. With theme defaults selected, sequence text uses a 14-point
+monospaced font. **View → Reset Zoom** restores the saved font size. Map labels
+retain their specialized font controls.
+
 ## First-use workflow
 
 1. Open a sequence or project from the welcome screen.

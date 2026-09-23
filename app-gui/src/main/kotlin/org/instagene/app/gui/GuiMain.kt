@@ -57,12 +57,12 @@ fun launch(openPaths: List<String>) {
 }
 
 private fun applySavedTheme(prefs: Prefs) {
-    val previous = prefs.value.theme
-    val saved = ThemeManager.migrateLegacyDefault(previous)
-    if (saved != previous) prefs.update { it.copy(theme = saved) }
-    if (!ThemeManager.apply(saved)) {
+    // Defaults apply when no choice was saved; an explicitly saved theme must
+    // survive startup even if it used to be the application's default.
+    val saved = prefs.value.theme
+    if (!ThemeManager.apply(saved, prefs.value.interfaceFontFamily, prefs.value.interfaceFontSize)) {
         // Corrupt or outdated theme id: fall back to the default and repair prefs.
-        ThemeManager.apply(ThemeManager.DEFAULT_THEME)
+        ThemeManager.apply(ThemeManager.DEFAULT_THEME, prefs.value.interfaceFontFamily, prefs.value.interfaceFontSize)
         prefs.update { it.copy(theme = ThemeManager.DEFAULT_THEME) }
     }
 }

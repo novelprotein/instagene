@@ -207,16 +207,18 @@ class PlasmidMapPanelTest {
             content.doc.loadSequence(Seq(bases = "ACGT".repeat(50)))
             val canvas = paintableMap(content)
 
-            // One quarter along the linear backbone: x = 40 + 0.25 * (width - 80).
-            val span = canvas.width - 80
-            val x = 40 + span / 4
-            press(canvas, 40 to 150)
+            // Translate the backbone's logical margins into the fitted canvas.
+            val logicalWidth = maxOf(380, content.plasmidMapPanel.viewportExtentForTest().width)
+            val scale = canvas.width.toDouble() / logicalWidth
+            val startX = (40 * scale).toInt()
+            val x = ((40 + (logicalWidth - 80) / 4.0) * scale).roundToInt()
+            press(canvas, startX to 150)
             dragged(canvas, x to 150)
             release(canvas, x to 150)
 
             assertTrue(content.doc.selectionEnd > content.doc.selectionStart)
             assertEquals(0, content.doc.selectionStart)
-            assertEquals(50, content.doc.selectionEnd)
+            assertTrue(abs(50 - content.doc.selectionEnd) <= 1, "quarter-length selection within one rendered pixel")
         }
     }
 
@@ -339,7 +341,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             val canvas = map.canvasForTest()
             canvas.setSize(canvas.preferredSize)
-            assertTrue(canvas.height > 380, "crowded circular callouts should increase the canvas height")
+            assertTrue(canvas.height <= map.viewportExtentForTest().height, "crowded callouts must fit at 100%")
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val target = features.last()
             val hit = map.featureLabelHitCenterForTest(target.name)
@@ -550,7 +552,7 @@ class PlasmidMapPanelTest {
     }
 
     @Test
-    fun denseLinearCalloutRailExpandsTheCanvasInsteadOfClippingLabels() {
+    fun denseLinearCalloutRailFitsTheViewportWithoutClippingLabels() {
         SwingUtilities.invokeAndWait {
             val features = (0 until 14).map { index ->
                 Feature("dense-left-feature-$index", start = 10 + index * 10, end = 11 + index * 10)
@@ -574,7 +576,7 @@ class PlasmidMapPanelTest {
             val bounds = features.map { feature ->
                 map.featureLabelBoundsForTest(feature.name) ?: error("missing ${feature.name}")
             }
-            assertTrue(canvas.height > 380, "dense callouts should increase the canvas height")
+            assertTrue(canvas.height <= map.viewportExtentForTest().height, "dense callouts must fit at 100%")
             assertTrue(bounds.zipWithNext().all { (first, second) -> first.y < second.y })
             bounds.forEach { label ->
                 assertTrue(label.y >= 0 && label.maxY <= canvas.height, "label $label was clipped")
@@ -679,6 +681,56 @@ class PlasmidMapPanelTest {
     }
 
     @Test
+    fun pngExportKeepsItsRequestedDimensionsAndRestoresFittedZoom() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(circular))
+            map.setSize(320, 280)
+            map.doLayout()
+            map.setZoomPercent(300)
+            val beforeSize = java.awt.Dimension(map.canvasForTest().size)
+            val beforeCenter = map.logicalViewportCenterForTest()
+            val file = File.createTempFile("fitted-map-export", ".png")
+            try {
+                map.exportPng(file, MapExportOptions(MapPreset.NOTEBOOK, width = 800, height = 600))
+                val exported = ImageIO.read(file)
+                assertEquals(800, exported.width)
+                assertEquals(600, exported.height)
+                assertEquals(300, map.zoomPercent)
+                assertEquals(beforeSize, map.canvasForTest().size)
+                assertEquals(beforeCenter, map.logicalViewportCenterForTest())
+                map.setZoomPercent(100)
+                assertEquals(map.viewportExtentForTest(), map.canvasForTest().size)
+            } finally {
+                file.delete()
+            }
+        }
+    }
+
+    @Test
+    fun startupAndResetFitTheEntireMapInSmallAndResizedViewports() {
+        SwingUtilities.invokeAndWait {
+            for (topology in listOf(Topology.CIRCULAR, Topology.LINEAR)) {
+                val map = PlasmidMapPanel(SeqDocument(circular.copy(topology = topology)))
+                for ((width, height) in listOf(320 to 320, 1000 to 700, 420 to 280)) {
+                    map.setSize(width, height)
+                    map.doLayout()
+                    val extent = map.viewportExtentForTest()
+                    assertEquals(100, map.zoomPercent)
+                    assertEquals("100%", map.zoomLabelTextForTest())
+                    assertTrue(map.canvasForTest().preferredSize.width <= extent.width)
+                    assertTrue(map.canvasForTest().preferredSize.height <= extent.height)
+                    assertEquals(extent, map.canvasForTest().size)
+                    map.setZoomPercent(300)
+                    map.setZoomPercent(100)
+                    assertEquals(extent, map.viewportExtentForTest())
+                    assertEquals(extent, map.canvasForTest().size)
+                    assertEquals(java.awt.Point(0, 0), map.viewportPositionForTest())
+                }
+            }
+        }
+    }
+
+    @Test
     fun mapZoomClampsAndExpandsTheScrollableCanvas() {
         SwingUtilities.invokeAndWait {
             val map = PlasmidMapPanel(SeqDocument(circular.copy(topology = Topology.LINEAR)))
@@ -712,8 +764,7 @@ class PlasmidMapPanelTest {
             val before = map.viewportPositionForTest()
             val extent = map.viewportExtentForTest()
             assertTrue(extent.width > 0)
-            val beforeCenterX = before.x + extent.width / 2.0
-            val beforeCenterY = before.y + extent.height / 2.0
+            val beforeCenter = map.logicalViewportCenterForTest()
 
             map.setZoomPercent(600)
             val canvas = map.canvasForTest()
@@ -721,9 +772,9 @@ class PlasmidMapPanelTest {
             assertTrue(canvas.height > extent.height)
             val after = map.viewportPositionForTest()
             assertTrue(after.x > before.x || after.y > before.y, "zoom should move the viewport into the enlarged canvas")
-            val afterExtent = map.viewportExtentForTest()
-            assertTrue(abs((after.x + afterExtent.width / 2.0) / 6.0 - beforeCenterX) < 2.0)
-            assertTrue(abs((after.y + afterExtent.height / 2.0) / 6.0 - beforeCenterY) < 2.0)
+            val afterCenter = map.logicalViewportCenterForTest()
+            assertTrue(abs(afterCenter.x - beforeCenter.x) < 2.0)
+            assertTrue(abs(afterCenter.y - beforeCenter.y) < 2.0)
 
             map.setZoomPercent(100)
             val reset = map.viewportPositionForTest()

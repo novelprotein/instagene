@@ -5,115 +5,59 @@ import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.edit.SequenceEditService
 import org.instagene.app.gui.theme.Palette
 import org.instagene.app.gui.theme.ThemeRefreshable
-import org.instagene.core.Alphabet
-import org.instagene.core.CodonTable
-import org.instagene.core.CutSite
-import org.instagene.core.Feature
-import org.instagene.core.SeqKind
-import org.instagene.core.SeqOps
-import org.instagene.core.Strand
-import java.awt.Color
-import java.awt.Cursor
-import java.awt.Dimension
-import java.awt.Font
-import java.awt.Graphics
-import java.awt.Graphics2D
-import java.awt.Rectangle
-import java.awt.RenderingHints
-import java.awt.Toolkit
+import org.instagene.core.*
+import java.awt.*
 import java.awt.datatransfer.DataFlavor
-import java.awt.event.KeyAdapter
-import java.awt.event.KeyEvent
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
-import java.awt.event.MouseMotionAdapter
-import javax.swing.JComponent
-import javax.swing.Scrollable
-import javax.swing.SwingUtilities
-import javax.swing.ToolTipManager
+import java.awt.event.*
+import javax.swing.*
 import javax.swing.Timer as SwingTimer
-import kotlin.math.abs
 
-/**
- * The sequence editor proper: a directly painted base grid with a position
- * gutter, per-base colouring, feature bars, restriction-site marks and optional
- * complement and translation tracks.
- *
- * Painting by hand (rather than driving a JTextPane) keeps the on-screen
- * coordinates and the [org.instagene.core.Seq] coordinates identical, which is
- * what every other panel needs in order to highlight the same region.
- */
+/** The sequence canvas uses cached row geometry for rendering and input. */
 class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefreshable {
-
-    /** The displayed document, rebound when the active tab changes. */
     private var doc = initial
+    var interaction: SequenceInteraction? = null
+        set(value) {
+            field = value
+            value?.addListener { selectedFeature = (value.selected as? SequenceObject.Annotation)?.feature; repaint() }
+        }
     private var docListener: SeqDocument.Listener? = null
-
-    /** Cached GC% for the current sequence, avoiding a full scan on every status/caret event. */
     private var cachedSeqIdentity: Any? = null
-    private var cachedGcPct: Double = Double.NaN
-
-    var showComplement: Boolean = true
-        set(value) {
-            field = value; relayout()
-        }
-
-    var showTranslation: Boolean = false
-        set(value) {
-            field = value; relayout()
-        }
-
-    var showHistoryColors: Boolean = false
-        set(value) {
-            field = value; repaint()
-        }
-
-    var featureLabelMode: FeatureLabelMode = FeatureLabelMode.ALL
+    private var cachedGcPct = Double.NaN
+    var graphicsMode = SequenceGraphics.DETAILED
         set(value) { field = value; relayout() }
-
-    var translationFrame: Int = 0
-        set(value) {
-            field = value; repaint()
-        }
-
-    var codonTable: CodonTable = CodonTable.STANDARD
-        set(value) {
-            field = value; repaint()
-        }
-
-    private var baseFont = Font(Font.MONOSPACED, Font.PLAIN, 14)
-    private val labelFont = Font(Font.SANS_SERIF, Font.PLAIN, 10)
+    var showComplement = true
+        set(value) { field = value; relayout() }
+    var showTranslation = false
+        set(value) { field = value; relayout() }
+    var showHistoryColors = false
+        set(value) { field = value; repaint() }
+    var featureLabelMode = FeatureLabelMode.ALL
+        set(value) { field = value; relayout() }
+    var translationFrame = 0
+        set(value) { field = value.coerceIn(0, 2); repaint() }
+    var codonTable = CodonTable.STANDARD
+        set(value) { field = value; repaint() }
+    var primerPreview: List<PrimerAnnotation> = emptyList()
+        set(value) { field = value; relayout() }
+    var previewRange: Pair<Int, Int>? = null
+        set(value) { field = value; repaint() }
+    private var preferenceFont = UIManager.getFont("InstaGene.sequenceFont") ?: Font(Font.MONOSPACED, Font.PLAIN, 14)
+    private var baseFont = preferenceFont
+    private val labelFont get() = (UIManager.getFont("Label.font") ?: Font(Font.SANS_SERIF, Font.PLAIN, 12)).deriveFont(maxOf(12f, baseFont.size2D - 2))
     private var caretVisible = true
     private val caretBlinkTimer = SwingTimer(530) { caretVisible = !caretVisible; repaint() }
-
-    private var charWidth = 9
-    private var lineHeight = 17
-    private var gutterWidth = 80
-    private var basesPerLine = 60
-    private var featureLanes = 0
-    private val laneOf = HashMap<Feature, Int>()
-    private enum class HitKind { BAR, LABEL }
-    private data class HitTarget(val bounds: Rectangle, val feature: Feature, val kind: HitKind)
-    private val featureHitTargets = ArrayList<HitTarget>()
+    private var geometry: SequenceLayout? = null
+    private val layoutModel get() = geometry ?: createLayout().also { geometry = it }
+    private val basesPerLine get() = layoutModel.columns
+    private var lastPaintedRowCount = 0
+    private val paintedCutSiteLabels = mutableListOf<String>()
+    private data class Hit(val bounds: Rectangle, val item: SequenceObject, val label: Boolean = false)
+    private val hits = mutableListOf<Hit>()
+    private val overflow = mutableListOf<Pair<Rectangle, List<SequenceObject>>>()
+    private var hover: SequenceObject? = null
+    private var draggingBases = false
     var selectedFeature: Feature? = null
         private set
-    private var runBuffer = CharArray(0)
-    private var lastPaintedRowCount = 0
-    private val paintedCutSiteLabels = ArrayList<String>()
-
-    private fun runBuffer(): CharArray {
-        if (runBuffer.size < basesPerLine) runBuffer = CharArray(basesPerLine)
-        return runBuffer
-    }
-
-    private val padding = 10
-    // Two compact label rows keep nearby cut-site names readable without
-    // letting one busy row turn into an unlabeled line of markers.
-    private val markHeight = 28
-    private val cutLabelLaneHeight = 12
-    private val cutLabelLaneCount = 2
-    private val laneHeight = 8
-    private val rowGap = 10
 
     init {
         isOpaque = true
@@ -126,584 +70,323 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         installKeyHandlers()
         bindDocument(doc)
     }
-
-    /**
-     * Binds this view to another document. View state such as zoom is retained
-     * because the view is shared across tabs.
-     */
     fun bindDocument(newDoc: SeqDocument) {
         if (newDoc !== doc) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
+            selectedFeature = null
+            primerPreview = emptyList()
+            previewRange = null
             docListener?.let { doc.addListener(it) }
         }
         if (docListener == null) {
-            val listener = SeqDocument.Listener { _, reason ->
-                if (reason == SeqDocument.Reason.SEQUENCE) relayout() else repaint()
-                if (reason == SeqDocument.Reason.SELECTION) scrollCaretIntoView()
+            docListener = SeqDocument.Listener { _, reason ->
+                if (reason == SeqDocument.Reason.SEQUENCE || reason == SeqDocument.Reason.ENZYMES) {
+                    if (selectedFeature !in doc.seq.features) selectedFeature = null
+                    relayout()
+                } else repaint()
+                if (reason == SeqDocument.Reason.SELECTION && isShowing && isFocusOwner) scrollCaretIntoView()
             }
-            docListener = listener
-            doc.addListener(listener)
+            doc.addListener(docListener!!)
         }
         relayout()
     }
-
-    /** Stops the caret timer and releases the document listener for a closed editor. */
     fun dispose() {
         caretBlinkTimer.stop()
         docListener?.let { doc.removeListener(it) }
         docListener = null
+        ToolTipManager.sharedInstance().unregisterComponent(this)
     }
-
-    /** Refreshes the background after a look-and-feel change. */
-    override fun updateUI() {
-        super.updateUI()
-        background = Palette.BACKGROUND
-    }
-
+    override fun updateUI() { super.updateUI(); background = Palette.BACKGROUND }
     override fun refreshTheme() {
         background = Palette.BACKGROUND
+        val next = UIManager.getFont("InstaGene.sequenceFont") ?: Font(Font.MONOSPACED, Font.PLAIN, 14)
+        if (next != preferenceFont) { preferenceFont = next; baseFont = next }
         relayout()
     }
-
-    /** Sets the base-grid font size in points (clamped to 8..28) and re-lays the view out. */
-    fun setFontSize(points: Int) {
-        baseFont = Font(Font.MONOSPACED, Font.PLAIN, points.coerceIn(8, 28))
-        relayout()
-    }
-
-    /** The current base-grid font size in points. */
-    fun fontSize(): Int = baseFont.size
-
-    // ------------------------------------------------------------------ layout
-
-    private fun relayout() {
+    fun setFontSize(points: Int) { baseFont = baseFont.deriveFont(points.coerceIn(8, 32).toFloat()); relayout() }
+    fun resetZoom() { baseFont = preferenceFont; relayout() }
+    fun fontSize() = baseFont.size
+    private fun complementTrack() = showComplement && doc.seq.kind != SeqKind.PROTEIN
+    private fun translationTrack() = showTranslation && doc.seq.kind != SeqKind.PROTEIN
+    private fun createLayout(): SequenceLayout {
         val fm = getFontMetrics(baseFont)
-        charWidth = maxOf(1, fm.charWidth('A'))
-        lineHeight = fm.height
-        gutterWidth = charWidth * (maxOf(8, "%,d".format(doc.seq.length).length) + 2)
-        val usable = (width.takeIf { it > 0 } ?: 900) - gutterWidth - padding * 2
-        basesPerLine = ((usable / charWidth) / 10 * 10).coerceIn(10, 240)
-        assignFeatureLanes()
-        revalidate()
-        repaint()
+        val cw = maxOf(1, fm.charWidth('A'))
+        val gutter = cw * (maxOf(6, "%,d".format(doc.seq.length).length) + 2)
+        val columns = ((((width.takeIf { it > 0 } ?: 900) - gutter - 20) / cw) / 10 * 10).coerceIn(10, 240)
+        val primers = if (doc.seq.kind == SeqKind.PROTEIN) emptyList() else doc.seq.primers.filter { it.visible }
+        val objects = buildList<SequenceObject> {
+            doc.seq.features.filter { f ->
+                f.visible && FeatureLabelOptions.include(f, featureLabelMode) &&
+                    !(f.type == "primer_bind" && primers.any { it.name == f.name && it.bindingStart == f.start && it.bindingEnd == f.end })
+            }.sortedBy { it.displayOrder }.forEach { add(SequenceObject.Annotation(it)) }
+            primers.forEach { add(SequenceObject.Primer(it)) }
+            primerPreview.filter { preview -> primers.none { it == preview } }.forEach { add(SequenceObject.Primer(it, true)) }
+            doc.cutSites.forEach { add(SequenceObject.Site(it)) }
+            (interaction?.selected as? SequenceObject.Site)?.let { if (it !in this) add(it) }
+        }
+        return SequenceLayout(doc.seq.length, columns, cw, fm.height, gutter,
+            1 + (if (complementTrack()) 1 else 0) + (if (translationTrack()) 1 else 0),
+            if (graphicsMode == SequenceGraphics.DETAILED) getFontMetrics(labelFont).height + 8 else 10,
+            graphicsMode == SequenceGraphics.DETAILED, objects)
     }
-
+    private var layoutVersion = 0
+    private fun relayout() {
+        val anchor = geometry?.rowAt(visibleRect.y)?.let { it.index * (geometry?.columns ?: 60) }
+        geometry = createLayout()
+        hits.clear(); overflow.clear()
+        revalidate(); repaint()
+        val version = ++layoutVersion
+        if (anchor != null && isShowing) SwingUtilities.invokeLater {
+            if (version == layoutVersion) scrollRectToVisible(Rectangle(0, layoutModel.rowFor(anchor).top, 1, visibleRect.height))
+        }
+    }
     override fun setBounds(x: Int, y: Int, w: Int, h: Int) {
         val changed = w != width
         super.setBounds(x, y, w, h)
         if (changed) relayout()
     }
-
-    /** Greedy interval packing so overlapping features get their own row of bars. */
-    private fun assignFeatureLanes() {
-        featureLanes = packLanes(doc.seq.features, laneOf)
-    }
-
-    /** The complement track only makes sense for nucleotide sequences. */
-    private fun complementTrack(): Boolean = showComplement && doc.seq.kind != SeqKind.PROTEIN
-
-    /** Translation likewise needs codons; a protein sequence has none. */
-    private fun translationTrack(): Boolean = showTranslation && doc.seq.kind != SeqKind.PROTEIN
-
-    private fun trackCount(): Int = 1 + (if (complementTrack()) 1 else 0) + (if (translationTrack()) 1 else 0)
-
-    private fun rowHeight(): Int =
-        markHeight + lineHeight * trackCount() + featureLanes * laneHeight + rowGap
-
-    private fun rowCount(): Int =
-        maxOf(1, (doc.seq.length + basesPerLine - 1) / basesPerLine)
-
-    override fun getPreferredSize(): Dimension =
-        Dimension(gutterWidth + basesPerLine * charWidth + padding * 2, rowCount() * rowHeight() + padding * 2)
-
-    private fun xOf(column: Int) = padding + gutterWidth + column * charWidth
-    private fun yOfRow(row: Int) = padding + row * rowHeight()
-
-    /** Exposed for tests: the x-coordinate at which [column] is painted. */
-    fun xCoordinate(column: Int): Int = xOf(column)
-
-    /** Sequence index under a point, clamped to the sequence. */
-    fun indexAt(px: Int, py: Int): Int {
-        val row = ((py - padding) / rowHeight()).coerceIn(0, rowCount() - 1)
-        val col = ((px - padding - gutterWidth + charWidth / 2) / charWidth).coerceIn(0, basesPerLine)
-        return (row * basesPerLine + col).coerceIn(0, doc.seq.length)
-    }
-
-    // ---------------------------------------------------------------- painting
-
-    override fun paintComponent(g: Graphics) {
-        val g2 = g as Graphics2D
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-        g2.color = background
-        g2.fillRect(0, 0, width, height)
-
-        val seq = doc.seq
-        if (seq.length == 0) {
-            lastPaintedRowCount = 0
-            paintedCutSiteLabels.clear()
-            g2.color = Palette.MUTED
-            g2.font = baseFont
-            g2.drawString("Empty sequence - type bases, or use File > Open.", padding + 4, padding + lineHeight)
-            return
-        }
-
-        val clip = g2.clipBounds ?: Rectangle(0, 0, width, height)
-        val firstRow = ((clip.y - padding) / rowHeight()).coerceAtLeast(0)
-        val lastRow = ((clip.y + clip.height - padding) / rowHeight()).coerceAtMost(rowCount() - 1)
-
-        lastPaintedRowCount = if (lastRow >= firstRow) lastRow - firstRow + 1 else 0
-        featureHitTargets.clear()
-        paintedCutSiteLabels.clear()
-        for (row in firstRow..lastRow) paintRow(g2, row)
-        paintCaret(g2)
-    }
-
-    /** Number of sequence rows painted for the most recent viewport, useful for large-file diagnostics. */
-    fun lastViewportPaintedRowCount(): Int = lastPaintedRowCount
-
-    /** Exposed for GUI regression tests: cut-site names painted in the latest viewport. */
+    override fun getPreferredSize() = Dimension(layoutModel.x(layoutModel.columns) + 10, layoutModel.height)
+    fun xCoordinate(column: Int) = layoutModel.x(column)
+    fun indexAt(px: Int, py: Int) = layoutModel.indexAt(px, py)
+    private fun rowHeight() = layoutModel.rowAt(visibleRect.y).height
+    fun lastViewportPaintedRowCount() = lastPaintedRowCount
     fun cutSiteLabelsForTest(): List<String> = paintedCutSiteLabels.toList()
-
-    private fun paintRow(g2: Graphics2D, row: Int) {
-        val seq = doc.seq
-        val from = row * basesPerLine
-        val to = minOf(from + basesPerLine, seq.length)
-        if (from >= to) return
-        val top = yOfRow(row)
-        val baseY = top + markHeight + lineHeight - getFontMetrics(baseFont).descent
-
-        paintRowBand(g2, row, top)
-        paintHistoryChange(g2, from, to, top)
-        paintSelection(g2, from, to, top)
-        paintCutMarks(g2, from, to, top)
-
-        // Position gutter.
-        g2.font = baseFont
-        g2.color = Palette.GUTTER
-        g2.drawString("%,8d".format(from + 1), padding, baseY)
-
-        // Top strand, coloured per base, with a faint decade grid. Consecutive
-        // same-colour bases are batched into a single drawChars run so a visible
-        // row costs a handful of text calls instead of one per base. Grid lines
-        // are drawn first so the batched glyphs land on top of them, matching the
-        // original per-column paint order.
-        paintBaseChips(g2, from, to, baseY)
-        if (to - from >= 10) {
-            g2.color = Palette.GRID
-            var col = 10
-            while (col < to - from) {
-                val x = xOf(col)
-                g2.drawLine(x, top + markHeight, x, top + markHeight + lineHeight * trackCount())
-                col += 10
+    override fun paintComponent(g: Graphics) {
+        val g2 = g.create() as Graphics2D
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            g2.color = background
+            g2.fillRect(0, 0, width, height)
+            hits.clear(); overflow.clear(); paintedCutSiteLabels.clear()
+            val layout = layoutModel
+            if (doc.seq.length == 0) {
+                lastPaintedRowCount = 0
+                g2.font = baseFont; g2.color = Palette.MUTED
+                g2.drawString("Empty sequence — type bases, or use File > Open.", 14, 30)
+                return
             }
+            val clip = g2.clipBounds ?: Rectangle(0, 0, width, height)
+            val first = layout.rowAt(clip.y).index
+            val last = layout.rowAt(clip.y + clip.height).index
+            lastPaintedRowCount = last - first + 1
+            for (r in first..last) paintRow(g2, layout.rows[r])
+            if (!doc.hasSelection && caretVisible && isFocusOwner) {
+                val row = layout.rowFor(doc.caret)
+                val x = layout.x(doc.caret - row.index * layout.columns)
+                g2.color = Palette.CARET
+                g2.drawLine(x, row.top + row.marks, x, row.top + row.marks + layout.textHeight * layout.tracks)
+            }
+        } finally { g2.dispose() }
+    }
+    private fun paintRow(g: Graphics2D, row: SequenceLayout.Row) {
+        val l = layoutModel
+        val from = row.index * l.columns
+        val to = minOf(doc.seq.length, from + l.columns)
+        val top = row.top + row.marks
+        val fm = getFontMetrics(baseFont)
+        val baseY = top + fm.ascent
+        if (l.detailed) {
+            g.color = if (l.rowFor(doc.caret).index == row.index) Palette.EDITOR_ACTIVE_ROW else Palette.EDITOR_ROW_ALT
+            g.fillRect(l.x(0) - 2, top, (to - from) * l.cellWidth + 4, l.tracks * l.textHeight)
         }
-        val buffer = runBuffer()
-        var runStart = 0
-        var runColor: Color = Palette.charColor(seq.bases[from], seq.kind)
+        fun shade(start: Int, end: Int, color: Color) {
+            val s = maxOf(start, from); val e = minOf(end, to)
+            if (e > s) { g.color = color; g.fillRect(l.x(s - from), top, (e - s) * l.cellWidth, l.tracks * l.textHeight) }
+        }
+        if (showHistoryColors) doc.recentChangeRange?.let { shade(it.first, it.last + 1, Palette.translucent(Palette.ACCENT, 35)) }
+        previewRange?.let { shade(it.first, it.second, Palette.translucent(Palette.ACCENT, 24)) }
+        interaction?.selected?.let { selected ->
+            shade(selected.start, minOf(selected.end, doc.seq.length), Palette.translucent(Palette.ACCENT, 38))
+            if (selected.end > doc.seq.length) shade(0, selected.end - doc.seq.length, Palette.translucent(Palette.ACCENT, 38))
+        }
+        if (doc.hasSelection) shade(doc.selectionStart, doc.selectionEnd, Palette.SELECTION)
+        g.font = baseFont; g.color = Palette.GUTTER
+        g.drawString("%,d".format(from + 1), 10, baseY)
+        if (l.detailed && complementTrack()) {
+            g.font = labelFont
+            g.drawString("5′ → 3′", 10, baseY + l.textHeight)
+        }
+        g.color = Palette.GRID
+        for (col in 10 until to - from step 10) g.drawLine(l.x(col), top, l.x(col), top + l.tracks * l.textHeight)
+        g.font = baseFont
         for (i in from until to) {
-            val col = i - from
-            val color = Palette.charColor(seq.bases[i], seq.kind)
-            if (color != runColor) {
-                g2.color = runColor
-                g2.drawChars(buffer, runStart, col - runStart, xOf(runStart), baseY)
-                runColor = color
-                runStart = col
+            g.color = Palette.charColor(doc.seq.bases[i], doc.seq.kind)
+            g.drawString(doc.seq.bases[i].uppercaseChar().toString(), l.x(i - from), baseY)
+            if (complementTrack()) {
+                g.color = Palette.MUTED
+                g.drawString(Alphabet.complement(doc.seq.bases[i], doc.seq.kind).uppercaseChar().toString(), l.x(i - from), baseY + l.textHeight)
             }
-            buffer[col] = seq.bases[i].uppercaseChar()
-        }
-        g2.color = runColor
-        g2.drawChars(buffer, runStart, to - from - runStart, xOf(runStart), baseY)
-
-        var trackY = baseY
-        if (complementTrack()) {
-            trackY += lineHeight
-            for (i in from until to) buffer[i - from] = Alphabet.complement(seq.bases[i], seq.kind).uppercaseChar()
-            g2.color = Palette.MUTED
-            g2.drawChars(buffer, 0, to - from, xOf(0), trackY)
         }
         if (translationTrack()) {
-            trackY += lineHeight
-            paintTranslation(g2, from, to, trackY)
-        }
-
-        paintFeatures(g2, from, to, top + markHeight + lineHeight * trackCount())
-    }
-
-    private fun paintRowBand(g2: Graphics2D, row: Int, top: Int) {
-        val bandTop = top + markHeight
-        val bandHeight = lineHeight * trackCount()
-        val activeRow = doc.caret / basesPerLine == row
-        val color = when {
-            activeRow -> Palette.EDITOR_ACTIVE_ROW
-            row % 2 == 1 -> Palette.EDITOR_ROW_ALT
-            else -> null
-        }
-        if (color != null) {
-            g2.color = color
-            g2.fillRoundRect(padding + gutterWidth - 2, bandTop - 1, basesPerLine * charWidth + 4, bandHeight + 2, 8, 8)
-        }
-        g2.color = Palette.translucent(Palette.GRID, 0x88)
-        g2.drawLine(padding + gutterWidth, top + rowHeight() - rowGap / 2, width - padding, top + rowHeight() - rowGap / 2)
-    }
-
-    private fun paintBaseChips(g2: Graphics2D, from: Int, to: Int, baseY: Int) {
-        if (charWidth < 8 || lineHeight < 14) return
-        val seq = doc.seq
-        val chipY = baseY - lineHeight + 3
-        val chipHeight = lineHeight - 2
-        val chipWidth = maxOf(4, charWidth - 1)
-        for (i in from until to) {
-            val color = Palette.charColor(seq.bases[i], seq.kind)
-            g2.color = Palette.translucent(color, 0x1F)
-            g2.fillRoundRect(xOf(i - from) - 1, chipY, chipWidth, chipHeight, 5, 5)
-        }
-    }
-
-    private fun paintTranslation(g2: Graphics2D, from: Int, to: Int, y: Int) {
-        val seq = doc.seq
-        g2.color = Palette.TEXT
-        var codonStart = translationFrame + ((from - translationFrame) / 3) * 3
-        if (codonStart < translationFrame) codonStart = translationFrame
-        while (codonStart + 3 <= seq.length) {
-            if (codonStart >= to) break
-            val codon = seq.bases.substring(codonStart, codonStart + 3).uppercase()
-            val aa = codonTable.translate(codon)
-            val middle = codonStart + 1
-            if (middle in from until to) {
-                val isStart = codon == "ATG"
-                val isStop = aa == '*'
-                if (isStart || isStop) {
-                    g2.color = if (isStart) Palette.START_CODON else Palette.STOP_CODON
-                    g2.fillRect(xOf(middle - from) - 2, y - 11, charWidth * 3 + 4, lineHeight)
+            val y = baseY + (l.tracks - 1) * l.textHeight
+            var c = maxOf(translationFrame, translationFrame + Math.floorDiv(from - translationFrame, 3) * 3)
+            while (c < to && c + 3 <= doc.seq.length) {
+                val codon = doc.seq.bases.substring(c, c + 3).uppercase()
+                val aa = codonTable.translate(codon)
+                if (aa == '*' || codon == "ATG") {
+                    g.color = if (aa == '*') Palette.STOP_CODON else Palette.START_CODON
+                    g.fillRect(l.x(maxOf(c, from) - from), y - fm.ascent, (minOf(c + 3, to) - maxOf(c, from)) * l.cellWidth, l.textHeight)
                 }
-                g2.color = if (isStop) Palette.CUT_MARK else if (isStart) Palette.START_CODON else Palette.TEXT
-                g2.drawString(aa.toString(), xOf(middle - from), y)
+                if (c + 1 in from until to) { g.color = Palette.TEXT; g.drawString(aa.toString(), l.x(c + 1 - from), y) }
+                c += 3
             }
-            codonStart += 3
         }
-    }
-
-    private fun paintSelection(g2: Graphics2D, from: Int, to: Int, top: Int) {
-        if (!doc.hasSelection) return
-        val s = maxOf(doc.selectionStart, from)
-        val e = minOf(doc.selectionEnd, to)
-        if (e <= s) return
-        g2.color = Palette.SELECTION
-        g2.fillRoundRect(
-            xOf(s - from),
-            top + markHeight,
-            (e - s) * charWidth,
-            lineHeight * trackCount(),
-            6,
-            6,
-        )
-    }
-
-    private fun paintHistoryChange(g2: Graphics2D, from: Int, to: Int, top: Int) {
-        if (!showHistoryColors) return
-        val changed = doc.recentChangeRange ?: return
-        val s = maxOf(changed.first, from)
-        val e = minOf(changed.last + 1, to)
-        if (e <= s) return
-        g2.color = Color(0xF5, 0xA6, 0x23, 0x48)
-        g2.fillRoundRect(xOf(s - from), top + markHeight, (e - s) * charWidth, lineHeight * trackCount(), 6, 6)
-    }
-
-    private fun paintCutMarks(g2: Graphics2D, from: Int, to: Int, top: Int) {
-        val cutSites = doc.cutSites
-        if (cutSites.isEmpty()) return
-        g2.font = labelFont
-        val fm = getFontMetrics(labelFont)
-        // cutSites is already sorted by topCut; jump straight to the first site
-        // in the visible window instead of scanning (and re-sorting) the whole
-        // list for every painted row.
-        var i = lowerBound(cutSites, from)
-        val visibleSites = ArrayList<CutSite>()
-        while (i < cutSites.size && cutSites[i].topCut < to) {
-            visibleSites += cutSites[i]
-            i++
-        }
-        if (visibleSites.isEmpty()) return
-
-        fun isSelected(site: CutSite): Boolean = doc.hasSelection && (
-            site.topCut in doc.selectionStart until doc.selectionEnd ||
-                (site.recognitionStart < doc.selectionEnd && site.recognitionEnd > doc.selectionStart)
-            )
-
-        // Draw every marker, giving a site in the selected range a stable
-        // visual anchor while the labels are laid out below.
-        visibleSites.forEach { site ->
-            val pos = site.topCut
-            val x = xOf(pos - from)
-            g2.color = if (isSelected(site)) Palette.ACCENT else Palette.CUT_MARK
-            val markerTop = top + markHeight - 8
-            g2.drawLine(x, markerTop, x, top + markHeight)
-            g2.fillPolygon(intArrayOf(x - 3, x + 3, x), intArrayOf(markerTop, markerTop, markerTop + 5), 3)
-        }
-
-        data class Placement(val site: CutSite, val lane: Int, val bounds: Rectangle, val labelX: Int, val labelY: Int)
-        val placements = ArrayList<Placement>()
-        // Selected sites are placed first so a nearby ordinary label can never
-        // hide the enzyme the user is currently trying to locate.
-        val labelSites = visibleSites.sortedWith(compareByDescending<CutSite> { isSelected(it) }.thenBy { it.topCut })
-        for (site in labelSites) {
-            val label = site.enzyme.name
-            val textWidth = fm.stringWidth(label)
-            val markerX = xOf(site.topCut - from)
-            val rightLabelX = markerX + 4
-            val leftLabelX = markerX - textWidth - 4
-            val labelX = if (rightLabelX + textWidth <= width - padding) {
-                rightLabelX
-            } else {
-                maxOf(padding + gutterWidth, leftLabelX)
+        paintSites(g, row)
+        g.font = labelFont
+        row.bars.forEach { bar ->
+            val bounds = l.bounds(row, bar)
+            val item = bar.item
+            val selected = item == interaction?.selected || (item is SequenceObject.Annotation && item.feature == selectedFeature)
+            val color = when (item) {
+                is SequenceObject.Annotation -> item.feature.color?.let { runCatching { Color.decode(it) }.getOrNull() }
+                    ?: Palette.featureColor(item.feature.name.hashCode())
+                is SequenceObject.Primer -> if (item.primer.strand == Strand.REVERSE) Palette.CUT_MARK else Palette.ACCENT
+                else -> Palette.ACCENT
             }
-
-            var lane = -1
-            var bounds = Rectangle()
-            for (candidate in 0 until cutLabelLaneCount) {
-                val baseline = top + 10 + candidate * cutLabelLaneHeight
-                val candidateBounds = Rectangle(
-                    labelX - 3,
-                    baseline - fm.ascent - 1,
-                    textWidth + 6,
-                    fm.height + 2,
-                )
-                val collides = placements.any {
-                    it.lane == candidate && it.bounds.intersects(candidateBounds)
-                }
-                if (!collides) {
-                    lane = candidate
-                    bounds = candidateBounds
-                    break
+            g.color = Palette.translucent(color, if (selected) 90 else 38)
+            g.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
+            g.color = if (selected || item == hover) Palette.ACCENT else color
+            val originalStroke = g.stroke
+            if (item is SequenceObject.Primer && item.preview) g.stroke = BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, floatArrayOf(4f, 3f), 0f)
+            g.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 5, 5)
+            g.stroke = originalStroke
+            val strand = when (item) { is SequenceObject.Annotation -> item.feature.strand; is SequenceObject.Primer -> item.primer.strand; else -> Strand.FORWARD }
+            val arrow = minOf(6, bounds.width / 2)
+            val mid = bounds.y + bounds.height / 2
+            if (strand == Strand.FORWARD && bar.end == item.end) {
+                g.fillPolygon(intArrayOf(bounds.x + bounds.width - arrow, bounds.x + bounds.width, bounds.x + bounds.width - arrow), intArrayOf(bounds.y, mid, bounds.y + bounds.height), 3)
+            } else if (strand == Strand.REVERSE && bar.start == item.start) {
+                g.fillPolygon(intArrayOf(bounds.x + arrow, bounds.x, bounds.x + arrow), intArrayOf(bounds.y, mid, bounds.y + bounds.height), 3)
+            }
+            hits += Hit(bounds, item)
+            if (l.detailed && bounds.width > 24) {
+                val metrics = g.fontMetrics
+                val available = bounds.width - 18
+                var text = item.name
+                while (text.isNotEmpty() && metrics.stringWidth(text) > available) text = text.dropLast(1)
+                if (text != item.name && text.length > 1) text = text.dropLast(1) + "…"
+                g.color = Palette.TEXT
+                val labelBounds = Rectangle(bounds.x + 8, bounds.y + 2, minOf(available, metrics.stringWidth(text)), bounds.height - 4)
+                g.drawString(text, labelBounds.x, bounds.y + (bounds.height - metrics.height) / 2 + metrics.ascent)
+                hits += Hit(labelBounds, item, true)
+            }
+        }
+        g.color = Palette.GRID
+        g.drawLine(l.x(0), row.top + row.height - 7, width - 10, row.top + row.height - 7)
+    }
+    private fun paintSites(g: Graphics2D, row: SequenceLayout.Row) {
+        val l = layoutModel
+        val from = row.index * l.columns
+        val occupied = mutableListOf<Rectangle>()
+        val hidden = mutableListOf<SequenceObject>()
+        g.font = labelFont
+        val metrics = g.fontMetrics
+        row.sites.sortedByDescending { it == interaction?.selected }.forEach { item ->
+            val x = l.x(item.site.topCut - from)
+            val y = row.top + row.marks
+            g.color = if (item == interaction?.selected) Palette.ACCENT else Palette.CUT_MARK
+            g.drawLine(x, y - 8, x, y)
+            hits += Hit(Rectangle(x - 4, y - 9, 9, 10), item)
+            if (l.detailed || item == interaction?.selected || item == hover) {
+                val textWidth = metrics.stringWidth(item.name)
+                val lx = (x + 4).coerceAtMost(maxOf(l.x(0), width - textWidth - 65)).coerceAtLeast(l.x(0))
+                val bounds = (0..1).map { lane -> Rectangle(lx, row.top + lane * l.laneHeight, textWidth + 6, metrics.height + 2) }
+                    .firstOrNull { candidate -> occupied.none { it.intersects(candidate) } }
+                if (bounds == null || !l.detailed) hidden += item else {
+                    occupied += bounds
+                    g.color = Palette.TEXT
+                    g.drawString(item.name, bounds.x + 3, bounds.y + metrics.ascent)
+                    hits += Hit(bounds, item, true)
+                    paintedCutSiteLabels += item.name
                 }
             }
-
-            // Keep the selected enzyme visible even in a densely annotated
-            // row. Its accent-backed label makes the intentional overlap clear.
-            if (lane < 0 && isSelected(site)) {
-                lane = 0
-                val baseline = top + 10
-                bounds = Rectangle(labelX - 3, baseline - fm.ascent - 1, textWidth + 6, fm.height + 2)
-            }
-            if (lane < 0) continue
-
-            val labelY = top + 10 + lane * cutLabelLaneHeight
-            placements += Placement(site, lane, bounds, labelX, labelY)
-            paintedCutSiteLabels += label
-        }
-
-        placements.forEach { placement ->
-            val selected = isSelected(placement.site)
-            if (selected) {
-                g2.color = Palette.translucent(Palette.ACCENT, 0x33)
-                g2.fillRoundRect(
-                    placement.bounds.x - 1,
-                    placement.bounds.y - 1,
-                    placement.bounds.width + 2,
-                    placement.bounds.height + 2,
-                    5,
-                    5,
-                )
-            }
-            g2.color = if (selected) Palette.ACCENT else Palette.TEXT
-            g2.drawString(placement.site.enzyme.name, placement.labelX, placement.labelY)
-        }
-    }
-
-    /** Index of the first site whose topCut is >= [pos], assuming topCut-sorted input. */
-    private fun lowerBound(cutSites: List<CutSite>, pos: Int): Int {
-        var lo = 0
-        var hi = cutSites.size
-        while (lo < hi) {
-            val mid = (lo + hi) ushr 1
-            if (cutSites[mid].topCut < pos) lo = mid + 1 else hi = mid
-        }
-        return lo
-    }
-
-    private fun paintFeatures(g2: Graphics2D, from: Int, to: Int, top: Int) {
-        if (doc.seq.features.isEmpty()) return
-        g2.font = labelFont
-        val fm = getFontMetrics(labelFont)
-        val selected = selectedFeature
-        doc.seq.features.filter { FeatureLabelOptions.include(it, featureLabelMode) }.forEachIndexed { index, f ->
-            val s = maxOf(f.start, from)
-            val e = minOf(f.end, to)
-            if (e <= s) return@forEachIndexed
-            val lane = laneOf[f] ?: 0
-            val y = top + lane * laneHeight + 1
-            val x = xOf(s - from)
-            val w = maxOf(3, (e - s) * charWidth)
-            val barBounds = Rectangle(x - 5, y - 4, w + 10, laneHeight + 6)
-            featureHitTargets += HitTarget(barBounds, f, HitKind.BAR)
-            val color = Palette.featureColor(index)
-            g2.color = Palette.FEATURE_OUTLINE
-            g2.fillRoundRect(x - 1, y - 1, w + 2, laneHeight, 5, 5)
-            g2.color = Palette.translucent(color, 0x78)
-            g2.fillRoundRect(x, y, w, laneHeight - 2, 4, 4)
-            g2.color = color
-            g2.drawRoundRect(x, y, w, laneHeight - 2, 4, 4)
-            // Strand arrowhead at the leading edge.
-            if (f.strand == Strand.FORWARD && f.end in s until e) {
-                g2.fillPolygon(
-                    intArrayOf(x + w, x + w, x + w + 5),
-                    intArrayOf(y - 1, y + laneHeight - 1, y + (laneHeight - 2) / 2),
-                    3,
-                )
-            } else if (f.strand == Strand.REVERSE && f.start in s until e) {
-                g2.fillPolygon(
-                    intArrayOf(x, x, x - 5),
-                    intArrayOf(y - 1, y + laneHeight - 1, y + (laneHeight - 2) / 2),
-                    3,
-                )
-            }
-            val label = FeatureLabelOptions.text(f)
-            if (w > fm.stringWidth(label) + 8) {
-                val labelX = x + 4
-                val labelY = y + laneHeight - 3
-                val textW = fm.stringWidth(label)
-                val labelTop = maxOf(y - 1, labelY - fm.ascent - 2)
-                val labelBounds = Rectangle(
-                    labelX - 3,
-                    labelTop,
-                    textW + 6,
-                    (labelY + fm.descent + 2) - labelTop,
-                )
-                featureHitTargets += HitTarget(labelBounds, f, HitKind.LABEL)
-                if (f === selected) {
-                    g2.color = Palette.translucent(Palette.ACCENT, 0x33)
-                    g2.fillRoundRect(labelBounds.x - 1, labelBounds.y - 1, labelBounds.width + 2, labelBounds.height + 2, 5, 5)
-                    g2.color = Palette.ACCENT
-                    g2.drawRoundRect(labelBounds.x - 1, labelBounds.y - 1, labelBounds.width + 2, labelBounds.height + 2, 5, 5)
+            if (l.detailed && item == interaction?.selected) {
+                g.color = Palette.ACCENT
+                val bottom = item.site.bottomCut
+                if (bottom in from..minOf(from + l.columns, doc.seq.length)) {
+                    val bx = l.x(bottom - from)
+                    g.drawLine(bx, y + l.textHeight, bx, y + l.textHeight + 5)
                 }
-                g2.color = if (f === selected) Palette.ACCENT else Palette.TEXT
-                g2.drawString(label, labelX, labelY)
             }
         }
+        if (hidden.isNotEmpty()) {
+            val bounds = Rectangle(maxOf(l.x(0), width - 62), row.top, 52, metrics.height + 4)
+            g.color = Palette.ACCENT
+            g.drawString("+${hidden.size} sites", bounds.x, bounds.y + metrics.ascent)
+            overflow += bounds to hidden
+        }
     }
-
-    private fun paintCaret(g2: Graphics2D) {
-        if (doc.hasSelection || !caretVisible || !isFocusOwner) return
-        val row = doc.caret / basesPerLine
-        val col = doc.caret % basesPerLine
-        val top = yOfRow(row) + markHeight
-        g2.color = Palette.CARET
-        val x = xOf(col)
-        g2.drawLine(x, top, x, top + lineHeight * trackCount())
+    fun revealRange(start: Int, end: Int) { doc.select(start, end); revealObjectRange(start, end); requestFocusInWindow() }
+    fun revealObjectRange(start: Int, end: Int) {
+        val row = layoutModel.rowFor(start)
+        scrollRectToVisible(Rectangle(0, maxOf(0, row.top - 10), maxOf(1, width), minOf(row.height * 2, maxOf(1, visibleRect.height))))
     }
-
-    private fun scrollCaretIntoView() {
-        val row = doc.caret / basesPerLine
-        scrollRectToVisible(Rectangle(0, yOfRow(row), width, rowHeight()))
+    private fun scrollCaretIntoView() { val row = layoutModel.rowFor(doc.caret); scrollRectToVisible(Rectangle(0, row.top, 1, row.height)) }
+    fun selectFeature(feature: Feature) { selectedFeature = feature; interaction?.select(SequenceObject.Annotation(feature)); repaint() }
+    fun clearFeatureSelection() { selectedFeature = null; interaction?.select(null); repaint() }
+    fun refreshAnnotations() = relayout()
+    private fun hitAt(x: Int, y: Int) = hits.lastOrNull { it.bounds.contains(x, y) }
+    fun featureHitCenterForTest(name: String) = center(name, null)
+    fun featureLabelHitCenterForTest(name: String) = center(name, true)
+    fun featureBarHitCenterForTest(name: String) = center(name, false)
+    private fun center(name: String, label: Boolean?): Pair<Int, Int>? {
+        val hit = hits.firstOrNull { it.item is SequenceObject.Annotation && it.item.name == name && (label == null || it.label == label) } ?: return null
+        return hit.bounds.x + hit.bounds.width / 2 to hit.bounds.y + hit.bounds.height / 2
     }
-
-    /** Scrolls to and selects [start, end). */
-    fun revealRange(start: Int, end: Int) {
-        doc.select(start, end)
-        val row = start / basesPerLine
-        scrollRectToVisible(Rectangle(0, maxOf(0, yOfRow(row) - rowHeight()), width, rowHeight() * 3))
-        requestFocusInWindow()
-    }
-
-    /** Programmatically selects a feature as an object (label highlight, no base text selection). */
-    fun selectFeature(feature: Feature) {
-        selectedFeature = feature; repaint()
-    }
-
-    /** Clears any object-selected feature. */
-    fun clearFeatureSelection() {
-        selectedFeature = null; repaint()
-    }
-
-    /** Exposed for GUI regression tests: center of the latest painted feature hit target. */
-    fun featureHitCenterForTest(name: String): Pair<Int, Int>? {
-        val target = featureHitTargets.firstOrNull { it.feature.name == name } ?: return null
-        return target.bounds.x + target.bounds.width / 2 to target.bounds.y + target.bounds.height / 2
-    }
-
-    /** Exposed for GUI regression tests: center of the label hit target for the named feature. */
-    fun featureLabelHitCenterForTest(name: String): Pair<Int, Int>? {
-        val target = featureHitTargets.firstOrNull { it.feature.name == name && it.kind == HitKind.LABEL } ?: return null
-        return target.bounds.x + target.bounds.width / 2 to target.bounds.y + target.bounds.height / 2
-    }
-
-    /** Exposed for GUI regression tests: center of the bar hit target for the named feature. */
-    fun featureBarHitCenterForTest(name: String): Pair<Int, Int>? {
-        val target = featureHitTargets.firstOrNull { it.feature.name == name && it.kind == HitKind.BAR } ?: return null
-        return target.bounds.x + target.bounds.width / 2 to target.bounds.y + target.bounds.height / 2
-    }
-
-    // ------------------------------------------------------------------ input
-
     private fun installMouseHandlers() {
         addMouseListener(object : MouseAdapter() {
             override fun mousePressed(e: MouseEvent) {
+                if (e.isPopupTrigger) { popup(e); return }
+                if (!SwingUtilities.isLeftMouseButton(e)) return
                 requestFocusInWindow()
-                if (SwingUtilities.isLeftMouseButton(e)) {
-                    val hit = featureAt(e.x, e.y)
-                    if (hit != null && e.clickCount >= 1) {
-                        val (feature, kind) = hit
-                        when (kind) {
-                            HitKind.LABEL -> {
-                                selectedFeature = feature
-                                repaint()
-                            }
-                            HitKind.BAR -> {
-                                selectedFeature = null
-                                doc.select(feature.start, feature.end)
-                            }
-                        }
-                    } else {
-                        selectedFeature = null
-                        doc.moveCaret(indexAt(e.x, e.y), e.isShiftDown)
-                    }
+                overflow.firstOrNull { it.first.contains(e.point) }?.let { entry ->
+                    val menu = JPopupMenu()
+                    entry.second.forEach { item -> menu.add(JMenuItem("${item.name} (${item.start + 1}–${item.end})").apply { addActionListener { interaction?.select(item); repaint() } }) }
+                    menu.show(this@SequenceView, e.x, e.y)
+                    return
+                }
+                val hit = hitAt(e.x, e.y)
+                draggingBases = hit == null
+                if (hit != null) {
+                    selectedFeature = (hit.item as? SequenceObject.Annotation)?.feature
+                    interaction?.select(hit.item)
+                    if (e.clickCount == 2) interaction?.openSelected()
+                    repaint()
+                } else {
+                    clearFeatureSelection()
+                    doc.moveCaret(indexAt(e.x, e.y), e.isShiftDown)
                 }
             }
+            override fun mouseReleased(e: MouseEvent) { draggingBases = false; if (e.isPopupTrigger) popup(e) }
         })
         addMouseMotionListener(object : MouseMotionAdapter() {
-            override fun mouseDragged(e: MouseEvent) {
-                doc.moveCaret(indexAt(e.x, e.y), extendSelection = true)
-            }
-        })
-        addMouseMotionListener(object : MouseMotionAdapter() {
+            override fun mouseDragged(e: MouseEvent) { if (draggingBases) doc.moveCaret(indexAt(e.x, e.y), true) }
             override fun mouseMoved(e: MouseEvent) {
-                val overLabel = featureHitTargets.any { it.kind == HitKind.LABEL && it.bounds.contains(e.x, e.y) }
-                val newCursor = if (overLabel) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-                    else Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
-                if (cursor !== newCursor) {
-                    cursor = newCursor
-                }
+                val next = hitAt(e.x, e.y)?.item
+                if (hover != next) { hover = next; repaint() }
+                cursor = Cursor.getPredefinedCursor(if (next == null) Cursor.TEXT_CURSOR else Cursor.HAND_CURSOR)
             }
         })
     }
-
-    private fun featureAt(px: Int, py: Int): Pair<Feature, HitKind>? {
-        // Prefer label hits over bar hits since labels sit inside bar bounds.
-        featureHitTargets.firstOrNull { it.kind == HitKind.LABEL && it.bounds.contains(px, py) }?.let { return it.feature to it.kind }
-        featureHitTargets.firstOrNull { it.kind == HitKind.BAR && it.bounds.contains(px, py) }?.let { return it.feature to it.kind }
-        val row = ((py - padding) / rowHeight()).coerceIn(0, rowCount() - 1)
-        val bandTop = yOfRow(row) + markHeight + lineHeight * trackCount()
-        if (py < bandTop) return null
-        val lane = (py - bandTop) / laneHeight
-        val index = indexAt(px, py)
-        return doc.seq.features.firstOrNull { laneOf[it] == lane && index in it.start until it.end }?.let { it to HitKind.BAR }
+    private fun popup(e: MouseEvent) {
+        val item = hitAt(e.x, e.y)?.item ?: return
+        interaction?.select(item)
+        JPopupMenu().apply {
+            add(JMenuItem("Open in ${item.tab}").apply { addActionListener { interaction?.openSelected() } })
+            add(JMenuItem("Select bases").apply { addActionListener { if (interaction != null) interaction?.selectBases() else doc.select(item.start, item.end) } })
+        }.show(this, e.x, e.y)
     }
-
     override fun getToolTipText(event: MouseEvent): String {
-        val index = indexAt(event.x, event.y)
-        val parts = ArrayList<String>()
-        parts += "position ${index + 1}"
-        doc.seq.features.filter { index in it.start until it.end }.forEach {
-            parts += "${it.name} (${it.type} ${it.displayRange()} ${it.strand.symbol})"
+        val item = hitAt(event.x, event.y)?.item
+        return when (item) {
+            is SequenceObject.Site -> "${item.name}: ${item.site.enzyme.notation()} · top ${item.site.topCut}, bottom ${item.site.bottomCut}"
+            is SequenceObject.Annotation -> "${item.name} · ${item.feature.type} · ${item.feature.displayRange()} · ${item.feature.strand.symbol}"
+            is SequenceObject.Primer -> "${if (item.preview) "Preview: " else ""}${item.name} · ${item.start + 1}–${item.end} · ${item.primer.strand.symbol} · ${item.primer.fullSequence}"
+            null -> "Position ${(indexAt(event.x, event.y) + 1).coerceAtMost(maxOf(1, doc.seq.length))}"
         }
-        doc.cutSites.filter { abs(it.topCut - index) <= 1 }.forEach {
-            parts += "${it.enzyme.name} cuts here (${it.enzyme.notation()})"
-        }
-        return "<html>" + parts.joinToString("<br>") + "</html>"
     }
-
     private fun installKeyHandlers() {
         addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) = handleKeyPressed(e)

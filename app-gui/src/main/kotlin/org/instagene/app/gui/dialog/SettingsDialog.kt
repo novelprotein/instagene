@@ -19,6 +19,7 @@ object SettingsDialog {
     /** Opens user-controlled defaults, grouped separately from system diagnostics. */
     fun showPreferences(frame: JFrame?, prefs: Prefs, initialTab: Int = 0) {
         val current = prefs.value
+        val fontPreferences = FontPreferencesPanel(current)
         val themes = ThemeManager.themes
         val theme = JComboBox(themes.map { it.displayName }.toTypedArray()).apply {
             selectedIndex = themes.indexOfFirst { it.id == current.theme }.coerceAtLeast(0)
@@ -39,13 +40,16 @@ object SettingsDialog {
         val versions = JSpinner(SpinnerNumberModel(current.autosaveMaxVersions, 1, 100, 1))
 
         val tabs = JTabbedPane().apply {
-            addTab("General", JPanel(GridLayout(0, 2, 8, 8)).apply {
+            addTab("General", JPanel(BorderLayout(8, 8)).apply {
                 border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
-                add(JLabel("Theme")); add(theme)
-                add(inline); add(JLabel(""))
-                add(second); add(JLabel(""))
-                add(JLabel("Feature transparency (%)")); add(transparency)
-                add(JLabel("Bases per sequence row")); add(width)
+                add(JPanel(GridLayout(0, 2, 8, 8)).apply {
+                    add(JLabel("Theme")); add(theme)
+                    add(inline); add(JLabel(""))
+                    add(second); add(JLabel(""))
+                    add(JLabel("Feature transparency (%)")); add(transparency)
+                    add(JLabel("Bases per sequence row")); add(width)
+                }, BorderLayout.NORTH)
+                add(fontPreferences, BorderLayout.CENTER)
             })
             addTab("Analysis", JPanel(GridLayout(0, 2, 8, 8)).apply {
                 border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
@@ -67,10 +71,12 @@ object SettingsDialog {
         val result = JOptionPane.showConfirmDialog(frame, tabs, "Preferences", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
         if (result != JOptionPane.OK_OPTION) return
         val selectedTheme = themes[theme.selectedIndex]
-        val themeId = if (ThemeManager.apply(selectedTheme.id)) selectedTheme.id else current.theme
+        // Save the staged controls before refreshing windows (including this dialog).
         prefs.update {
             it.copy(
-                theme = themeId,
+                theme = selectedTheme.id,
+                interfaceFontFamily = fontPreferences.selectedFamily,
+                interfaceFontSize = fontPreferences.selectedSize,
                 inlineFeatureMode = inline.isSelected,
                 showSecondStrand = second.isSelected,
                 featureTransparency = (transparency.value as Number).toInt(),
@@ -85,6 +91,10 @@ object SettingsDialog {
                 autosaveFrequencyMinutes = (frequency.value as Number).toInt(),
                 autosaveMaxVersions = (versions.value as Number).toInt(),
             )
+        }
+        val saved = prefs.value
+        if (!ThemeManager.apply(saved.theme, saved.interfaceFontFamily, saved.interfaceFontSize)) {
+            prefs.update { it.copy(theme = current.theme) }
         }
     }
 

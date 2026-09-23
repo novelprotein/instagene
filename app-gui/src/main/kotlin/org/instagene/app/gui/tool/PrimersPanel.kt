@@ -70,6 +70,26 @@ class PrimersPanel(
     private var doc = initial
     private var docListener: SeqDocument.Listener? = null
 
+    var interaction: SequenceInteraction? = null
+    var onPreview: (List<PrimerAnnotation>, Pair<Int, Int>?) -> Unit = { _, _ -> }
+    private var worker: javax.swing.SwingWorker<Pair<SeqOps.Primer, SeqOps.Primer>, Void>? = null
+    private var designVersion = 0
+    private var resultBases: String? = null
+    private var resultKind: SeqKind? = null
+    private var resultTopology: org.instagene.core.Topology? = null
+    private var stale = false
+    private var applied = false
+    private val previewButton = JButton("Preview in Sequence")
+    private val applyButton = JButton("Add to Sequence")
+    private val cancelButton = JButton("Cancel").apply { isEnabled = false }
+    private val savedModel = javax.swing.DefaultListModel<PrimerAnnotation>()
+    private val savedList = javax.swing.JList(savedModel)
+    private data class PanelState(
+        val from: String, val to: String, val tm: Double,
+        val result: Pair<SeqOps.Primer, SeqOps.Primer>?, val descriptions: List<String>,
+        val bases: String?, val kind: SeqKind?, val topology: org.instagene.core.Topology?, val applied: Boolean,
+    )
+    private val states = java.util.WeakHashMap<SeqDocument, PanelState>()
     private val fromField = JTextField(8)
     private val toField = JTextField(8)
     private val tmSpinner = JSpinner(SpinnerNumberModel(prefs.value.primerDefaultTm.coerceIn(40.0, 75.0), 40.0, 75.0, 0.5))
@@ -98,16 +118,50 @@ class PrimersPanel(
         resultsTable.rowHeight = 20
         resultsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
         resultsTable.selectionModel.addListSelectionListener {
-            if (!it.valueIsAdjusting) refreshEditElementActionState()
+            if (!it.valueIsAdjusting) {
+                refreshEditElementActionState()
+                previewAnnotations().getOrNull(resultsTable.selectedRow)?.let { primer -> interaction?.select(SequenceObject.Primer(primer, true)) }
+            }
         }
         resultsTable.installRowContextMenu { row -> primerPopup(row) }
 
         add(buildControls(), BorderLayout.NORTH)
-        add(JScrollPane(resultsTable), BorderLayout.CENTER)
+        savedList.cellRenderer = object : javax.swing.DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(list: javax.swing.JList<*>?, value: Any?, index: Int, selected: Boolean, focus: Boolean): java.awt.Component {
+                val component = super.getListCellRendererComponent(list, value, index, selected, focus)
+                val primer = value as? PrimerAnnotation
+                text = primer?.let { "${it.name} · ${it.bindingStart + 1}–${it.bindingEnd} · ${it.strand.symbol}" }.orEmpty()
+                return component
+            }
+        }
+        savedList.addListSelectionListener {
+            if (!it.valueIsAdjusting) savedList.selectedValue?.let { primer -> interaction?.select(SequenceObject.Primer(primer)) }
+        }
+        savedList.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) { if (e.clickCount == 2) showSavedPrimer() }
+        })
+        savedList.getInputMap().put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "showSequence")
+        savedList.actionMap.put("showSequence", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) = showSavedPrimer()
+        })
+        resultsTable.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) { if (e.clickCount == 2) preview() }
+        })
+        resultsTable.getInputMap().put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "preview")
+        resultsTable.actionMap.put("preview", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) = preview()
+        })
+        add(javax.swing.JSplitPane(javax.swing.JSplitPane.VERTICAL_SPLIT,
+            JPanel(BorderLayout()).apply { add(JLabel("Design results"), BorderLayout.NORTH); add(JScrollPane(resultsTable)) },
+            JPanel(BorderLayout()).apply {
+                add(JLabel("Saved primers on this sequence"), BorderLayout.NORTH)
+                add(JScrollPane(savedList))
+                add(JButton("Show saved primer in Sequence").apply { addActionListener { showSavedPrimer() } }, BorderLayout.SOUTH)
+            }).apply { resizeWeight = 0.65 }, BorderLayout.CENTER)
         add(summary, BorderLayout.SOUTH)
 
         designButton.addActionListener {
-            if (design()) promptToAddPrimersToFeatures()
+            startDesign()
         }
         copyButton.addActionListener { copyAsFasta() }
         saveButton.addActionListener { savePrimers() }
@@ -124,7 +178,7 @@ class PrimersPanel(
         val initialListener = SeqDocument.Listener { _, reason -> handleDocChanged(reason) }
         docListener = initialListener
         doc.addListener(initialListener)
-        autoPopulateAndDesign()
+        populateTarget()
     }
 
     /**
@@ -134,6 +188,8 @@ class PrimersPanel(
     fun bindDocument(newDoc: SeqDocument) {
         val switched = newDoc !== doc
         if (switched) {
+            states[doc] = PanelState(fromField.text, toField.text, (tmSpinner.value as Number).toDouble(), result, descriptions, resultBases, resultKind, resultTopology, applied)
+            cancelDesign()
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
             docListener?.let { doc.addListener(it) }
@@ -145,6 +201,9 @@ class PrimersPanel(
         }
         if (switched) {
             result = null
+            resultBases = null
+            stale = false
+            applied = false
             descriptions = listOf("", "")
             rangeEdited = false
             suppressEditTracking = true
@@ -155,7 +214,19 @@ class PrimersPanel(
                 suppressEditTracking = false
             }
         }
-        autoPopulateAndDesign()
+        if (switched) {
+            states[doc]?.let { saved ->
+                suppressEditTracking = true
+                try { fromField.text = saved.from; toField.text = saved.to; tmSpinner.value = saved.tm }
+                finally { suppressEditTracking = false }
+                if (saved.bases == doc.seq.bases && saved.kind == doc.seq.kind && saved.topology == doc.seq.topology) {
+                    result = saved.result; descriptions = saved.descriptions; resultBases = saved.bases
+                    resultKind = saved.kind; resultTopology = saved.topology; applied = saved.applied
+                    resultsModel.fireTableDataChanged()
+                }
+            }
+        }
+        populateTarget()
     }
 
     private fun editListener() = object : DocumentListener {
@@ -173,6 +244,15 @@ class PrimersPanel(
 
     /** Invalidates a pair whose sequence, range, or target Tm no longer matches the controls. */
     private fun clearResult() {
+        designVersion++
+        worker?.cancel(true)
+        worker = null
+        cancelButton.isEnabled = false
+        onPreview(emptyList(), null)
+        if ((interaction?.selected as? SequenceObject.Primer)?.preview == true) interaction?.select(null)
+        stale = result != null
+        applied = false
+        resultBases = null
         if (result == null && descriptions.all { it.isEmpty() }) return
         result = null
         descriptions = listOf("", "")
@@ -191,9 +271,16 @@ class PrimersPanel(
             add(toField)
             add(JLabel("Target Tm"))
             add(tmSpinner)
+            add(JButton("Use Selection").apply {
+                addActionListener { if (doc.hasSelection) setTarget(doc.selectionStart, doc.selectionEnd) }
+            })
+            add(JButton("Use Whole Sequence").apply { addActionListener { setTarget(0, doc.seq.length) } })
             add(designButton)
+            add(cancelButton.apply { addActionListener { cancelDesign() } })
         })
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
+            add(previewButton.apply { addActionListener { preview() } })
+            add(applyButton.apply { addActionListener { addPrimersToFeatures() } })
             add(copyButton)
             add(saveButton)
             add(editElementButton.apply {
@@ -407,42 +494,124 @@ class PrimersPanel(
      * Manually entered ranges are preserved; amplicons larger
      * than [AUTO_DESIGN_MAX_AMPLICON] are left for the user to scope manually.
      */
-    private fun autoPopulateAndDesign() {
-        if (rangeEdited) return
-        fillFromSelection()
+    private fun populateTarget() {
         if (fromField.text.isEmpty() && toField.text.isEmpty() && doc.seq.length > 0) {
-            suppressEditTracking = true
-            try {
-                fromField.text = "1"
-                toField.text = doc.seq.length.toString()
-            } finally {
-                suppressEditTracking = false
-            }
+            setTarget(if (doc.hasSelection) doc.selectionStart else 0, if (doc.hasSelection) doc.selectionEnd else doc.seq.length)
         }
+        refreshSavedPrimers()
         refresh()
-        val from = fromField.text.toIntOrNull()
-        val to = toField.text.toIntOrNull()
-        if (from == null || to == null || from >= to) return
-        if (to - from > AUTO_DESIGN_MAX_AMPLICON) {
-            summary.text = "Sequence too large for automatic primer design — select a region " +
-                    "(max $AUTO_DESIGN_MAX_AMPLICON bp) or enter From/To."
-            return
-        }
-        design()
     }
 
     private fun handleDocChanged(reason: SeqDocument.Reason) {
         when (reason) {
             SeqDocument.Reason.SEQUENCE -> {
-                // The amplicon may have moved or changed; stale primers are misleading.
-                clearResult()
-                if (rangeEdited) refresh() else autoPopulateAndDesign()
+                if (resultBases != null && (resultBases != doc.seq.bases || resultKind != doc.seq.kind || resultTopology != doc.seq.topology)) {
+                    clearResult()
+                    stale = true
+                }
+                if (worker != null && (resultBases != doc.seq.bases)) cancelDesign()
+                if (result != null) applied = previewAnnotations().all { it in doc.seq.primers }
+                refreshSavedPrimers()
+                refresh()
             }
-            SeqDocument.Reason.SELECTION -> autoPopulateAndDesign()
+            SeqDocument.Reason.SELECTION -> refresh()
             else -> {}
         }
     }
 
+    fun setTarget(start: Int, end: Int) {
+        suppressEditTracking = true
+        try {
+            fromField.text = (start + 1).toString()
+            toField.text = end.toString()
+            rangeEdited = true
+        } finally { suppressEditTracking = false }
+        clearResult()
+        refresh()
+    }
+
+    private fun refreshSavedPrimers() {
+        val selected = savedList.selectedValue
+        savedModel.clear()
+        doc.seq.primers.forEach { savedModel.addElement(it) }
+        if (selected != null) savedList.setSelectedValue(selected, true)
+    }
+    private fun showSavedPrimer() {
+        savedList.selectedValue?.let { interaction?.show(SequenceObject.Primer(it)) }
+    }
+    fun selectObject(item: SequenceObject.Primer) {
+        if (item.preview) {
+            val row = previewAnnotations().indexOf(item.primer)
+            if (row >= 0) resultsTable.setRowSelectionInterval(row, row)
+        } else savedList.setSelectedValue(item.primer, true)
+    }
+    fun previewAnnotations(): List<PrimerAnnotation> {
+        val pair = result ?: return emptyList()
+        val (from, to) = toRange()
+        if (pair.first.bases.length > to - from || pair.second.bases.length > to - from) return emptyList()
+        return listOf(
+            PrimerAnnotation(pair.first.name, pair.first.bases, from, from + pair.first.bases.length, Strand.FORWARD, description = descriptions[0]),
+            PrimerAnnotation(pair.second.name, pair.second.bases, to - pair.second.bases.length, to, Strand.REVERSE, description = descriptions[1]),
+        )
+    }
+    fun preview() {
+        val primers = previewAnnotations()
+        if (primers.isEmpty()) return
+        onPreview(primers, toRange())
+        interaction?.show(SequenceObject.Primer(primers[resultsTable.selectedRow.coerceIn(0, 1)], true))
+    }
+
+    fun cancelDesign() {
+        designVersion++
+        worker?.cancel(true)
+        worker = null
+        cancelButton.isEnabled = false
+        refresh()
+    }
+    fun startDesign() {
+        if (!isDesignEnabled()) return
+        cancelDesign()
+        clearResult()
+        val snapshot = doc.seq
+        val document = doc
+        val (from, to) = toRange()
+        val tm = (tmSpinner.value as Number).toDouble()
+        val version = ++designVersion
+        worker = object : javax.swing.SwingWorker<Pair<SeqOps.Primer, SeqOps.Primer>, Void>() {
+            override fun doInBackground() = SeqOps.designPrimers(snapshot, from, to, targetTm = tm)
+            override fun done() {
+                if (isCancelled || version != designVersion || doc !== document || snapshot.bases != doc.seq.bases ||
+                    snapshot.kind != doc.seq.kind || snapshot.topology != doc.seq.topology) return
+                worker = null
+                cancelButton.isEnabled = false
+                try {
+                    acceptResult(get())
+                } catch (error: Exception) {
+                    refresh()
+                    summary.text = error.cause?.message ?: error.message ?: "Primer design failed."
+                }
+            }
+        }
+        cancelButton.isEnabled = true
+        refresh()
+        worker?.execute()
+    }
+    private fun acceptResult(pair: Pair<SeqOps.Primer, SeqOps.Primer>) {
+        result = pair
+        resultBases = doc.seq.bases
+        resultKind = doc.seq.kind
+        resultTopology = doc.seq.topology
+        stale = false
+        applied = false
+        descriptions = listOf("", "")
+        resultsModel.fireTableDataChanged()
+        refresh()
+    }
+    fun dispose() {
+        cancelDesign()
+        docListener?.let { doc.removeListener(it) }
+        states.clear()
+    }
     /** Keeps the controls in sync with the document and validates the current From/To range again. */
     fun refresh() {
         val nucleotide = doc.seq.kind != SeqKind.PROTEIN
@@ -455,7 +624,7 @@ class PrimersPanel(
         }
         val from = fromField.text.toIntOrNull()
         val to = toField.text.toIntOrNull()
-        designButton.isEnabled = from != null && to != null && from < to &&
+        designButton.isEnabled = worker == null && from != null && to != null && from < to &&
             from >= 1 && to <= doc.seq.length
         val currentResult = result
         if (currentResult != null) {
@@ -465,6 +634,8 @@ class PrimersPanel(
         } else {
             summary.text = "Set From/To (or select a region) and pick a target Tm, then Design."
         }
+        if (stale) summary.text = "Design inputs changed. Click Design to generate current primers."
+        if (worker != null) summary.text = "Designing primers…"
         refreshResultActionState()
     }
 
@@ -481,12 +652,14 @@ class PrimersPanel(
 
     private fun primerPopup(row: Int?): JPopupMenu = JPopupMenu().apply {
         val selectedPrimer = row?.let { primerAt(it) }
-        val hasResult = resultsTable.isEnabled && result != null
+        val hasResult = resultsTable.isEnabled && result != null && worker == null
+        previewButton.isEnabled = hasResult && previewAnnotations().isNotEmpty()
+        applyButton.isEnabled = hasResult && !applied && previewAnnotations().isNotEmpty()
         add(ContextMenus.item(
             "Design primers",
             "Run primer design for the current From/To amplicon range.",
             designButton.isEnabled,
-        ) { if (design()) promptToAddPrimersToFeatures() })
+        ) { startDesign() })
         add(ContextMenus.item(
             "Advanced candidates…",
             "Open detailed primer candidate filters for the current amplicon range.",
@@ -516,7 +689,7 @@ class PrimersPanel(
     }
 
     /** Exposed for tests: whether primer design is available for the sample type. */
-    fun isDesignEnabled(): Boolean = designButton.isEnabled || tmSpinner.isEnabled
+    fun isDesignEnabled(): Boolean = designButton.isEnabled
 
     private fun toRange(): Pair<Int, Int> {
         val f0 = (fromField.text.toIntOrNull() ?: 1) - 1
@@ -530,16 +703,13 @@ class PrimersPanel(
         val (from, to) = toRange()
         if (from !in 0..doc.seq.length || to !in from..doc.seq.length || from == to) return false
         val tm = (tmSpinner.value as Number).toDouble()
-        result = SeqOps.designPrimers(doc.seq, from, to, targetTm = tm)
-        descriptions = listOf("", "")
-        resultsModel.fireTableDataChanged()
-        refresh()
+        acceptResult(SeqOps.designPrimers(doc.seq, from, to, targetTm = tm))
         return true
     }
 
     /** Designs primers and, when a pair is found, prompts to annotate them, matching the button. */
     fun designAndPrompt() {
-        if (design()) promptToAddPrimersToFeatures()
+        startDesign()
     }
 
     /** Programmatic design over `[start, end)` (0-based), used by tests. */
@@ -555,26 +725,6 @@ class PrimersPanel(
      * Shown after a manual "Design primers" click, when a pair was just found;
      * auto-designed pairs (which fire on every selection change) never prompt.
      */
-    private fun promptToAddPrimersToFeatures() {
-        val pair = result ?: return
-        val (from, to) = toRange()
-        val message = buildString {
-            appendLine("Found primers for amplicon ${from + 1}..$to:")
-            appendLine()
-            appendLine("${pair.first.name}  ${pair.first.bases}")
-            appendLine("${pair.second.name}  ${pair.second.bases}")
-            appendLine()
-            append("Add them as persistent primer annotations?")
-        }
-        val choice = JOptionPane.showConfirmDialog(
-            null,
-            message,
-            "Add primers to features",
-            JOptionPane.YES_NO_OPTION,
-        )
-        if (choice == JOptionPane.YES_OPTION) addPrimersToFeatures()
-    }
-
     /**
      * Annotates the last designed primer pair on the sequence as `primer_bind`
      * features (the forward primer at the amplicon start, the reverse at its
@@ -582,11 +732,12 @@ class PrimersPanel(
      */
     fun addPrimersToFeatures(): Boolean {
         val pair = result ?: return false
+        if (applied || previewAnnotations().isEmpty() || resultBases != doc.seq.bases) return false
         if (doc.seq.kind == SeqKind.PROTEIN) return false
         val savedDescriptions = descriptions
         val (from, to) = toRange()
         val fwd = Feature(pair.first.name, "primer_bind", from, from + pair.first.bases.length)
-        val rev = Feature(pair.second.name, "primer_bind", to - pair.second.bases.length, to)
+        val rev = Feature(pair.second.name, "primer_bind", to - pair.second.bases.length, to, Strand.REVERSE)
         val existing = doc.seq.features.map { it.name.lowercase() }.toSet()
         val existingPrimers = doc.seq.primers.map { it.name.lowercase() }.toSet()
         val fwdPrimer = PrimerAnnotation(
@@ -605,7 +756,7 @@ class PrimersPanel(
             Strand.REVERSE,
             description = descriptions[1],
         )
-        doc.mutate("add primers to features") {
+        val changed = doc.mutate("add primers to features") {
             var next = it
             if (fwd.name.lowercase() !in existing) next = next.withFeature(fwd)
             if (rev.name.lowercase() !in existing) next = next.withFeature(rev)
@@ -618,9 +769,11 @@ class PrimersPanel(
         // changes, so restore this still-current result for Copy/Save.
         result = pair
         descriptions = savedDescriptions
+        applied = true
+        onPreview(emptyList(), null)
         resultsModel.fireTableDataChanged()
         refresh()
-        return true
+        return changed
     }
 
     fun copyAsFasta() {
@@ -719,7 +872,10 @@ class PrimersPanel(
         val currentResult = result ?: return "Choose a primer to edit."
         result = if (row == 0) currentResult.copy(first = updated) else currentResult.copy(second = updated)
         descriptions = descriptions.mapIndexed { index, current -> if (index == row) description else current }
+        applied = false
+        onPreview(emptyList(), null)
         resultsModel.fireTableRowsUpdated(row, row)
+        refresh()
         return null
     }
 
@@ -734,7 +890,9 @@ class PrimersPanel(
     }
 
     private fun refreshResultActionState() {
-        val hasResult = resultsTable.isEnabled && result != null
+        val hasResult = resultsTable.isEnabled && result != null && worker == null
+        previewButton.isEnabled = hasResult && previewAnnotations().isNotEmpty()
+        applyButton.isEnabled = hasResult && !applied && previewAnnotations().isNotEmpty()
         copyButton.isEnabled = hasResult
         saveButton.isEnabled = hasResult
         refreshEditElementActionState()

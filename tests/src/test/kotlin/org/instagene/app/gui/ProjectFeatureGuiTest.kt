@@ -65,7 +65,7 @@ class ProjectFeatureGuiTest {
         assertFalse(onEdt { content.menuBar.getMenu(4)!!.isEnabled }, "Sequence Tools stay disabled without a sequence tab.")
         assertFalse(onEdt { content.menuBar.getMenu(6)!!.isEnabled }, "Sequence Actions stay disabled without a sequence tab.")
         assertEquals(
-            listOf("New Project...", "Open Project...", "Close Project", "Reload Project from Disk", "ELN / Lab Notebook", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
+            listOf("Workflow Library…", "New Project...", "Open Project...", "Close Project", "Reload Project from Disk", "ELN / Lab Notebook", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
             menuItemTexts(projectMenu),
         )
         assertFalse(

@@ -4,6 +4,7 @@ import com.formdev.flatlaf.FlatLaf
 import org.instagene.core.SeqKind
 import java.awt.Color
 import javax.swing.UIManager
+import kotlin.math.roundToInt
 
 /** Shared colours, so the editor, the map and the digest table agree. */
 object Palette {
@@ -12,26 +13,57 @@ object Palette {
     private val darkTheme: Boolean
         get() = runCatching { FlatLaf.isLafDark() }.getOrDefault(false)
 
+    /** The active theme's color for [key], or [fallback] when the theme doesn't define it. */
+    private fun themeColor(key: String, fallback: Color): Color = UIManager.getColor(key) ?: fallback
+
     val BACKGROUND: Color
         get() = UIManager.getColor("Panel.background") ?: Color(0xFC, 0xFC, 0xFA)
-    val GUTTER = Color(0x99, 0x9C, 0xA0)
-    val GRID: Color get() = if (darkTheme) Color(0x52, 0x56, 0x5B) else Color(0xE4, 0xE4, 0xE0)
-    val TEXT: Color get() = if (darkTheme) Color(0xE6, 0xE6, 0xE0) else Color(0x24, 0x26, 0x28)
-    val MUTED: Color get() = if (darkTheme) Color(0x8C, 0x8F, 0x93) else Color(0x77, 0x7A, 0x7D)
+    val GUTTER: Color get() = themeColor("Label.disabledForeground", Color(0x99, 0x9C, 0xA0))
+    val GRID: Color
+        get() = themeColor(
+            "Table.gridColor",
+            if (darkTheme) Color(0x52, 0x56, 0x5B) else Color(0xE4, 0xE4, 0xE0),
+        )
+    val TEXT: Color
+        get() = themeColor("Label.foreground", if (darkTheme) Color(0xE6, 0xE6, 0xE0) else Color(0x24, 0x26, 0x28))
+    val MUTED: Color
+        get() = themeColor("Label.disabledForeground", if (darkTheme) Color(0x8C, 0x8F, 0x93) else Color(0x77, 0x7A, 0x7D))
     val SELECTION: Color
-        get() = if (darkTheme) Color(0x47, 0x8B, 0xE8, 0x66) else Color(0x33, 0x77, 0xCC, 0x44)
-    val CARET: Color get() = if (darkTheme) Color(0x8A, 0xB4, 0xF8) else Color(0x22, 0x44, 0x88)
+        get() = when (val selection = UIManager.getColor("Table.selectionBackground")) {
+            null -> if (darkTheme) Color(0x47, 0x8B, 0xE8, 0x66) else Color(0x33, 0x77, 0xCC, 0x44)
+            else -> translucent(selection, if (darkTheme) 0x66 else 0x44)
+        }
+    val CARET: Color
+        get() = themeColor(
+            "TextField.caretForeground",
+            if (darkTheme) Color(0x8A, 0xB4, 0xF8) else Color(0x22, 0x44, 0x88),
+        )
     val CUT_MARK = Color(0xC0, 0x39, 0x2B)
     val START_CODON: Color get() = if (darkTheme) Color(0x3F, 0xA9, 0x6B, 0x88) else Color(0x3F, 0xA9, 0x6B, 0x66)
     val STOP_CODON: Color get() = if (darkTheme) Color(0xC0, 0x39, 0x2B, 0x88) else Color(0xC0, 0x39, 0x2B, 0x66)
     val EDITOR_ROW_ALT: Color get() = if (darkTheme) Color(0xFF, 0xFF, 0xFF, 0x06) else Color(0x24, 0x26, 0x28, 0x04)
     val EDITOR_ACTIVE_ROW: Color get() = if (darkTheme) Color(0x8A, 0xB4, 0xF8, 0x12) else Color(0x00, 0x66, 0xCC, 0x0C)
-    val FEATURE_OUTLINE: Color get() = if (darkTheme) Color(0x13, 0x15, 0x18, 0xAA) else Color(0xFF, 0xFF, 0xFF, 0xDD)
-    val MAP_BACKBONE: Color get() = if (darkTheme) Color(0x3A, 0x3F, 0x46) else Color(0xD8, 0xDE, 0xE6)
-    val MAP_BACKBONE_HIGHLIGHT: Color get() = if (darkTheme) Color(0x63, 0x68, 0x70) else Color(0xF7, 0xF9, 0xFB)
-    val MAP_GUIDE: Color get() = if (darkTheme) Color(0x9A, 0xA1, 0xAA, 0x88) else Color(0x69, 0x72, 0x7D, 0x88)
-    val MAP_LABEL_BACKGROUND: Color get() = if (darkTheme) Color(0x20, 0x22, 0x26, 0xEE) else Color(0xFF, 0xFF, 0xFF, 0xF2)
-    val MAP_LABEL_BORDER: Color get() = if (darkTheme) Color(0x66, 0x6C, 0x74, 0xAA) else Color(0xC6, 0xCF, 0xD9, 0xCC)
+    val FEATURE_OUTLINE: Color
+        get() = when (val border = UIManager.getColor("Component.borderColor")) {
+            null -> if (darkTheme) Color(0x13, 0x15, 0x18, 0xAA) else Color(0xFF, 0xFF, 0xFF, 0xDD)
+            else -> translucent(border, if (darkTheme) 0xAA else 0xDD)
+        }
+    val MAP_BACKBONE: Color get() = themeColor("TextField.background",
+        if (darkTheme) Color(0x3A, 0x3F, 0x46) else Color(0xD8, 0xDE, 0xE6))
+    val MAP_BACKBONE_HIGHLIGHT: Color
+        get() = blend(MAP_BACKBONE, Color.WHITE, if (darkTheme) 0.25f else 0.55f)
+    val MAP_GUIDE: Color
+        get() = when (val separator = UIManager.getColor("Separator.foreground")) {
+            null -> if (darkTheme) Color(0x9A, 0xA1, 0xAA, 0x88) else Color(0x69, 0x72, 0x7D, 0x88)
+            else -> translucent(separator, 0x88)
+        }
+    val MAP_LABEL_BACKGROUND: Color get() = themeColor("ToolTip.background",
+        if (darkTheme) Color(0x20, 0x22, 0x26, 0xEE) else Color(0xFF, 0xFF, 0xFF, 0xF2))
+    val MAP_LABEL_BORDER: Color
+        get() = when (val border = UIManager.getColor("Component.borderColor")) {
+            null -> if (darkTheme) Color(0x66, 0x6C, 0x74, 0xAA) else Color(0xC6, 0xCF, 0xD9, 0xCC)
+            else -> border
+        }
 
     /** The theme's accent color (FlatLaf "Component.accentColor"); a link-blue fallback when unset. */
     val ACCENT: Color
@@ -96,4 +128,15 @@ object Palette {
 
     /** [color] with its alpha replaced by [alpha], RGB channels unchanged. */
     fun translucent(color: Color, alpha: Int): Color = Color(color.red, color.green, color.blue, alpha)
+
+    /** [base] blended [fraction] of the way toward [tint] (0 = base, 1 = tint). */
+    fun blend(base: Color, tint: Color, fraction: Float): Color {
+        val f = fraction.coerceIn(0f, 1f)
+        return Color(
+            (base.red + (tint.red - base.red) * f).roundToInt(),
+            (base.green + (tint.green - base.green) * f).roundToInt(),
+            (base.blue + (tint.blue - base.blue) * f).roundToInt(),
+            base.alpha,
+        )
+    }
 }

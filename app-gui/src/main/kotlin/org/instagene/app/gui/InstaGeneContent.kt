@@ -39,6 +39,7 @@ import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.app.gui.tool.SequenceView
 import org.instagene.app.gui.theme.ThemeRefreshable
+import org.instagene.app.gui.tool.SequenceInteraction
 import org.instagene.core.ElnAdapters
 import org.instagene.core.ElnArtifactRole
 import org.instagene.core.ElnAttachment
@@ -151,6 +152,7 @@ class InstaGeneContent(
     /** The active document (alias kept for callers of the single-document API). */
     val doc: SeqDocument get() = activeDocument
 
+    private lateinit var sequenceInteraction: SequenceInteraction
     val sequenceView: SequenceView
     val textEditorView: TextEditorView
     val digestPanel: DigestPanel
@@ -355,7 +357,11 @@ class InstaGeneContent(
         }.distinct()
         val initial = SeqDocument(Seq(""))
 
-        sequenceView = SequenceView(initial)
+        sequenceInteraction = SequenceInteraction(initial)
+        sequenceView = SequenceView(initial).apply {
+            interaction = sequenceInteraction
+            graphicsMode = if (prefs.value.detailedSequenceGraphics) org.instagene.app.gui.tool.SequenceGraphics.DETAILED else org.instagene.app.gui.tool.SequenceGraphics.SIMPLIFIED
+        }
         textEditorView = TextEditorView(TextDocument())
         digestPanel = DigestPanel(
             initial,
@@ -381,6 +387,31 @@ class InstaGeneContent(
         }
         featuresPanel = FeaturesPanel(initial, prefs) { start, end -> sequenceView.revealRange(start, end) }
         primersPanel = PrimersPanel(initial, prefs)
+        featuresPanel.interaction = sequenceInteraction
+        digestPanel.interaction = sequenceInteraction
+        primersPanel.interaction = sequenceInteraction
+        featuresPanel.onDesignPrimers = { start, end ->
+            primersPanel.setTarget(start, end)
+            toolTabs.selectedIndex = toolTabs.indexOfTab("Primers")
+        }
+        primersPanel.onPreview = { annotations, range ->
+            sequenceView.primerPreview = annotations
+            sequenceView.previewRange = range
+        }
+        sequenceInteraction.onReveal = { start, end ->
+            sequenceView.refreshAnnotations()
+            SwingUtilities.invokeLater { sequenceView.revealObjectRange(start, end) }
+        }
+        sequenceInteraction.onNavigate = { tab ->
+            val index = toolTabs.indexOfTab(tab)
+            if (index >= 0) toolTabs.selectedIndex = index
+            when (val item = sequenceInteraction.selected) {
+                is org.instagene.app.gui.tool.SequenceObject.Annotation -> if (tab == "Features") featuresPanel.selectObject(item.feature)
+                is org.instagene.app.gui.tool.SequenceObject.Site -> if (tab == "Enzyme") digestPanel.selectObject(item.site)
+                is org.instagene.app.gui.tool.SequenceObject.Primer -> if (tab == "Primers") primersPanel.selectObject(item)
+                null -> {}
+            }
+        }
         infoPanel = InfoPanel(initial, { openFile() }, ncbiClient, prefs = prefs)
         libraryPanel = LibraryPanel(prefs, initial, sequenceView) { seq ->
             openSequence(seq)
@@ -466,6 +497,8 @@ class InstaGeneContent(
         digestPanel.dispose()
         featuresPanel.dispose()
         sequenceView.dispose()
+        primersPanel.dispose()
+        sequenceInteraction.dispose()
         analysisPanel.detachedWindows.toList().forEach { it.dispose() }
     }
 
@@ -1392,6 +1425,7 @@ class InstaGeneContent(
     private fun onActiveDocumentChanged() {
         val active = hub.active ?: return
         if (active is SeqDocument) {
+            sequenceInteraction.bindDocument(active)
             sequenceView.bindDocument(active)
             digestPanel.bindDocument(active)
             analysisPanel.bindDocument(active)
@@ -1557,6 +1591,9 @@ class InstaGeneContent(
 
     /** Commands are rebuilt on opening so recents and project-specific actions stay current. */
     fun commandPaletteCommands(): List<CommandPaletteCommand> = buildList {
+        add(CommandPaletteCommand("workflow.library", "Workflow Library", "Save written protocols and general procedures", listOf("protocol procedure instructions library")) {
+            org.instagene.app.gui.tool.WorkflowLibraryPanel.show(owner)
+        })
         add(CommandPaletteCommand("file.new", "New sequence", "Create an empty sequence document", listOf("file document")) { newDocument() })
         add(CommandPaletteCommand("file.new-text", "New text file", "Create a plain-text document", listOf("file document note")) { openText() })
         add(CommandPaletteCommand("file.open", "Open files…", "Open sequence, trace, alignment, text, or project files", listOf("file import")) { openFile() })
@@ -1616,6 +1653,8 @@ class InstaGeneContent(
 
     private fun createProjectMenu(): JMenu = JMenu("Project").apply {
         mnemonic = KeyEvent.VK_P
+        add(menuItem("Workflow Library…") { org.instagene.app.gui.tool.WorkflowLibraryPanel.show(owner) })
+        addSeparator()
         val hasProject = project != null
         add(menuItem("New Project...") { newProject() })
         add(menuItem("Open Project...", KeyEvent.VK_P, shiftShortcut(KeyEvent.VK_P)) { openProject() })
@@ -1677,7 +1716,30 @@ class InstaGeneContent(
         toolTabs.apply {
             addTab("Info", infoPanel)
             addTab("Map", plasmidMapPanel)
-            addTab("Sequence", editorScroll)
+            addTab("Sequence", JPanel(BorderLayout()).apply {
+                add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 4)).apply {
+                    add(JLabel("Graphics"))
+                    add(javax.swing.JComboBox(org.instagene.app.gui.tool.SequenceGraphics.entries.toTypedArray()).apply {
+                        selectedItem = sequenceView.graphicsMode
+                        addActionListener {
+                            sequenceView.graphicsMode = selectedItem as org.instagene.app.gui.tool.SequenceGraphics
+                            prefs.update { it.copy(detailedSequenceGraphics = sequenceView.graphicsMode == org.instagene.app.gui.tool.SequenceGraphics.DETAILED) }
+                        }
+                    })
+                    val back = JButton("Back").apply { isEnabled = false; addActionListener { sequenceInteraction.back() } }
+                    val open = JButton("Open selected annotation").apply { isEnabled = false; addActionListener { sequenceInteraction.openSelected() } }
+                    val bases = JButton("Select bases").apply { isEnabled = false; addActionListener { sequenceInteraction.selectBases() } }
+                    add(open); add(bases); add(back)
+                    sequenceInteraction.addListener {
+                        open.isEnabled = sequenceInteraction.selected != null
+                        bases.isEnabled = open.isEnabled
+                        open.text = sequenceInteraction.selected?.let { "Open in ${it.tab}" } ?: "Open selected annotation"
+                        back.text = sequenceInteraction.backTab?.let { "Back to $it" } ?: "Back"
+                        back.isEnabled = sequenceInteraction.backTab != null
+                    }
+                }, BorderLayout.NORTH)
+                add(editorScroll, BorderLayout.CENTER)
+            })
             addTab("Features", featuresPanel)
             addTab("Primers", primersPanel)
             addTab("Library", libraryPanel)

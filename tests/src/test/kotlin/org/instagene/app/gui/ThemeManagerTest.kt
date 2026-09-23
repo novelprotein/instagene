@@ -44,12 +44,6 @@ class ThemeManagerTest {
     }
 
     @Test
-    fun legacyDraculaDefaultMigratesToDarculaWithoutChangingOtherThemes() {
-        assertEquals(ThemeManager.DEFAULT_THEME, ThemeManager.migrateLegacyDefault(ThemeManager.LEGACY_DEFAULT_THEME))
-        assertEquals("FlatOneDarkIJTheme", ThemeManager.migrateLegacyDefault("FlatOneDarkIJTheme"))
-    }
-
-    @Test
     fun themeIsPersistedInPrefs() {
         assertEquals("FlatDarculaLaf", UserPrefs().theme)
         assertEquals("FlatDarculaLaf", ThemeManager.DEFAULT_THEME)
@@ -76,6 +70,33 @@ class ThemeManagerTest {
         assertEquals("FlatOneDarkIJTheme", prefs.value.theme)
         assertTrue(ThemeManager.apply(prefs.value.theme))
         assertEquals("FlatOneDarkIJTheme", ThemeManager.current())
+    }
+
+    @Test
+    fun changingAnExistingThemeSurvivesTheActualStartupPath() {
+        val dir = Files.createTempDirectory("instagene-theme-restart").toFile()
+        val file = File(dir, "prefs.json")
+        val startup = Class.forName("org.instagene.app.gui.GuiMainKt")
+            .getDeclaredMethod("applySavedTheme", Prefs::class.java)
+            .apply { isAccessible = true }
+        try {
+            onEdt {
+                val prefs = Prefs(PrefsStore(file))
+                prefs.update { it.copy(theme = "FlatLightLaf") }
+                for (theme in listOf("FlatOneDarkIJTheme", "FlatDraculaIJTheme", "FlatDarculaLaf")) {
+                    prefs.update { it.copy(theme = theme) }
+                    prefs.save()
+                    val restarted = Prefs(PrefsStore(file))
+                    assertEquals(theme, restarted.value.theme, "saved theme")
+                    startup.invoke(null, restarted)
+                    assertEquals(ThemeManager.current(), theme, "restored theme")
+                    assertEquals(theme, PrefsStore(file).load().theme, "startup must preserve the choice")
+                }
+            }
+        } finally {
+            onEdt { ThemeManager.apply(ThemeManager.DEFAULT_THEME) }
+            dir.deleteRecursively()
+        }
     }
 
     @Test

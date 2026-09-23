@@ -197,6 +197,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val canvasWidth: Int,
         val canvasHeight: Int,
         val zoomPercent: Int,
+        val renderScale: Double,
         val featureLabelMode: String,
         val showRestrictionSites: Boolean,
         val showFeatureKey: Boolean,
@@ -230,11 +231,14 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     private var exportFontSize: Int? = null
     private var exportTransparentCanvas = false
     private var zoomFactor = 1.0
+    // Retain room for readable label layout, but fit that logical canvas at 100%.
+    private var fitScale = 1.0
+    private val renderScale: Double get() = if (renderingExport) 1.0 else zoomFactor * fitScale
     private val zoomValues = intArrayOf(50, 75, 100, 125, 150, 200, 300, 400, 600)
     private val zoomLabel = JLabel("100%").apply {
         horizontalAlignment = javax.swing.SwingConstants.CENTER
         preferredSize = Dimension(48, preferredSize.height)
-        toolTipText = "Current map zoom"
+        toolTipText = "Map zoom relative to the fitted view (100% fits the full map)"
     }
     private val zoomControlsPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
         isOpaque = false
@@ -295,7 +299,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             addActionListener { setZoomPercent(neighborZoom(1)) }
         })
         zoomControlsPanel.add(JButton("Reset").apply {
-            toolTipText = "Reset map zoom"
+            toolTipText = "Fit the full map in the viewport (100%)"
             addActionListener { setZoomPercent(100) }
         })
         val exportControls = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
@@ -339,7 +343,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     fun setZoomPercent(value: Int) {
         viewportAnimationTarget = null
         animationTimer.stop()
-        val old = zoomFactor
+        val old = renderScale
         val targetPercent = zoomValues.minWithOrNull(
             compareBy<Int> { abs(it - value.coerceIn(zoomValues.first(), zoomValues.last())) }
                 .thenByDescending { it },
@@ -357,11 +361,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         layoutMapViewport()
         mapCanvas.invalidateStaticMapCache()
         val newExtent = viewport.extentSize
-        val newOffsetX = canvasOffsetX(mapCanvas.width, target)
-        val newOffsetY = canvasOffsetY(mapCanvas.height, target)
+        val newScale = renderScale
+        val newOffsetX = canvasOffsetX(mapCanvas.width, newScale)
+        val newOffsetY = canvasOffsetY(mapCanvas.height, newScale)
         val point = java.awt.Point(
-            (logicalCenterX * target + newOffsetX - newExtent.width / 2.0).roundToInt(),
-            (logicalCenterY * target + newOffsetY - newExtent.height / 2.0).roundToInt(),
+            (logicalCenterX * newScale + newOffsetX - newExtent.width / 2.0).roundToInt(),
+            (logicalCenterY * newScale + newOffsetY - newExtent.height / 2.0).roundToInt(),
         )
         val maxX = (mapCanvas.width - newExtent.width).coerceAtLeast(0)
         val maxY = (mapCanvas.height - newExtent.height).coerceAtLeast(0)
@@ -370,11 +375,15 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     }
 
     private fun layoutMapViewport() {
+        // Fitted maps never need scrollbars. Remove them before measuring the
+        // viewport, including on startup and when resetting from a larger zoom.
+        mapScrollPane.horizontalScrollBarPolicy = if (zoomFactor <= 1.0) JScrollPane.HORIZONTAL_SCROLLBAR_NEVER else JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
+        mapScrollPane.verticalScrollBarPolicy = if (zoomFactor <= 1.0) JScrollPane.VERTICAL_SCROLLBAR_NEVER else JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
         mapScrollPane.revalidate()
         mapScrollPane.doLayout()
         mapScrollPane.viewport.doLayout()
         updateCanvasBounds()
-        if (zoomFactor == 1.0) {
+        if (zoomFactor <= 1.0) {
             // A fitted 100% map can change the viewport extent when a stale
             // scrollbar disappears, so perform one final fit with the new extent.
             mapScrollPane.doLayout()
@@ -385,7 +394,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
     private fun updateCanvasBounds() {
         val extent = mapScrollPane.viewport.extentSize
-        if (zoomFactor == 1.0) {
+        if (zoomFactor <= 1.0) {
             baseCanvasWidth = maxOf(380, extent.width)
             baseCanvasHeight = maxOf(380, extent.height)
             if (doc.seq.isCircular) {
@@ -393,6 +402,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             } else {
                 baseCanvasHeight = maxOf(baseCanvasHeight, mapCanvas.requiredLinearCanvasHeight())
             }
+            fitScale = if (extent.width > 0 && extent.height > 0) {
+                minOf(1.0, extent.width.toDouble() / baseCanvasWidth, extent.height.toDouble() / baseCanvasHeight)
+            } else 1.0
         }
         val preferred = mapCanvas.preferredSize
         mapCanvas.setSize(maxOf(extent.width, preferred.width), maxOf(extent.height, preferred.height))
@@ -422,6 +434,15 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
     /** Current viewport extent in pixels. */
     fun viewportExtentForTest(): Dimension = Dimension(mapScrollPane.viewport.extentSize)
+
+    /** Logical map coordinates at the current viewport center. */
+    fun logicalViewportCenterForTest(): java.awt.geom.Point2D.Double {
+        val viewport = mapScrollPane.viewport
+        return java.awt.geom.Point2D.Double(
+            (viewport.viewPosition.x + viewport.extentSize.width / 2.0 - canvasOffsetX(mapCanvas.width, renderScale)) / renderScale,
+            (viewport.viewPosition.y + viewport.extentSize.height / 2.0 - canvasOffsetY(mapCanvas.height, renderScale)) / renderScale,
+        )
+    }
 
     /** Current user-facing zoom text. */
     fun zoomLabelTextForTest(): String = zoomLabel.text
@@ -513,7 +534,6 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val width = options.width ?: options.preset.width
         val height = options.height ?: options.preset.height
         require(width > 0 && height > 0) { "Map dimensions must be positive" }
-        val previousZoom = zoomFactor
         val previousLabels = showFeatureLabels.isSelected
         val previousSites = showRestrictionSites.isSelected
         val previousLaneSpacing = exportFeatureLaneSpacing
@@ -535,7 +555,6 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             exportFeatureChoiceId = options.featureLabelModeId
             exportFontSize = options.fontSize.coerceIn(9, 24)
             exportTransparentCanvas = options.transparentBackground
-            zoomFactor = 1.0
             exportPng(file, width, height)
         } finally {
             showFeatureLabels.isSelected = previousLabels
@@ -548,7 +567,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             exportFeatureChoiceId = previousFeatureChoiceId
             exportFontSize = previousFontSize
             exportTransparentCanvas = previousTransparent
-            zoomFactor = previousZoom
+            layoutMapViewport()
         }
     }
 
@@ -956,12 +975,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         private fun zoomAtPoint(screenX: Int, screenY: Int, direction: Int) {
             val viewport = mapScrollPane.viewport
             val before = viewport.viewPosition
-            val oldScale = zoomFactor
+            val oldScale = renderScale
             val logicalX = (before.x + screenX - canvasOffsetX(width, oldScale)) / oldScale
             val logicalY = (before.y + screenY - canvasOffsetY(height, oldScale)) / oldScale
             setZoomPercent(neighborZoom(direction))
-            val targetX = (logicalX * zoomFactor + canvasOffsetX(width, zoomFactor) - screenX).roundToInt()
-            val targetY = (logicalY * zoomFactor + canvasOffsetY(height, zoomFactor) - screenY).roundToInt()
+            val targetX = (logicalX * renderScale + canvasOffsetX(width, renderScale) - screenX).roundToInt()
+            val targetY = (logicalY * renderScale + canvasOffsetY(height, renderScale) - screenY).roundToInt()
             val extent = viewport.extentSize
             viewport.viewPosition = java.awt.Point(
                 targetX.coerceIn(0, (mapCanvas.width - extent.width).coerceAtLeast(0)),
@@ -984,8 +1003,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         }
 
         override fun getPreferredSize(): Dimension = Dimension(
-            (baseCanvasWidth * zoomFactor).roundToInt().coerceAtLeast(1),
-            (baseCanvasHeight * zoomFactor).roundToInt().coerceAtLeast(1),
+            (baseCanvasWidth * renderScale).roundToInt().coerceAtLeast(1),
+            (baseCanvasHeight * renderScale).roundToInt().coerceAtLeast(1),
         )
 
         fun viewportChanged() {
@@ -1114,12 +1133,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             if (renderingExport || zoomFactor == 1.0) return Rectangle(0, 0, logicalWidth, logicalHeight)
             val view = mapScrollPane.viewport.viewRect
             if (view.width <= 0 || view.height <= 0) return Rectangle(0, 0, logicalWidth, logicalHeight)
-            val offsetX = canvasOffsetX(width, zoomFactor)
-            val offsetY = canvasOffsetY(height, zoomFactor)
-            val left = floor((view.x - offsetX) / zoomFactor).toInt().coerceIn(0, logicalWidth - 1)
-            val top = floor((view.y - offsetY) / zoomFactor).toInt().coerceIn(0, logicalHeight - 1)
-            val right = ceil((view.x + view.width - offsetX) / zoomFactor).toInt().coerceIn(left + 1, logicalWidth)
-            val bottom = ceil((view.y + view.height - offsetY) / zoomFactor).toInt().coerceIn(top + 1, logicalHeight)
+            val offsetX = canvasOffsetX(width, renderScale)
+            val offsetY = canvasOffsetY(height, renderScale)
+            val left = floor((view.x - offsetX) / renderScale).toInt().coerceIn(0, logicalWidth - 1)
+            val top = floor((view.y - offsetY) / renderScale).toInt().coerceIn(0, logicalHeight - 1)
+            val right = ceil((view.x + view.width - offsetX) / renderScale).toInt().coerceIn(left + 1, logicalWidth)
+            val bottom = ceil((view.y + view.height - offsetY) / renderScale).toInt().coerceIn(top + 1, logicalHeight)
             return Rectangle(left, top, right - left, bottom - top)
         }
 
@@ -1187,10 +1206,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         }
 
         private fun applyMapTransform(g2: Graphics2D) {
-            val offsetX = canvasOffsetX(width, zoomFactor)
-            val offsetY = canvasOffsetY(height, zoomFactor)
-            g2.translate(offsetX / zoomFactor, offsetY / zoomFactor)
-            g2.scale(zoomFactor, zoomFactor)
+            val offsetX = canvasOffsetX(width, renderScale)
+            val offsetY = canvasOffsetY(height, renderScale)
+            g2.translate(offsetX.toDouble(), offsetY.toDouble())
+            g2.scale(renderScale, renderScale)
         }
 
         private fun clearInteractiveHitRegions() {
@@ -1251,6 +1270,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 width,
                 height,
                 zoomPercent,
+                renderScale,
                 choice.id,
                 showRestrictionSites.isSelected,
                 exportShowFeatureKey ?: showFeatureKey.isSelected,
@@ -2268,8 +2288,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         private fun positionAt(e: MouseEvent): Int? {
             val seq = doc.seq
             if (seq.length == 0) return null
-            val px = (e.x - canvasOffsetX(width, zoomFactor)) / zoomFactor
-            val py = (e.y - canvasOffsetY(height, zoomFactor)) / zoomFactor
+            val px = (e.x - canvasOffsetX(width, renderScale)) / renderScale
+            val py = (e.y - canvasOffsetY(height, renderScale)) / renderScale
             if (seq.isCircular) {
                 val dx = px - centerX
                 val dy = centerY - py
@@ -2353,8 +2373,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         private fun featureArcAt(x: Int, y: Int): Feature? {
             val seq = doc.seq
             if (!seq.isCircular || arcHitRegions.isEmpty()) return null
-            val logicalX = (x - canvasOffsetX(width, zoomFactor)) / zoomFactor
-            val logicalY = (y - canvasOffsetY(height, zoomFactor)) / zoomFactor
+            val logicalX = (x - canvasOffsetX(width, renderScale)) / renderScale
+            val logicalY = (y - canvasOffsetY(height, renderScale)) / renderScale
             val dx = logicalX - centerX
             val dy = centerY - logicalY
             val dist = sqrt(dx * dx + dy * dy)
@@ -2375,14 +2395,14 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             }
 
         private fun screenRect(bounds: Rectangle): Rectangle = Rectangle(
-            (canvasOffsetX(width, zoomFactor) + bounds.x * zoomFactor).roundToInt(),
-            (canvasOffsetY(height, zoomFactor) + bounds.y * zoomFactor).roundToInt(),
-            (bounds.width * zoomFactor).roundToInt().coerceAtLeast(1),
-            (bounds.height * zoomFactor).roundToInt().coerceAtLeast(1),
+            (canvasOffsetX(width, renderScale) + bounds.x * renderScale).roundToInt(),
+            (canvasOffsetY(height, renderScale) + bounds.y * renderScale).roundToInt(),
+            (bounds.width * renderScale).roundToInt().coerceAtLeast(1),
+            (bounds.height * renderScale).roundToInt().coerceAtLeast(1),
         )
 
         private fun logicalToScreen(x: Int, y: Int): Pair<Int, Int> =
-            (canvasOffsetX(width, zoomFactor) + x * zoomFactor).roundToInt() to
-                (canvasOffsetY(height, zoomFactor) + y * zoomFactor).roundToInt()
+            (canvasOffsetX(width, renderScale) + x * renderScale).roundToInt() to
+                (canvasOffsetY(height, renderScale) + y * renderScale).roundToInt()
     }
 }

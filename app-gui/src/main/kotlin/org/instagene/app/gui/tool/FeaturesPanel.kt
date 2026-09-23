@@ -65,6 +65,16 @@ class FeaturesPanel(
     private var doc = initial
     private var docListener: SeqDocument.Listener? = null
 
+    var interaction: SequenceInteraction? = null
+    var onDesignPrimers: (Int, Int) -> Unit = { _, _ -> }
+    private var retainedFeature: Feature? = null
+    private var retainedRow = 0
+    private data class PanelState(val query: String, val type: String?, val feature: Feature?, val row: Int, val scroll: java.awt.Point)
+    private val panelStates = java.util.WeakHashMap<SeqDocument, PanelState>()
+    private val searchField = JTextField(18)
+    private val typeFilter = JComboBox<String>()
+    private val details = JTextArea(3, 50).apply { isEditable = false; lineWrap = true; wrapStyleWord = true }
+    private fun modelRow(): Int = featureTable.selectedRow.takeIf { it >= 0 }?.let(featureTable::convertRowIndexToModel) ?: -1
     private val featuresModel = FeatureTableModel()
     private val featureTable = JTable(featuresModel)
     private val addButton = JButton("Add Feature from Selection...")
@@ -83,7 +93,9 @@ class FeaturesPanel(
 
     private val rowSelectionListener = ListSelectionListener {
         if (!it.valueIsAdjusting) {
-            revealSelectedFeature()
+            retainedFeature = doc.seq.features.getOrNull(modelRow())
+            retainedRow = modelRow()
+            retainedFeature?.let { feature -> interaction?.select(SequenceObject.Annotation(feature)) }
             refreshSelectionState()
         }
     }
@@ -92,13 +104,24 @@ class FeaturesPanel(
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
         featureTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-        featureTable.rowHeight = 20
+        featureTable.rowHeight = maxOf(24, featureTable.getFontMetrics(featureTable.font).height + 8)
+        featureTable.autoCreateRowSorter = true
+        featureTable.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) { if (e.clickCount == 2) revealSelectedFeature() }
+        })
+        featureTable.getInputMap().put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "showSequence")
+        featureTable.actionMap.put("showSequence", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) = revealSelectedFeature()
+        })
         featureTable.selectionModel.addListSelectionListener(rowSelectionListener)
-        featureTable.installRowContextMenu { row -> featurePopup(row) }
+        featureTable.installRowContextMenu { row -> featurePopup(row?.let(featureTable::convertRowIndexToModel)) }
 
         add(buildButtons(), BorderLayout.NORTH)
         add(JScrollPane(featureTable), BorderLayout.CENTER)
-        add(summary, BorderLayout.SOUTH)
+        add(JPanel(BorderLayout(0, 4)).apply {
+            add(JScrollPane(details), BorderLayout.CENTER)
+            add(summary, BorderLayout.SOUTH)
+        }, BorderLayout.SOUTH)
 
         bindDocument(doc)
         refresh()
@@ -121,7 +144,9 @@ class FeaturesPanel(
      * Binds this panel to another document and rebuilds the feature table.
      */
     fun bindDocument(newDoc: SeqDocument) {
-        if (newDoc !== doc) {
+        val switched = newDoc !== doc
+        if (switched) {
+            panelStates[doc] = PanelState(searchField.text, typeFilter.selectedItem?.toString(), retainedFeature, retainedRow, featureTable.visibleRect.location)
             autoAnnotationWorker?.cancel(true)
             autoAnnotationWorker = null
             docListener?.let { doc.removeListener(it) }
@@ -133,81 +158,112 @@ class FeaturesPanel(
             docListener = listener
             doc.addListener(listener)
         }
-        refresh()
+        if (switched) {
+            val saved = panelStates[doc]
+            retainedFeature = saved?.feature
+            retainedRow = saved?.row ?: -1
+            searchField.text = saved?.query.orEmpty()
+            refresh()
+            if (saved?.type != null) typeFilter.selectedItem = saved.type
+            saved?.scroll?.let { point -> javax.swing.SwingUtilities.invokeLater {
+                featureTable.scrollRectToVisible(java.awt.Rectangle(point.x, point.y, 1, maxOf(1, featureTable.visibleRect.height)))
+            } }
+        } else refresh()
     }
 
     /** Cancels background annotation before the owning editor is disposed. */
     fun dispose() {
         autoAnnotationWorker?.cancel(true)
         autoAnnotationWorker = null
+        docListener?.let { doc.removeListener(it) }
     }
 
     private fun buildButtons(): JPanel = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
-            add(addButton.apply {
-                addActionListener { addFeatureDialog() }
+            add(addButton.apply { text = "Add from Selection…"; addActionListener { addFeatureDialog() } })
+            add(editElementButton.apply { text = "Edit…"; addActionListener { editFeatureElement(modelRow()) } })
+            add(JButton("Show in Sequence").apply { addActionListener { revealSelectedFeature() } })
+            add(JButton("Design primers…").apply {
+                addActionListener { doc.seq.features.getOrNull(modelRow())?.let { onDesignPrimers(it.start, it.end) } }
             })
-            add(manualAddButton.apply {
-                addActionListener { manualAddDialog() }
-            })
-            add(autoAnnotateButton.apply {
-                addActionListener { autoAnnotateDialog() }
-            })
-            add(importFeatureLibraryButton.apply {
-                toolTipText = "Import a versioned, reviewable feature-library JSON file."
-                addActionListener { importFeatureLibraryDialog() }
-            })
-            add(exportFeatureLibraryButton.apply {
-                toolTipText = "Export the saved feature-library rules as a versioned JSON file."
-                addActionListener { exportFeatureLibraryDialog() }
+            add(JButton("More").apply {
+                addActionListener { featurePopup(modelRow().takeIf { it >= 0 }).apply {
+                    addSeparator()
+                    add(ContextMenus.item("Import feature library…", "Import reusable feature rules.", true) { importFeatureLibraryDialog() })
+                    add(ContextMenus.item("Export feature library…", "Export reusable feature rules.", true) { exportFeatureLibraryDialog() })
+                }.show(this, 0, height) }
             })
         })
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 2)).apply {
-            add(editElementButton.apply {
-                addActionListener { editFeatureElement(featureTable.selectedRow) }
-            })
-            add(saveFeatureButton.apply {
-                addActionListener { saveSelectedFeature() }
-            })
-            add(validateFrameButton.apply {
-                toolTipText = "Translate the selected feature from its exact coordinates and validate its reading frame."
-                addActionListener { showFeatureTranslation(featureTable.selectedRow) }
-            })
-            add(deleteButton.apply {
-                addActionListener { deleteSelectedFeature() }
-            })
+            add(JLabel("Find feature")); add(searchField); add(JLabel("Type")); add(typeFilter)
         })
+        searchField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+            override fun insertUpdate(e: javax.swing.event.DocumentEvent) = filterRows()
+            override fun removeUpdate(e: javax.swing.event.DocumentEvent) = filterRows()
+            override fun changedUpdate(e: javax.swing.event.DocumentEvent) = filterRows()
+        })
+        typeFilter.addActionListener { filterRows() }
     }
 
+    private fun filterRows() {
+        val sorter = featureTable.rowSorter as? javax.swing.table.TableRowSorter<*> ?: return
+        val needle = searchField.text.trim()
+        val type = typeFilter.selectedItem?.toString()
+        sorter.rowFilter = object : javax.swing.RowFilter<javax.swing.table.TableModel, Int>() {
+            override fun include(entry: Entry<out javax.swing.table.TableModel, out Int>): Boolean {
+                val f = doc.seq.features.getOrNull(entry.identifier) ?: return false
+                return (type == null || type == "All types" || f.type == type) &&
+                    (needle.isEmpty() || listOf(f.name, f.type, f.notes).any { it.contains(needle, ignoreCase = true) })
+            }
+        }
+    }
     /** Rebuilds the table from the current features, reselecting the row at the
      * same position so a feature being deleted hands selection to the next row. */
     fun refresh() {
-        val previousRow = featureTable.selectedRow
-        featuresModel.fireTableDataChanged()
-        val target = when {
-            doc.seq.features.isEmpty() -> -1
-            previousRow in doc.seq.features.indices -> previousRow
-            else -> minOf(previousRow, doc.seq.features.size - 1).coerceAtLeast(0)
-        }
-        if (target >= 0) {
-            // Swap the listener out so reselecting does not fire another reveal.
-            featureTable.selectionModel.removeListSelectionListener(rowSelectionListener)
-            featureTable.selectionModel.setSelectionInterval(target, target)
+        val previous = retainedFeature
+        featureTable.selectionModel.removeListSelectionListener(rowSelectionListener)
+        try {
+            featuresModel.fireTableDataChanged()
+            val chosenType = typeFilter.selectedItem
+            val types = listOf("All types") + doc.seq.features.map { it.type }.distinct().sorted()
+            typeFilter.model = javax.swing.DefaultComboBoxModel(types.toTypedArray())
+            if (chosenType in types) typeFilter.selectedItem = chosenType
+            filterRows()
+            val model = (previous?.let { doc.seq.features.indexOf(it) } ?: -1).takeIf { it >= 0 } ?: retainedRow.coerceAtMost(doc.seq.features.lastIndex)
+            val view = if (model >= 0) featureTable.convertRowIndexToView(model) else -1
+            if (view >= 0) featureTable.setRowSelectionInterval(view, view) else featureTable.clearSelection()
+        } finally {
             featureTable.selectionModel.addListSelectionListener(rowSelectionListener)
         }
+        retainedFeature = doc.seq.features.getOrNull(modelRow())
+        retainedRow = modelRow()
         refreshSelectionState()
     }
 
+    fun selectObject(feature: Feature) {
+        val row = doc.seq.features.indexOf(feature)
+        if (row < 0) return
+        if (featureTable.convertRowIndexToView(row) < 0) {
+            searchField.text = ""
+            typeFilter.selectedItem = "All types"
+        }
+        selectFeatureRow(row)
+    }
     /** Updates the action buttons and summary from the current state (no table rebuild). */
     private fun refreshSelectionState() {
         addButton.isEnabled = doc.hasSelection && doc.selectionEnd > doc.selectionStart
         manualAddButton.isEnabled = doc.seq.length > 0
         autoAnnotateButton.isEnabled = doc.seq.kind != SeqKind.PROTEIN && doc.seq.length > 0 && autoAnnotationWorker == null
-        deleteButton.isEnabled = featureTable.selectedRow in doc.seq.features.indices
+        deleteButton.isEnabled = modelRow() in doc.seq.features.indices
         editElementButton.isEnabled = deleteButton.isEnabled
-        saveFeatureButton.isEnabled = savableFeature(featureTable.selectedRow) != null
+        saveFeatureButton.isEnabled = savableFeature(modelRow()) != null
         validateFrameButton.isEnabled = deleteButton.isEnabled && doc.seq.kind != SeqKind.PROTEIN
+        details.text = doc.seq.features.getOrNull(modelRow())?.let {
+            """${it.name} · ${it.type} · ${it.displayRange()} · strand ${it.strand.symbol}
+Color: ${it.color ?: "Automatic"}
+${it.notes}"""
+        }.orEmpty()
         val features = doc.seq.features
         summary.text = if (features.isEmpty()) {
             "No features. Select a region and use \"Add Feature from Selection...\", or type coordinates with \"Add Feature Manually...\"."
@@ -334,12 +390,16 @@ class FeaturesPanel(
     fun isEditElementEnabled(): Boolean = editElementButton.isEnabled
 
     /** Exposed for tests: the currently selected feature row, -1 when none. */
-    fun selectedFeatureRow(): Int = featureTable.selectedRow
+    fun selectedFeatureRow(): Int = modelRow()
 
     /** Exposed for tests: selects the row at [row] as a mouse click would. */
     fun selectFeatureRow(row: Int) {
         if (row in doc.seq.features.indices) {
-            featureTable.selectionModel.setSelectionInterval(row, row)
+            val view = featureTable.convertRowIndexToView(row)
+            if (view >= 0) {
+                featureTable.selectionModel.setSelectionInterval(view, view)
+                featureTable.scrollRectToVisible(featureTable.getCellRect(view, 0, true))
+            }
         } else {
             featureTable.clearSelection()
         }
@@ -416,7 +476,7 @@ class FeaturesPanel(
     }
 
     /** Saves the feature currently selected in the table to the Library. */
-    fun saveSelectedFeature(): Boolean = saveFeature(featureTable.selectedRow)
+    fun saveSelectedFeature(): Boolean = saveFeature(modelRow())
 
     private fun savableFeature(row: Int): Feature? {
         if (doc.seq.kind == SeqKind.PROTEIN) return null
@@ -885,12 +945,12 @@ class FeaturesPanel(
 
     /** Deletes the feature currently selected in the table (undoable). */
     fun deleteSelectedFeature() {
-        deleteFeature(featureTable.selectedRow)
+        deleteFeature(modelRow())
     }
 
     /** Opens the visible GUI editor for the feature currently selected in the table. */
     fun editSelectedFeatureElement() {
-        editFeatureElement(featureTable.selectedRow)
+        editFeatureElement(modelRow())
     }
 
     /** Opens the visible GUI editor for every editable field of the selected feature. */
@@ -969,11 +1029,11 @@ class FeaturesPanel(
     /** Reveals the feature at [row] in the editor. */
     fun revealFeature(row: Int) {
         val feature = doc.seq.features.getOrNull(row) ?: return
-        onReveal(feature.start, feature.end)
+        if (interaction != null) interaction?.show(SequenceObject.Annotation(feature)) else onReveal(feature.start, feature.end)
     }
 
     private fun revealSelectedFeature() {
-        revealFeature(featureTable.selectedRow)
+        revealFeature(modelRow())
     }
 
     private inner class FeatureTableModel : AbstractTableModel() {

@@ -61,6 +61,36 @@ class DigestPanel(
 ) : JPanel(BorderLayout(0, 6)) {
 
     /** The displayed document, rebound when the active tab changes. */
+    var interaction: SequenceInteraction? = null
+    private val siteDetails = JLabel("Select an enzyme site to inspect its cuts.")
+    fun selectObject(site: CutSite) {
+        if (visibleEnzymes.none { it == site.enzyme }) {
+            filterField.text = ""
+            cuttersOnly.isSelected = false
+            uniqueOnly.isSelected = false
+            rebuildEnzymeTable()
+        }
+        selectEnzymeInTable(site.enzyme)
+        showMatchesForSelectedEnzyme(site)
+        selectMatchInTable(site)
+    }
+    private fun inspectSelectedSite() {
+        selectedMatchInTable()?.let {
+            interaction?.select(SequenceObject.Site(it))
+            siteDetails.text = "${it.enzyme.name} · ${it.enzyme.notation()} · recognition ${it.recognitionStart + 1}–${it.recognitionEnd} · top cut ${it.topCut}, bottom cut ${it.bottomCut}"
+        }
+    }
+    fun moveSite(direction: Int) {
+        if (matches.isEmpty()) return
+        val current = matches.indexOf(selectedMatchInTable())
+        val next = Math.floorMod(current + direction, matches.size)
+        selectMatchInTable(matches[next])
+        inspectSelectedSite()
+    }
+    private fun showSelectedSite() {
+        val site = selectedMatchInTable() ?: matches.firstOrNull() ?: return
+        if (interaction != null) interaction?.show(SequenceObject.Site(site)) else onReveal(site.recognitionStart, site.recognitionEnd)
+    }
     private var doc = initial
     private var docListener: SeqDocument.Listener? = null
 
@@ -189,7 +219,7 @@ class DigestPanel(
         enzymeTable.selectionModel.addListSelectionListener {
             if (!it.valueIsAdjusting && !restoringEnzymeSelection) {
                 showMatchesForSelectedEnzyme()
-                revealFirstSiteOfSelectedEnzyme()
+                matches.firstOrNull()?.let { site -> selectMatchInTable(site); interaction?.select(SequenceObject.Site(site)) }
                 refreshEditElementActionState()
             }
         }
@@ -199,10 +229,17 @@ class DigestPanel(
         digestTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
         digestTable.selectionModel.addListSelectionListener {
             if (!it.valueIsAdjusting) {
-                if (!restoringFragmentSelection) revealSelectedFragment()
+                if (!restoringFragmentSelection) inspectSelectedSite()
                 updateFragmentActionState()
             }
         }
+        digestTable.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) { if (e.clickCount == 2) revealSelectedFragment() }
+        })
+        digestTable.getInputMap().put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "showSequence")
+        digestTable.actionMap.put("showSequence", object : javax.swing.AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) = revealSelectedFragment()
+        })
         digestTable.installRowContextMenu { row -> digestPopup(row) }
 
         add(buildTop(), BorderLayout.NORTH)
@@ -380,6 +417,7 @@ class DigestPanel(
                 }
             })
         })
+        add(siteDetails)
         add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
             add(countScanProgress)
             add(cancelCountScanButton)
@@ -396,6 +434,9 @@ class DigestPanel(
         add(exportCsvButton.apply {
             addActionListener { exportDigestCsv() }
         })
+        add(JButton("Previous site").apply { addActionListener { moveSite(-1) } })
+        add(JButton("Next site").apply { addActionListener { moveSite(1) } })
+        add(JButton("Show in Sequence").apply { addActionListener { showSelectedSite() } })
         add(Box.createHorizontalStrut(4))
     }
 
@@ -621,7 +662,7 @@ class DigestPanel(
     fun revealMatch(row: Int) {
         val site = matches.getOrNull(row) ?: return
         val wraps = doc.seq.isCircular && site.recognitionEnd > doc.seq.length
-        if (wraps) onReveal(0, doc.seq.length) else onReveal(site.recognitionStart, site.recognitionEnd)
+        if (interaction != null) interaction?.show(SequenceObject.Site(site)) else if (wraps) onReveal(0, doc.seq.length) else onReveal(site.recognitionStart, site.recognitionEnd)
     }
 
     /** Scans [seq] on background threads; stale results for an older sequence are dropped. */
@@ -1035,13 +1076,13 @@ class DigestPanel(
     private fun revealFirstSiteOfEnzyme(row: Int) {
         val enzyme = visibleEnzymes.getOrNull(row) ?: return
         val site = (cutSitesCache[enzyme] ?: Digest.cutSites(doc.seq, enzyme, MethylationProfile.from(doc.seq.molecule))).firstOrNull() ?: return
-        onReveal(site.recognitionStart, site.recognitionStart + enzyme.siteLength)
+        if (interaction != null) interaction?.show(SequenceObject.Site(site)) else onReveal(site.recognitionStart, site.recognitionStart + enzyme.siteLength)
     }
 
     private fun revealCutSite(site: CutSite?) {
         site ?: return
         val wraps = doc.seq.isCircular && site.recognitionEnd > doc.seq.length
-        if (wraps) onReveal(0, doc.seq.length) else onReveal(site.recognitionStart, site.recognitionEnd)
+        if (interaction != null) interaction?.show(SequenceObject.Site(site)) else if (wraps) onReveal(0, doc.seq.length) else onReveal(site.recognitionStart, site.recognitionEnd)
     }
 
     private fun revealSelectedFragment() {

@@ -27,9 +27,6 @@ object ThemeManager {
     /** Default theme id, used until the user selects another. */
     const val DEFAULT_THEME = "FlatDarculaLaf"
 
-    /** Previous app default, migrated so a fresh install does not stay on Dracula. */
-    const val LEGACY_DEFAULT_THEME = "FlatDraculaIJTheme"
-
     /** A selectable theme and the factory for its look and feel. */
     data class Theme(
         val id: String,
@@ -80,7 +77,8 @@ object ThemeManager {
         val ijThemes = FlatAllIJThemes.INFOS.mapNotNull { info ->
             runCatching {
                 val cls = Class.forName(info.className)
-                val laf = cls.getConstructor().newInstance() as? LookAndFeel ?: return@runCatching null
+                if (!LookAndFeel::class.java.isAssignableFrom(cls)) return@runCatching null
+                val constructor = cls.getConstructor()
                 val simpleName = cls.simpleName
                 val id = if (seen.add(simpleName)) simpleName
                 else {
@@ -94,7 +92,9 @@ object ThemeManager {
                     id = id,
                     displayName = info.name,
                     dark = info.isDark,
-                    create = { laf },
+                    // IntelliJ theme defaults are consumed during installation.
+                    // Reusing the instance on a font change drops its overrides.
+                    create = { constructor.newInstance() as LookAndFeel },
                 )
             }.getOrNull()
         }
@@ -153,10 +153,6 @@ object ThemeManager {
     /** The id of the last successfully applied theme. */
     fun current(): String = applied ?: DEFAULT_THEME
 
-    /** Maps the retired Dracula default to Darcula without changing any other user choice. */
-    fun migrateLegacyDefault(id: String): String =
-        if (id == LEGACY_DEFAULT_THEME) DEFAULT_THEME else id
-
     /** The theme with [id], or null when unknown. */
     fun theme(id: String): Theme? = themes.firstOrNull { it.id == id }
 
@@ -171,7 +167,7 @@ object ThemeManager {
      * Returns false (leaving the current theme in place) if [id] is unknown
      * or the look-and-feel cannot be installed.
      */
-    fun apply(id: String): Boolean {
+    fun apply(id: String, fontFamily: String? = null, fontSize: Int = 0): Boolean {
         val target = theme(id) ?: return false
         val installed = runCatching { UIManager.setLookAndFeel(target.create()) }
         if (installed.isFailure) {
@@ -179,6 +175,23 @@ object ThemeManager {
             return false
         }
         applied = id
+        UIManager.put("defaultFont", null)
+        val themeFont = UIManager.getFont("defaultFont") ?: UIManager.getFont("Label.font")
+        val installedFamilies = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().availableFontFamilyNames
+        val family = installedFamilies.firstOrNull { it.equals(fontFamily, ignoreCase = true) }
+        if (themeFont != null && (family != null || fontSize != 0)) {
+            UIManager.put("defaultFont", javax.swing.plaf.FontUIResource(
+                family ?: themeFont.family, themeFont.style,
+                if (fontSize == 0) themeFont.size else fontSize.coerceIn(10, 32),
+            ))
+        }
+// The sequence grid paints one batched drawChars per run, so it must
+        // stay monospaced for uniform columns at any size. The chosen interface
+        // family applies to the look-and-feel above; only its size is echoed here.
+        UIManager.put("InstaGene.sequenceFont", java.awt.Font(
+            java.awt.Font.MONOSPACED, java.awt.Font.PLAIN,
+            if (fontSize == 0) 14 else fontSize.coerceIn(10, 32),
+        ))
         runCatching { FlatLaf.updateUI() }
             .onFailure { System.err.println("instagene: theme '${target.displayName}' installed but UI refresh failed: ${it.message}") }
         java.awt.Window.getWindows().forEach(::refreshThemeTree)
