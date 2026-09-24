@@ -162,14 +162,17 @@ class PlasmidMapPanelTest {
             content.doc.loadSequence(circular)
             val canvas = paintableMap(content)
 
-            press(canvas, point(content, 0))
-            dragged(canvas, point(content, 50))
-            dragged(canvas, point(content, 100))
-            release(canvas, point(content, 100))
+            // Position 0 sits exactly on the circular seam (0 == 400 bp): the
+            // top-of-ring point round-trips to either 0 or the last base,
+            // depending on sub-pixel screen rounding, so start just past it.
+            press(canvas, point(content, 10))
+            dragged(canvas, point(content, 60))
+            dragged(canvas, point(content, 110))
+            release(canvas, point(content, 110))
 
             assertTrue(content.doc.hasSelection, "expected a range selection after the drag")
-            assertEquals(0, content.doc.selectionStart)
-            assertEquals(100, content.doc.selectionEnd)
+            assertEquals(10, content.doc.selectionStart)
+            assertEquals(110, content.doc.selectionEnd)
         }
     }
 
