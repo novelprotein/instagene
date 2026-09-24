@@ -22,11 +22,8 @@ import java.io.File
 import javax.imageio.ImageIO
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -40,7 +37,7 @@ import kotlin.test.assertTrue
  */
 class PlasmidMapPanelTest {
 
-    /** 400 bp circular sequence, so one full turn is exactly 1 degree per base. */
+    /** 400 bp circular sequence used for exact quarter-turn selections. */
     private val circularLength = 400
 
     private val circular = Seq(bases = "ACGT".repeat(100), topology = Topology.CIRCULAR)
@@ -60,17 +57,9 @@ class PlasmidMapPanelTest {
         return canvas
     }
 
-    /**
-     * Returns the screen point for [position] on the 400 bp circular map, using
-     * the same centre and integer division as `paintComponent`. A 150 px radius
-     * places the point inside the ring.
-     */
-    private fun point(canvas: JPanel, position: Int): Pair<Int, Int> {
-        val cx = canvas.width / 2
-        val cy = canvas.height / 2
-        val angle = PI / 2 - position.toDouble() / circularLength * 2 * PI
-        return (cx + (cos(angle) * 150).roundToInt()) to (cy - (sin(angle) * 150).roundToInt())
-    }
+    /** Uses painted geometry so input remains on the backbone at every scale. */
+    private fun point(content: InstaGeneContent, position: Int): Pair<Int, Int> =
+        content.plasmidMapPanel.backbonePointForTest(position)
 
     private fun press(canvas: JPanel, p: Pair<Int, Int>) {
         canvas.dispatchEvent(
@@ -173,10 +162,10 @@ class PlasmidMapPanelTest {
             content.doc.loadSequence(circular)
             val canvas = paintableMap(content)
 
-            press(canvas, point(canvas, 0))
-            dragged(canvas, point(canvas, 50))
-            dragged(canvas, point(canvas, 100))
-            release(canvas, point(canvas, 100))
+            press(canvas, point(content, 0))
+            dragged(canvas, point(content, 50))
+            dragged(canvas, point(content, 100))
+            release(canvas, point(content, 100))
 
             assertTrue(content.doc.hasSelection, "expected a range selection after the drag")
             assertEquals(0, content.doc.selectionStart)
@@ -191,9 +180,9 @@ class PlasmidMapPanelTest {
             content.doc.loadSequence(circular)
             val canvas = paintableMap(content)
 
-            press(canvas, point(canvas, 300))
-            dragged(canvas, point(canvas, 250))
-            release(canvas, point(canvas, 250))
+            press(canvas, point(content, 300))
+            dragged(canvas, point(content, 250))
+            release(canvas, point(content, 250))
 
             assertEquals(250, content.doc.selectionStart)
             assertEquals(300, content.doc.selectionEnd)
@@ -230,8 +219,8 @@ class PlasmidMapPanelTest {
             content.featuresPanel.addFeatureManually("ori", "rep_origin", 51, 100)
             val canvas = paintableMap(content)
 
-            press(canvas, point(canvas, 75))
-            release(canvas, point(canvas, 75))
+            press(canvas, point(content, 75))
+            release(canvas, point(content, 75))
 
             assertEquals(50, content.doc.selectionStart)
             assertEquals(100, content.doc.selectionEnd)
@@ -419,8 +408,8 @@ class PlasmidMapPanelTest {
             content.doc.loadSequence(circular)
             val canvas = paintableMap(content)
 
-            press(canvas, point(canvas, 200))
-            release(canvas, point(canvas, 200))
+            press(canvas, point(content, 200))
+            release(canvas, point(content, 200))
 
             assertFalse(content.doc.selectionEnd > content.doc.selectionStart + 1)
             assertEquals(200, content.doc.selectionStart)

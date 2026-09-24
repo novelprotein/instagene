@@ -2,6 +2,7 @@ package org.instagene.core.project
 
 import java.io.File
 import java.nio.file.Files
+import org.junit.jupiter.api.Assumptions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -106,7 +107,14 @@ class ProjectModelTest {
         val outside = File.createTempFile("instagene-outside", ".fasta")
         try {
             val link = File(root, "outside-link")
-            Files.createSymbolicLink(link.toPath(), outside.toPath())
+            try {
+                Files.createSymbolicLink(link.toPath(), outside.toPath())
+            } catch (e: Exception) {
+                // Creating symlinks requires Developer Mode or elevated privileges
+                // on Windows (and is unsupported on some filesystems), so the
+                // escape scenario cannot be staged here.
+                Assumptions.abort("symlink creation not permitted on this platform: ${e.message}")
+            }
             assertNull(SeqProject.open(root).resolvePath("outside-link"))
         } finally {
             outside.delete()

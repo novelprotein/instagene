@@ -462,8 +462,19 @@ class CliTest {
         val dir = createTempDirectory("cli-gui").toFile()
         try {
             val argsFile = File(dir, "args.txt")
-            val fakeGui = File(dir, "fake-gui.sh")
-            fakeGui.writeText($$"#!/bin/sh\necho \"$@\" > \"$$argsFile\"\nexit 42\n")
+            val fakeGui = if (File.separatorChar == '\\') {
+                File(dir, "fake-gui.cmd").apply {
+                    writeText(
+                        "@echo off\r\n" +
+                            "echo %* > \"${argsFile.absolutePath}\"\r\n" +
+                            "exit /b 42\r\n",
+                    )
+                }
+            } else {
+                File(dir, "fake-gui.sh").apply {
+                    writeText($$"#!/bin/sh\necho \"$@\" > \"$$argsFile\"\nexit 42\n")
+                }
+            }
             fakeGui.setExecutable(true)
             val (code, _) = capture { Cli.run(listOf("gui", "--launcher", fakeGui.absolutePath, "plasmid.gb", "gfp.fa")) }
             assertEquals(42, code)

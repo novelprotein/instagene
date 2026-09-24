@@ -24,6 +24,8 @@ import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.tool.SequenceView
+import org.instagene.app.gui.tool.SequenceInteraction
+import org.instagene.app.gui.tool.SequenceObject
 import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
 import java.awt.Container
@@ -197,11 +199,12 @@ class GuiSmokeTest {
     }
 
     @Test
-    fun sequenceFeatureBarClickSelectsBaseRange() {
+    fun sequenceFeatureBarClickInspectsObjectAndExplicitActionSelectsBases() {
         onEdt {
             val feature = Feature("promoter", "promoter", 4, 20)
             val doc = SeqDocument(Seq(bases = "ACGT".repeat(20), features = listOf(feature)))
-            val view = SequenceView(doc)
+            val interaction = SequenceInteraction(doc)
+            val view = SequenceView(doc).apply { this.interaction = interaction }
             paintComponent(view, 900, 400)
             val hit = view.featureBarHitCenterForTest(feature.name)
 
@@ -210,9 +213,14 @@ class GuiSmokeTest {
                 MouseEvent(view, MouseEvent.MOUSE_PRESSED, 0, InputEvent.BUTTON1_DOWN_MASK, hit.first, hit.second, 1, false, MouseEvent.BUTTON1)
             )
 
+            assertFalse(doc.hasSelection, "bar click should inspect the object without selecting bases")
+            assertEquals(SequenceObject.Annotation(feature), interaction.selected)
+            assertEquals(feature, view.selectedFeature)
+            interaction.selectBases()
             assertEquals(feature.start, doc.selectionStart)
             assertEquals(feature.end, doc.selectionEnd)
-            assertNull(view.selectedFeature, "bar click should not object-select the feature")
+            view.dispose()
+            interaction.dispose()
         }
     }
 
@@ -733,9 +741,15 @@ class GuiSmokeTest {
             assertTrue(menuItem(featuresMenu, "Add Feature from Selection...").isEnabled)
 
             doc.mutate("add feature") { it.withFeature(Feature("ori", start = 1, end = 4)) }
+            assertFalse(menuItem(featuresMenu, "Edit Element...").isEnabled)
+            features.selectFeatureRow(0)
             assertTrue(menuItem(featuresMenu, "Edit Element...").isEnabled)
             assertTrue(menuItem(featuresMenu, "Save Feature to Library").isEnabled)
             assertTrue(menuItem(featuresMenu, "Delete").isEnabled)
+            features.selectFeatureRow(-1)
+            assertFalse(menuItem(featuresMenu, "Edit Element...").isEnabled)
+            assertFalse(menuItem(featuresMenu, "Save Feature to Library").isEnabled)
+            assertFalse(menuItem(featuresMenu, "Delete").isEnabled)
 
             assertTrue(menuItem(primersMenu, "Design Primers...").isEnabled)
             assertTrue(menuItem(primersMenu, "Advanced Candidates...").isEnabled)
@@ -826,16 +840,6 @@ class GuiSmokeTest {
             assertTrue(ecoRow >= 0)
             assertEquals(Boolean::class.javaObjectType, table.getColumnClass(0))
             assertNotNull(table.getDefaultEditor(table.getColumnClass(0)))
-            val renderer = table.getCellRenderer(ecoRow, 0).getTableCellRendererComponent(
-                table,
-                table.getValueAt(ecoRow, 0),
-                false,
-                false,
-                ecoRow,
-                0,
-            )
-            assertTrue(renderer is JCheckBox)
-
             assertTrue(table.editCellAt(ecoRow, 0))
             val enableEditor = table.editorComponent as? JCheckBox ?: fail("Use cell must use a checkbox editor")
             assertFalse(enableEditor.isSelected)
@@ -930,7 +934,8 @@ class GuiSmokeTest {
 
             val sequenceIndex = titles.indexOf("Sequence")
             val sequenceTab = content.toolTabs.getComponentAt(sequenceIndex)
-            val view = (sequenceTab as JScrollPane).viewport.view
+            val view = descendants(sequenceTab, JScrollPane::class.java)
+                .single { it.viewport.view === content.sequenceView }.viewport.view
             assertSame(content.sequenceView, view)
         }
     }
@@ -1052,6 +1057,7 @@ class GuiSmokeTest {
         onEdt {
             val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
             val panel = PrimersPanel(doc)
+            assertTrue(panel.design())
             assertNotNull(panel.lastPrimers())
             assertTrue(panel.areResultActionsEnabled())
 
@@ -1069,10 +1075,13 @@ class GuiSmokeTest {
     }
 
     @Test
-    fun primersPanelAutoDesignsForWholeSequenceOnBind() {
+    fun primersPanelWaitsForExplicitDesignOnBind() {
         onEdt {
             val doc = SeqDocument(Seq(bases = "ACGTACGTACGTACGTACGTACGT"))
             val panel = PrimersPanel(doc)
+            assertNull(panel.lastPrimers())
+            assertFalse(panel.areResultActionsEnabled())
+            assertTrue(panel.design())
             val primers = panel.lastPrimers()
             assertNotNull(primers)
             assertEquals("1" to "24", panel.rangeFields())
@@ -1082,13 +1091,19 @@ class GuiSmokeTest {
     }
 
     @Test
-    fun primersPanelAutoDesignsForSelection() {
+    fun primersPanelPopulatesSelectionWithoutAutoDesign() {
         onEdt {
             val doc = SeqDocument(Seq(bases = "ACGT".repeat(12)))
             doc.select(4, 40)
             val panel = PrimersPanel(doc)
-            assertNotNull(panel.lastPrimers())
+            assertNull(panel.lastPrimers())
+            assertFalse(panel.areResultActionsEnabled())
             assertEquals("5" to "40", panel.rangeFields())
+            doc.select(8, 32)
+            assertNull(panel.lastPrimers())
+            assertEquals("5" to "40", panel.rangeFields())
+            assertTrue(panel.design())
+            assertNotNull(panel.lastPrimers())
         }
     }
 
@@ -1099,7 +1114,7 @@ class GuiSmokeTest {
             val panel = PrimersPanel(doc)
             assertNull(panel.lastPrimers())
             assertEquals("1" to "24000", panel.rangeFields())
-            assertTrue(panel.summaryText().contains("too large", ignoreCase = true))
+            assertTrue(panel.summaryText().contains("then Design"))
             assertFalse(panel.areResultActionsEnabled())
 
             panel.designAmplicon(0, 24)
@@ -1281,13 +1296,15 @@ class GuiSmokeTest {
 
             // Re-designing and adding again must not duplicate the annotations.
             panel.designAmplicon(0, 24)
-            assertTrue(panel.addPrimersToFeatures())
+            assertFalse(panel.addPrimersToFeatures())
             primers = doc.seq.features.filter { it.type == "primer_bind" }
             assertEquals(2, primers.size)
+            assertEquals(2, doc.seq.primers.size)
 
             // The annotation is undoable.
             doc.undo()
             assertEquals(0, doc.seq.features.size)
+            assertEquals(0, doc.seq.primers.size)
         }
     }
 

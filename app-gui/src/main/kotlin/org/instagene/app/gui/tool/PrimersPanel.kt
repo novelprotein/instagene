@@ -107,11 +107,6 @@ class PrimersPanel(
     /** Set after the user edits From or To, preventing selection changes from overwriting the range. */
     private var rangeEdited = false
 
-    companion object {
-        /** Amplicons longer than this are not auto-designed; the user picks a region instead. */
-        private const val AUTO_DESIGN_MAX_AMPLICON = 20_000
-    }
-
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
 
@@ -489,10 +484,8 @@ class PrimersPanel(
     }
 
     /**
-     * Fills From/To from the current selection, or the whole sequence when there
-     * is none, then auto-designs primers so the tab is immediately useful.
-     * Manually entered ranges are preserved; amplicons larger
-     * than [AUTO_DESIGN_MAX_AMPLICON] are left for the user to scope manually.
+     * Initializes empty From/To fields from the selection or whole sequence.
+     * Preserves existing ranges and waits for explicit primer design.
      */
     private fun populateTarget() {
         if (fromField.text.isEmpty() && toField.text.isEmpty() && doc.seq.length > 0) {
@@ -720,11 +713,6 @@ class PrimersPanel(
         design()
     }
 
-    /**
-     * Asks the user whether to annotate the designed primers on the sequence.
-     * Shown after a manual "Design primers" click, when a pair was just found;
-     * auto-designed pairs (which fire on every selection change) never prompt.
-     */
     /**
      * Annotates the last designed primer pair on the sequence as `primer_bind`
      * features (the forward primer at the amplicon start, the reverse at its

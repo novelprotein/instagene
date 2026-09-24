@@ -69,6 +69,7 @@ class ToolsMenu(
             syncEnabled()
         }
         libraryPanel?.onStateChanged = { syncEnabled() }
+        featuresPanel?.onStateChanged = { syncEnabled() }
         syncEnabled()
     }
 

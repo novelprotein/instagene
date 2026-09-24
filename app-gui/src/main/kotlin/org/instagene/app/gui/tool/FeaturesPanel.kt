@@ -66,6 +66,7 @@ class FeaturesPanel(
     private var docListener: SeqDocument.Listener? = null
 
     var interaction: SequenceInteraction? = null
+    var onStateChanged: () -> Unit = {}
     var onDesignPrimers: (Int, Int) -> Unit = { _, _ -> }
     private var retainedFeature: Feature? = null
     private var retainedRow = 0
@@ -270,6 +271,7 @@ ${it.notes}"""
         } else {
             "${features.size} feature(s), ${features.sumOf { it.length }} bp annotated"
         }
+        onStateChanged()
     }
 
     private fun featurePopup(row: Int?): JPopupMenu = JPopupMenu().apply {

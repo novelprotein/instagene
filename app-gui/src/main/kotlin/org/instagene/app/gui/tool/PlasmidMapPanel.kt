@@ -429,6 +429,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     /** Exposed for headless GUI tests and callers that need the painted canvas. */
     fun canvasForTest(): JPanel = mapCanvas
 
+    /** Screen point on the painted circular backbone for synthetic mouse input. */
+    fun backbonePointForTest(position: Int): Pair<Int, Int> = mapCanvas.backbonePointForTest(position)
+
     /** Current viewport position in zoomed canvas pixels. */
     fun viewportPositionForTest(): java.awt.Point = java.awt.Point(mapScrollPane.viewport.viewPosition)
 
@@ -2400,6 +2403,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             (bounds.width * renderScale).roundToInt().coerceAtLeast(1),
             (bounds.height * renderScale).roundToInt().coerceAtLeast(1),
         )
+
+        fun backbonePointForTest(position: Int): Pair<Int, Int> {
+            require(doc.seq.isCircular && doc.seq.length > 0 && backboneRadius > 0)
+            val angle = PI / 2 - position.toDouble() / doc.seq.length * 2 * PI
+            return logicalToScreen(pointX(angle, backboneRadius), pointY(angle, backboneRadius))
+        }
 
         private fun logicalToScreen(x: Int, y: Int): Pair<Int, Int> =
             (canvasOffsetX(width, renderScale) + x * renderScale).roundToInt() to

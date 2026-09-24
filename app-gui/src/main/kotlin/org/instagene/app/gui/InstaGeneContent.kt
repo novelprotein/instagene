@@ -39,7 +39,9 @@ import org.instagene.app.gui.tool.PlasmidMapPanel
 import org.instagene.app.gui.tool.PrimersPanel
 import org.instagene.app.gui.tool.SequenceView
 import org.instagene.app.gui.theme.ThemeRefreshable
+import org.instagene.app.gui.tool.SequenceGraphics
 import org.instagene.app.gui.tool.SequenceInteraction
+import org.instagene.app.gui.tool.WorkflowLibraryPanel
 import org.instagene.core.ElnAdapters
 import org.instagene.core.ElnArtifactRole
 import org.instagene.core.ElnAttachment
@@ -360,7 +362,7 @@ class InstaGeneContent(
         sequenceInteraction = SequenceInteraction(initial)
         sequenceView = SequenceView(initial).apply {
             interaction = sequenceInteraction
-            graphicsMode = if (prefs.value.detailedSequenceGraphics) org.instagene.app.gui.tool.SequenceGraphics.DETAILED else org.instagene.app.gui.tool.SequenceGraphics.SIMPLIFIED
+            graphicsMode = if (prefs.value.detailedSequenceGraphics) SequenceGraphics.DETAILED else SequenceGraphics.SIMPLIFIED
         }
         textEditorView = TextEditorView(TextDocument())
         digestPanel = DigestPanel(
@@ -1592,7 +1594,7 @@ class InstaGeneContent(
     /** Commands are rebuilt on opening so recents and project-specific actions stay current. */
     fun commandPaletteCommands(): List<CommandPaletteCommand> = buildList {
         add(CommandPaletteCommand("workflow.library", "Workflow Library", "Save written protocols and general procedures", listOf("protocol procedure instructions library")) {
-            org.instagene.app.gui.tool.WorkflowLibraryPanel.show(owner)
+            WorkflowLibraryPanel.show(owner)
         })
         add(CommandPaletteCommand("file.new", "New sequence", "Create an empty sequence document", listOf("file document")) { newDocument() })
         add(CommandPaletteCommand("file.new-text", "New text file", "Create a plain-text document", listOf("file document note")) { openText() })
@@ -1653,7 +1655,7 @@ class InstaGeneContent(
 
     private fun createProjectMenu(): JMenu = JMenu("Project").apply {
         mnemonic = KeyEvent.VK_P
-        add(menuItem("Workflow Library…") { org.instagene.app.gui.tool.WorkflowLibraryPanel.show(owner) })
+        add(menuItem("Workflow Library…") { WorkflowLibraryPanel.show(owner) })
         addSeparator()
         val hasProject = project != null
         add(menuItem("New Project...") { newProject() })
@@ -1719,11 +1721,11 @@ class InstaGeneContent(
             addTab("Sequence", JPanel(BorderLayout()).apply {
                 add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 4)).apply {
                     add(JLabel("Graphics"))
-                    add(javax.swing.JComboBox(org.instagene.app.gui.tool.SequenceGraphics.entries.toTypedArray()).apply {
+                    add(javax.swing.JComboBox(SequenceGraphics.entries.toTypedArray()).apply {
                         selectedItem = sequenceView.graphicsMode
                         addActionListener {
-                            sequenceView.graphicsMode = selectedItem as org.instagene.app.gui.tool.SequenceGraphics
-                            prefs.update { it.copy(detailedSequenceGraphics = sequenceView.graphicsMode == org.instagene.app.gui.tool.SequenceGraphics.DETAILED) }
+                            sequenceView.graphicsMode = selectedItem as SequenceGraphics
+                            prefs.update { it.copy(detailedSequenceGraphics = sequenceView.graphicsMode == SequenceGraphics.DETAILED) }
                         }
                     })
                     val back = JButton("Back").apply { isEnabled = false; addActionListener { sequenceInteraction.back() } }

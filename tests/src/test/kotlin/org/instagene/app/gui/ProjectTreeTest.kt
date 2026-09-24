@@ -197,14 +197,14 @@ class ProjectTreeTest {
             content.openProjectAt(root)
             val panel = content.projectTreePanel
             assertEquals("a.fasta", panel.labelFor(a), "root-level files show only their name")
-            assertEquals("sub/b.gb", panel.labelFor(b), "nested files show their project-relative path")
+            assertEquals(File("sub", "b.gb").path, panel.labelFor(b), "nested files show their project-relative path")
             assertFalse(panel.labelFor(b).startsWith("/"), "labels must never be absolute paths")
 
             // The renderer actually paints those relative labels.
             val renderer = panel.tree.cellRenderer as DefaultTreeCellRenderer
             val node = panel.nodeFor(b)!!
             val cell = renderer.getTreeCellRendererComponent(panel.tree, node, false, false, false, 0, false)
-            assertEquals("sub/b.gb", (cell as javax.swing.JLabel).text)
+            assertEquals(File("sub", "b.gb").path, (cell as javax.swing.JLabel).text)
         }
     }
 }

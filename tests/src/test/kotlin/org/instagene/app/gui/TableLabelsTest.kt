@@ -36,6 +36,7 @@ class TableLabelsTest {
         val digest = DigestPanel(doc, { _: Seq -> }, { _, _ -> }, prefs)
         val features = FeaturesPanel(doc) { _, _ -> }
         val primers = PrimersPanel(doc, prefs)
+        assertTrue(primers.design())
         val library = LibraryPanel(prefs, doc, view) { _ -> }
         val history = EditHistoryPanel(EditRecorder())
 

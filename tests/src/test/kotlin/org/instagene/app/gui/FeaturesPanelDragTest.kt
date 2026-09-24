@@ -24,7 +24,7 @@ class FeaturesPanelDragTest {
             val fifthX = view.xCoordinate(5)
 
             view.dispatchEvent(
-                MouseEvent(view, MouseEvent.MOUSE_PRESSED, 0, InputEvent.BUTTON1_DOWN_MASK, firstX, 10, 1, false)
+                MouseEvent(view, MouseEvent.MOUSE_PRESSED, 0, InputEvent.BUTTON1_DOWN_MASK, firstX, 10, 1, false, MouseEvent.BUTTON1)
             )
             for (step in 1..4) {
                 val x = firstX + (fifthX - firstX) * step / 4
@@ -33,7 +33,7 @@ class FeaturesPanelDragTest {
                 )
             }
             view.dispatchEvent(
-                MouseEvent(view, MouseEvent.MOUSE_RELEASED, 0, 0, fifthX, 10, 1, false)
+                MouseEvent(view, MouseEvent.MOUSE_RELEASED, 0, 0, fifthX, 10, 1, false, MouseEvent.BUTTON1)
             )
 
             assertTrue(doc.hasSelection, "selection expected after drag")

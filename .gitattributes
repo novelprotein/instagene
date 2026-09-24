@@ -1,0 +1,7 @@
+# InstaGene keeps hashed bundled resources byte-identical on every OS so that
+# the SHA-256 values recorded in tests/src/test/resources/fixtures/manifest.json
+# and in the engine sample SOURCE_SHA256 metadata validate on Windows, macOS and Linux.
+# Without this, `core.autocrlf` (and default autocrlf conversions) checks text blobs
+# out as CRLF on Windows, which changes their content hash.
+tests/src/test/resources/fixtures/** text eol=lf
+engine/src/main/resources/org/instagene/core/samples/** text eol=lf
