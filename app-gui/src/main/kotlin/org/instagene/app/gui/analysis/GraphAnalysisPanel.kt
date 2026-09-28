@@ -4,10 +4,14 @@ package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.theme.Palette
+import org.instagene.app.gui.theme.ThemeRefreshable
 import org.instagene.core.*
 import org.jfree.chart.ChartFactory
 import org.jfree.chart.ChartPanel
+import org.jfree.chart.block.BlockBorder
 import org.jfree.chart.axis.NumberAxis
+import org.jfree.chart.axis.CategoryLabelPositions
 import org.jfree.chart.labels.StandardPieSectionLabelGenerator
 import org.jfree.chart.plot.CategoryPlot
 import org.jfree.chart.plot.PiePlot
@@ -23,13 +27,17 @@ import java.awt.*
 import java.text.DecimalFormat
 import javax.swing.*
 
-internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel() {
+internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel(), ThemeRefreshable {
     private val chartTabs = JTabbedPane()
     private val infoArea = output()
     private val windowSize = JSpinner(SpinnerNumberModel(prefs.value.graphWindowSize, 10, 10000, 10))
     private val stepSize = JSpinner(SpinnerNumberModel(prefs.value.graphStepSize, 1, 5000, 5))
     private val orfMinAa = JSpinner(SpinnerNumberModel(prefs.value.graphOrfMinAa, 10, 500, 5))
     private val orfWindowSize = JSpinner(SpinnerNumberModel(prefs.value.graphOrfWindowSize, 50, 5000, 50))
+    private val graphTheme = JComboBox(GraphTheme.entries.toTypedArray()).apply {
+        selectedItem = GraphTheme.fromId(prefs.value.graphTheme)
+        toolTipText = "Choose the graph series color scheme"
+    }
 
     private var cachedSeqIdentity: Any? = null
     private var cachedStats: SequenceStats? = null
@@ -69,6 +77,8 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             add(orfMinAa)
             add(JLabel("ORF window:"))
             add(orfWindowSize)
+            add(JLabel("Graph theme:"))
+            add(graphTheme)
             val refresh = JButton("Refresh")
             refresh.addActionListener { cancelAllWorkers(); invalidateCache(); rebuildAll() }
             add(refresh)
@@ -84,6 +94,12 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         add(split, BorderLayout.CENTER)
 
         chartTabs.addChangeListener { buildSelectedTab() }
+        graphTheme.addActionListener {
+            if (!loadingGraphPreferences) {
+                prefs.update { it.copy(graphTheme = selectedGraphTheme().name) }
+                rebuildVisibleChart()
+            }
+        }
         listOf(windowSize, stepSize, orfMinAa, orfWindowSize).forEach { spinner ->
             spinner.addChangeListener { saveGraphPreferences() }
         }
@@ -98,11 +114,13 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
                 graphStepSize = stepSize.value as Int,
                 graphOrfMinAa = orfMinAa.value as Int,
                 graphOrfWindowSize = orfWindowSize.value as Int,
+                graphTheme = selectedGraphTheme().name,
             )
         }
     }
 
     private fun loadGraphPreferences() {
+        val previousTheme = selectedGraphTheme()
         loadingGraphPreferences = true
         try {
             val current = prefs.value
@@ -110,9 +128,31 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             if (stepSize.value != current.graphStepSize) stepSize.value = current.graphStepSize
             if (orfMinAa.value != current.graphOrfMinAa) orfMinAa.value = current.graphOrfMinAa
             if (orfWindowSize.value != current.graphOrfWindowSize) orfWindowSize.value = current.graphOrfWindowSize
+            graphTheme.selectedItem = GraphTheme.fromId(current.graphTheme)
         } finally {
             loadingGraphPreferences = false
         }
+        if (previousTheme != selectedGraphTheme()) rebuildVisibleChart()
+    }
+
+    private fun selectedGraphTheme(): GraphTheme = graphTheme.selectedItem as? GraphTheme ?: GraphTheme.APPLICATION
+
+    private fun rebuildVisibleChart() {
+        val idx = chartTabs.selectedIndex
+        if (idx < 0 || cachedStats == null) return
+        tabWorkers.remove(idx)?.cancel(true)
+        builtTabs.remove(idx)
+        chartTabs.setComponentAt(idx, loadingPanel("Updating graph theme…"))
+        buildSelectedTab()
+    }
+
+    override fun refreshTheme() {
+        tabWorkers.values.forEach { it.cancel(true) }
+        tabWorkers.clear()
+        builtTabs.clear()
+        for (idx in 0 until chartTabs.tabCount) chartTabs.setComponentAt(idx, loadingPanel())
+        rebuildVisibleChart()
+        repaint()
     }
 
     override fun refreshDocument() {
@@ -243,21 +283,19 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             if (count > 0) ds.setValue("$base", count)
         }
         val chart = ChartFactory.createPieChart("Nucleotide Composition", ds, true, true, false)
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
         @Suppress("UNCHECKED_CAST")
         val plot = chart.plot as PiePlot<String>
         plot.labelFont = Font("SansSerif", Font.PLAIN, 10)
-        val colorMap = mapOf(
-            'A' to Color(0x1B5E20), 'T' to Color(0xB71C1C), 'U' to Color(0xB71C1C),
-            'G' to Color(0x0D47A1), 'C' to Color(0xF57F17), 'N' to Color(0x9E9E9E),
-        )
+        val colorMap = listOf('A', 'T', 'U', 'G', 'C', 'N')
+            .mapIndexed { index, base -> base to selectedGraphTheme().series(index) }.toMap()
         for (base in stats.nucleotideComposition.keys) {
             plot.setSectionPaint("$base", colorMap[base] ?: Color.GRAY)
         }
         plot.labelGenerator = StandardPieSectionLabelGenerator(
             "{0}: {1} ({2})", DecimalFormat("#,##0"), DecimalFormat("0.0%")
         )
-        return ChartPanel(chart)
+        return themedChart(chart)
     }
 
     private fun buildProteinPieChart(seq: Seq): ChartPanel {
@@ -266,14 +304,14 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             .filter { it.value > 0.0 }
             .forEach { ds.setValue(it.label, it.value) }
         val chart = ChartFactory.createPieChart("Amino Acid Composition", ds, true, true, false)
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
         @Suppress("UNCHECKED_CAST")
         val plot = chart.plot as PiePlot<String>
         plot.labelFont = Font("SansSerif", Font.PLAIN, 10)
         plot.labelGenerator = StandardPieSectionLabelGenerator(
             "{0}: {1}%", DecimalFormat("0.0"), DecimalFormat("0.0%")
         )
-        return ChartPanel(chart)
+        return themedChart(chart)
     }
 
     private fun buildCompositionChart(): ChartPanel {
@@ -284,15 +322,15 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             "Base Composition (%)", "Base", "Percentage",
             dataset, PlotOrientation.VERTICAL, true, false, false
         )
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
         val plot = chart.plot as CategoryPlot
-        plot.backgroundPaint = Color.WHITE
+        plot.backgroundPaint = Palette.BACKGROUND
         val renderer = BarRenderer()
         renderer.setDrawBarOutline(true)
-        renderer.setSeriesPaint(0, Color(0x1565C0))
+        renderer.setSeriesPaint(0, selectedGraphTheme().series(0))
         renderer.maximumBarWidth = 0.08
         plot.renderer = renderer
-        return ChartPanel(chart)
+        return themedChart(chart)
     }
 
     private fun buildGcContentChart(): ChartPanel {
@@ -300,7 +338,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         val st = (stepSize.value as Number).toInt()
         val data = SequenceStatistics.gcContentProfile(doc.seq, ws, st)
         if (data.isEmpty()) return emptyChart("GC Content \u2014 no data (sequence too short)")
-        return buildXYChart("GC Content (window=$ws, step=$st)", "Position", "GC%", data, Color(0x0D47A1)) { plot ->
+        return buildXYChart("GC Content (window=$ws, step=$st)", "Position", "GC%", data, selectedGraphTheme().series(0)) { plot ->
             (plot.rangeAxis as NumberAxis).setRange(0.0, 100.0)
         }
     }
@@ -310,7 +348,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         val st = (stepSize.value as Number).toInt()
         val data = SequenceStatistics.gcSkewProfile(doc.seq, ws, st)
         if (data.isEmpty()) return emptyChart("GC Skew \u2014 no data (sequence too short)")
-        return buildXYChart("GC Skew (window=$ws, step=$st)", "Position", "Skew", data, Color(0x4A148C))
+        return buildXYChart("GC Skew (window=$ws, step=$st)", "Position", "Skew", data, selectedGraphTheme().series(1))
     }
 
     private fun buildCumulativeGcSkewChart(): ChartPanel {
@@ -318,7 +356,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         val st = (stepSize.value as Number).toInt()
         val data = SequenceStatistics.cumulativeGcSkew(doc.seq, ws, st)
         if (data.isEmpty()) return emptyChart("Cumulative GC Skew \u2014 no data")
-        return buildXYChart("Cumulative GC Skew (window=$ws, step=$st)", "Position", "Skew", data, Color(0x6A1B9A))
+        return buildXYChart("Cumulative GC Skew (window=$ws, step=$st)", "Position", "Skew", data, selectedGraphTheme().series(2))
     }
 
     private fun buildMeltingTempChart(): ChartPanel {
@@ -326,7 +364,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         val st = (stepSize.value as Number).toInt()
         val data = SequenceStatistics.meltingTempProfile(doc.seq, ws, st)
         if (data.isEmpty()) return emptyChart("Melting Temp \u2014 no data (sequence too short)")
-        return buildXYChart("Melting Temperature (window=$ws, step=$st)", "Position", "Tm (\u00B0C)", data, Color(0xE65100))
+        return buildXYChart("Melting Temperature (window=$ws, step=$st)", "Position", "Tm (\u00B0C)", data, selectedGraphTheme().series(3))
     }
 
     private fun buildCodonUsageChart(): ChartPanel {
@@ -334,7 +372,10 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         if (usage.isEmpty()) return emptyChart("Codon Usage \u2014 no codons found")
         val dataset = DefaultCategoryDataset()
         for ((codon, _, frequency) in usage) dataset.addValue(frequency, "Frequency (\u2030)", codon)
-        return buildBarChart("Top 30 Codon Usage", "Codon", "Freq (\u2030)", dataset, Color(0x2E7D32))
+        return buildBarChart("Top 30 Codon Usage", "Codon", "Freq (\u2030)", dataset, selectedGraphTheme().series(4)) { plot ->
+            plot.domainAxis.categoryLabelPositions = CategoryLabelPositions.UP_90
+            plot.domainAxis.maximumCategoryLabelWidthRatio = 1.0f
+        }
     }
 
     private fun buildDinucleotideChart(): ChartPanel {
@@ -342,7 +383,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         if (data.isEmpty()) return emptyChart("Dinucleotides \u2014 no data")
         val dataset = DefaultCategoryDataset()
         for ((label, value) in data) dataset.addValue(value, "Frequency (%)", label)
-        return buildBarChart("Dinucleotide Frequencies", "Dinucleotide", "%", dataset, Color(0x00695C))
+        return buildBarChart("Dinucleotide Frequencies", "Dinucleotide", "%", dataset, selectedGraphTheme().series(5))
     }
 
     private fun buildOrfDensityChart(): ChartPanel {
@@ -350,7 +391,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         val st = (stepSize.value as Number).toInt()
         val data = SequenceStatistics.orfDensity(doc.seq, ws, st)
         if (data.isEmpty()) return emptyChart("ORF Density \u2014 no data (sequence too short)")
-        return buildXYChart("ORF Density (window=$ws, step=$st)", "Position", "Coverage %", data, Color(0x880E4F))
+        return buildXYChart("ORF Density (window=$ws, step=$st)", "Position", "Coverage %", data, selectedGraphTheme().series(6))
     }
 
     private fun buildRepeatsChart(): ChartPanel {
@@ -358,7 +399,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         if (repeats.isEmpty()) return emptyChart("Tandem Repeats \u2014 none found (min 2 repeats)")
         val dataset = DefaultCategoryDataset()
         for ((start, length, unit) in repeats.take(40)) dataset.addValue(length.toDouble(), "Length", "$unit @ $start")
-        return buildBarChart("Tandem Repeats (${repeats.size} found)", "Repeat", "Length (bp)", dataset, Color(0xBF360C))
+        return buildBarChart("Tandem Repeats (${repeats.size} found)", "Repeat", "Length (bp)", dataset, selectedGraphTheme().series(7))
     }
 
     private fun buildCpgDensityChart(): ChartPanel {
@@ -366,7 +407,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         val st = (stepSize.value as Number).toInt()
         val data = SequenceStatistics.cpgDensityProfile(doc.seq, ws, st)
         if (data.isEmpty()) return emptyChart("CpG Density \u2014 no data (sequence too short)")
-        return buildXYChart("CpG Observed/Expected Ratio (window=$ws, step=$st)", "Position", "O/E Ratio", data, Color(0x006064)) { plot ->
+        return buildXYChart("CpG Observed/Expected Ratio (window=$ws, step=$st)", "Position", "O/E Ratio", data, selectedGraphTheme().series(7)) { plot ->
             (plot.rangeAxis as NumberAxis).setRange(0.0, 2.5)
         }
     }
@@ -385,13 +426,13 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             "CpG Islands (${islands.size} found)", "Position", "O/E Ratio",
             ds, PlotOrientation.VERTICAL, false, false, false
         )
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
         val plot = chart.plot as XYPlot
-        plot.backgroundPaint = Color.WHITE
-        plot.domainGridlinePaint = Color(0xE0E0E0)
-        plot.rangeGridlinePaint = Color(0xE0E0E0)
+        plot.backgroundPaint = Palette.BACKGROUND
+        plot.domainGridlinePaint = Palette.GRID
+        plot.rangeGridlinePaint = Palette.GRID
         val renderer = XYLineAndShapeRenderer(true, false)
-        renderer.setSeriesPaint(0, Color(0x006064))
+        renderer.setSeriesPaint(0, selectedGraphTheme().series(7))
         renderer.setSeriesStroke(0, BasicStroke(1.5f))
         plot.renderer = renderer
         (plot.rangeAxis as NumberAxis).setRange(0.0, 2.5)
@@ -403,7 +444,7 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             )
             plot.addAnnotation(islandAnnotation)
         }
-        return ChartPanel(chart)
+        return themedChart(chart)
     }
 
     private fun buildSummaryPanel(): ChartPanel {
@@ -413,9 +454,9 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
             "Summary", "", "",
             ds, PlotOrientation.VERTICAL, false, false, false
         )
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
         chart.title.isVisible = false
-        return ChartPanel(chart)
+        return themedChart(chart)
     }
 
     // --------------------------------------------------------- shared chart helpers
@@ -425,37 +466,85 @@ internal class GraphAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel
         for ((x, y) in data) series.add(x, y)
         val ds = XYSeriesCollection(series)
         val chart = ChartFactory.createXYLineChart(title, xLabel, yLabel, ds, PlotOrientation.VERTICAL, false, false, false)
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
         val plot = chart.plot as XYPlot
-        plot.backgroundPaint = Color.WHITE
-        plot.domainGridlinePaint = Color(0xE0E0E0)
-        plot.rangeGridlinePaint = Color(0xE0E0E0)
+        plot.backgroundPaint = Palette.BACKGROUND
+        plot.domainGridlinePaint = Palette.GRID
+        plot.rangeGridlinePaint = Palette.GRID
         val renderer = XYLineAndShapeRenderer(true, false)
         renderer.setSeriesPaint(0, color)
         renderer.setSeriesStroke(0, BasicStroke(1.5f))
         plot.renderer = renderer
         configure?.invoke(plot)
-        return ChartPanel(chart)
+        return themedChart(chart)
     }
 
-    private fun buildBarChart(title: String, xLabel: String, yLabel: String, dataset: DefaultCategoryDataset, color: Color): ChartPanel {
+    private fun buildBarChart(
+        title: String,
+        xLabel: String,
+        yLabel: String,
+        dataset: DefaultCategoryDataset,
+        color: Color,
+        configure: ((CategoryPlot) -> Unit)? = null,
+    ): ChartPanel {
         val chart = ChartFactory.createBarChart(title, xLabel, yLabel, dataset, PlotOrientation.VERTICAL, false, false, false)
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
         val plot = chart.plot as CategoryPlot
-        plot.backgroundPaint = Color.WHITE
+        plot.backgroundPaint = Palette.BACKGROUND
         val renderer = BarRenderer()
         renderer.setDrawBarOutline(true)
         renderer.setSeriesPaint(0, color)
         renderer.maximumBarWidth = 0.06
         plot.renderer = renderer
-        return ChartPanel(chart)
+        configure?.invoke(plot)
+        return themedChart(chart)
     }
 
     private fun emptyChart(msg: String): ChartPanel {
         val ds = DefaultCategoryDataset()
         ds.addValue(0.0, "", "")
         val chart = ChartFactory.createBarChart(msg, "", "", ds, PlotOrientation.VERTICAL, false, false, false)
-        chart.backgroundPaint = Color.WHITE
+        chart.backgroundPaint = Palette.BACKGROUND
+        return themedChart(chart)
+    }
+
+    private fun themedChart(chart: org.jfree.chart.JFreeChart): ChartPanel {
+        val appearance = selectedGraphTheme()
+        chart.backgroundPaint = appearance.background()
+        chart.title?.paint = appearance.foreground()
+        chart.legend?.apply {
+            itemPaint = appearance.foreground()
+            backgroundPaint = appearance.background()
+            frame = BlockBorder(appearance.grid())
+        }
+        val plot = chart.plot
+        plot.backgroundPaint = appearance.background()
+        when (plot) {
+            is XYPlot -> {
+                (plot.renderer as? org.jfree.chart.renderer.AbstractRenderer)
+                    ?.setDefaultLegendTextPaint(appearance.foreground())
+                plot.domainGridlinePaint = appearance.grid()
+                plot.rangeGridlinePaint = appearance.grid()
+                listOfNotNull(plot.domainAxis, plot.rangeAxis).forEach { axis ->
+                    axis.labelPaint = appearance.foreground()
+                    axis.tickLabelPaint = appearance.foreground()
+                }
+            }
+            is CategoryPlot -> {
+                (plot.renderer as? org.jfree.chart.renderer.AbstractRenderer)
+                    ?.setDefaultLegendTextPaint(appearance.foreground())
+                plot.domainGridlinePaint = appearance.grid()
+                plot.rangeGridlinePaint = appearance.grid()
+                listOfNotNull(plot.domainAxis, plot.rangeAxis).forEach { axis ->
+                    axis.labelPaint = appearance.foreground()
+                    axis.tickLabelPaint = appearance.foreground()
+                }
+            }
+            is PiePlot<*> -> {
+                plot.labelPaint = appearance.foreground()
+                plot.labelBackgroundPaint = appearance.background()
+            }
+        }
         return ChartPanel(chart)
     }
 

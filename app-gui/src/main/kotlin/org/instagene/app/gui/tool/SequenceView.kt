@@ -371,11 +371,29 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         })
     }
     private fun popup(e: MouseEvent) {
-        val item = hitAt(e.x, e.y)?.item ?: return
-        interaction?.select(item)
+        val item = hitAt(e.x, e.y)?.item
+        if (item != null) interaction?.select(item)
         JPopupMenu().apply {
-            add(JMenuItem("Open in ${item.tab}").apply { addActionListener { interaction?.openSelected() } })
-            add(JMenuItem("Select bases").apply { addActionListener { if (interaction != null) interaction?.selectBases() else doc.select(item.start, item.end) } })
+            if (item != null) {
+                add(ContextMenus.item("Open in ${item.tab}", "Open this annotation, restriction site, or primer in its tool.") {
+                    interaction?.openSelected()
+                })
+                add(ContextMenus.item("Select feature bases", "Select the bases covered by this item.") {
+                    if (interaction != null) interaction?.selectBases() else doc.select(item.start, item.end)
+                })
+                add(ContextMenus.item("Copy feature bases", "Copy the bases covered by this item.") {
+                    ContextMenus.copyToClipboard(doc.seq.sub(item.start, item.end.coerceAtMost(doc.seq.length)))
+                })
+                addSeparator()
+            }
+            add(ContextMenus.item("Select All Bases", "Select the entire sequence.", doc.seq.length > 0) { doc.selectAll() })
+            add(ContextMenus.item("Copy Selected Bases", "Copy the current base selection.", doc.hasSelection) { copySelection() })
+            add(ContextMenus.item("Copy Entire Sequence", "Copy the complete sequence.", doc.seq.length > 0) {
+                ContextMenus.copyToClipboard(doc.seq.bases)
+            })
+            add(ContextMenus.item("Clear Base Selection", "Place the caret at the end of the current selection.", doc.hasSelection) {
+                doc.moveCaret(doc.caret)
+            })
         }.show(this, e.x, e.y)
     }
     override fun getToolTipText(event: MouseEvent): String {

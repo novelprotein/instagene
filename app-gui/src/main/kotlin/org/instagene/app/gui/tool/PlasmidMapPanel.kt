@@ -2,6 +2,7 @@
 
 package org.instagene.app.gui.tool
 
+import org.instagene.app.gui.ContextMenus
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.theme.Palette
 import org.instagene.app.gui.theme.ThemeRefreshable
@@ -42,6 +43,7 @@ import javax.swing.JSpinner
 import javax.swing.JTextField
 import javax.swing.JViewport
 import javax.swing.JOptionPane
+import javax.swing.JPopupMenu
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 import kotlin.math.PI
@@ -196,6 +198,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val logicalHeight: Int,
         val canvasWidth: Int,
         val canvasHeight: Int,
+        val deviceScaleX: Double,
+        val deviceScaleY: Double,
         val zoomPercent: Int,
         val renderScale: Double,
         val featureLabelMode: String,
@@ -231,8 +235,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     private var exportFontSize: Int? = null
     private var exportTransparentCanvas = false
     private var zoomFactor = 1.0
+    private var fitVerticalScrollEnabled = false
     // Retain room for readable label layout, but fit that logical canvas at 100%.
     private var fitScale = 1.0
+    private val useScrollableCircularFit: Boolean
+        get() = doc.seq.isCircular && doc.seq.length >= 2_000
     private val renderScale: Double get() = if (renderingExport) 1.0 else zoomFactor * fitScale
     private val zoomValues = intArrayOf(50, 75, 100, 125, 150, 200, 300, 400, 600)
     private val zoomLabel = JLabel("100%").apply {
@@ -357,6 +364,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val logicalCenterX = (oldPosition.x + oldExtent.width / 2.0 - oldOffsetX) / old
         val logicalCenterY = (oldPosition.y + oldExtent.height / 2.0 - oldOffsetY) / old
         zoomFactor = target
+        if (zoomFactor <= 1.0) fitVerticalScrollEnabled = false
         zoomLabel.text = "$targetPercent%"
         layoutMapViewport()
         mapCanvas.invalidateStaticMapCache()
@@ -375,17 +383,31 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     }
 
     private fun layoutMapViewport() {
-        // Fitted maps never need scrollbars. Remove them before measuring the
-        // viewport, including on startup and when resetting from a larger zoom.
+        // At 100%, fit the map width and scroll crowded label columns vertically
+        // instead of shrinking the map and its text to fit their full height.
         mapScrollPane.horizontalScrollBarPolicy = if (zoomFactor <= 1.0) JScrollPane.HORIZONTAL_SCROLLBAR_NEVER else JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
-        mapScrollPane.verticalScrollBarPolicy = if (zoomFactor <= 1.0) JScrollPane.VERTICAL_SCROLLBAR_NEVER else JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
+        if (!useScrollableCircularFit || zoomFactor > 1.0) fitVerticalScrollEnabled = false
+        mapScrollPane.verticalScrollBarPolicy = if (zoomFactor > 1.0 || fitVerticalScrollEnabled) JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED else JScrollPane.VERTICAL_SCROLLBAR_NEVER
         mapScrollPane.revalidate()
         mapScrollPane.doLayout()
         mapScrollPane.viewport.doLayout()
         updateCanvasBounds()
+        if (zoomFactor <= 1.0 && useScrollableCircularFit && !fitVerticalScrollEnabled && mapCanvas.preferredSize.height > mapScrollPane.viewport.extentSize.height) {
+            fitVerticalScrollEnabled = true
+            mapScrollPane.verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
+            mapScrollPane.revalidate()
+            mapScrollPane.doLayout()
+            mapScrollPane.viewport.doLayout()
+            updateCanvasBounds()
+            val extent = mapScrollPane.viewport.extentSize
+            val centerY = (baseCanvasHeight * fitScale).roundToInt() / 2
+            mapScrollPane.viewport.viewPosition = java.awt.Point(
+                mapScrollPane.viewport.viewPosition.x,
+                (centerY - extent.height / 2).coerceIn(0, (mapCanvas.height - extent.height).coerceAtLeast(0)),
+            )
+        }
         if (zoomFactor <= 1.0) {
-            // A fitted 100% map can change the viewport extent when a stale
-            // scrollbar disappears, so perform one final fit with the new extent.
+            // The optional vertical bar changes the width available for fitting.
             mapScrollPane.doLayout()
             mapScrollPane.viewport.doLayout()
             updateCanvasBounds()
@@ -403,7 +425,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 baseCanvasHeight = maxOf(baseCanvasHeight, mapCanvas.requiredLinearCanvasHeight())
             }
             fitScale = if (extent.width > 0 && extent.height > 0) {
-                minOf(1.0, extent.width.toDouble() / baseCanvasWidth, extent.height.toDouble() / baseCanvasHeight)
+                if (useScrollableCircularFit) {
+                    minOf(1.0, extent.width.toDouble() / baseCanvasWidth)
+                } else {
+                    minOf(1.0, extent.width.toDouble() / baseCanvasWidth, extent.height.toDouble() / baseCanvasHeight)
+                }
             } else 1.0
         }
         val preferred = mapCanvas.preferredSize
@@ -460,7 +486,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
     fun staticMapRenderCountForTest(): Int = mapCanvas.staticMapRenderCountForTest()
 
     /** Exposed for GUI regression tests: warms and returns the static map cache size in screen pixels. */
-    fun ensureStaticMapImageSizeForTest(): Dimension = mapCanvas.ensureStaticMapImageSizeForTest()
+    fun ensureStaticMapImageSizeForTest(deviceScaleX: Double = 1.0, deviceScaleY: Double = 1.0): Dimension =
+        mapCanvas.ensureStaticMapImageSizeForTest(deviceScaleX, deviceScaleY)
 
     private fun featureColor(feature: Feature, index: Int): Color = feature.color?.let {
         runCatching { Color.decode(it) }.getOrNull()
@@ -905,6 +932,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             background = Palette.BACKGROUND
             addMouseListener(object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
+                    if (e.isPopupTrigger) {
+                        popup(e)
+                        return
+                    }
                     if (SwingUtilities.isLeftMouseButton(e)) {
                         pressPosition = positionAt(e)
                         dragged = false
@@ -912,6 +943,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 }
 
                 override fun mouseReleased(e: MouseEvent) {
+                    if (e.isPopupTrigger) {
+                        popup(e)
+                        return
+                    }
+                    if (SwingUtilities.isRightMouseButton(e)) return
                     if (dragged) {
                         // The selection was already updated during the drag.
                         pressPosition = null
@@ -979,11 +1015,15 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             val viewport = mapScrollPane.viewport
             val before = viewport.viewPosition
             val oldScale = renderScale
-            val logicalX = (before.x + screenX - canvasOffsetX(width, oldScale)) / oldScale
-            val logicalY = (before.y + screenY - canvasOffsetY(height, oldScale)) / oldScale
+            // Mouse events arrive in canvas coordinates. Convert the pointer to
+            // viewport coordinates once, then keep that screen point anchored.
+            val viewportX = screenX - before.x
+            val viewportY = screenY - before.y
+            val logicalX = (screenX - canvasOffsetX(width, oldScale)) / oldScale
+            val logicalY = (screenY - canvasOffsetY(height, oldScale)) / oldScale
             setZoomPercent(neighborZoom(direction))
-            val targetX = (logicalX * renderScale + canvasOffsetX(width, renderScale) - screenX).roundToInt()
-            val targetY = (logicalY * renderScale + canvasOffsetY(height, renderScale) - screenY).roundToInt()
+            val targetX = (logicalX * renderScale + canvasOffsetX(width, renderScale) - viewportX).roundToInt()
+            val targetY = (logicalY * renderScale + canvasOffsetY(height, renderScale) - viewportY).roundToInt()
             val extent = viewport.extentSize
             viewport.viewPosition = java.awt.Point(
                 targetX.coerceIn(0, (mapCanvas.width - extent.width).coerceAtLeast(0)),
@@ -1099,9 +1139,51 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
         fun staticMapRenderCountForTest(): Int = staticMapRenderCount
 
-        fun ensureStaticMapImageSizeForTest(): Dimension {
-            val image = staticMapImage()
+        fun ensureStaticMapImageSizeForTest(deviceScaleX: Double = 1.0, deviceScaleY: Double = 1.0): Dimension {
+            val image = staticMapImage(deviceScaleX, deviceScaleY)
             return Dimension(image.width, image.height)
+        }
+
+        private fun popup(e: MouseEvent) {
+            val hit = labelHitRegions
+                .filter { it.bounds.contains(e.x, e.y) }
+                .minWithOrNull(compareBy<LabelHitRegion>({ it.priority }, { it.bounds.width * it.bounds.height }))
+            val feature = hit?.feature ?: featureArcAt(e.x, e.y) ?: positionAt(e)?.let { position ->
+                doc.seq.features.firstOrNull { position in it.start until it.end }
+            }
+            val position = positionAt(e)
+            JPopupMenu().apply {
+                if (feature != null) {
+                    add(ContextMenus.item("Select Feature Bases", "Select this feature in the sequence and map.") {
+                        onSelect?.invoke(feature.start, feature.end.coerceAtMost(doc.seq.length))
+                        focusFeatureInViewport(feature)
+                    })
+                    add(ContextMenus.item("Copy Feature Bases", "Copy the sequence covered by this feature.") {
+                        ContextMenus.copyToClipboard(doc.seq.sub(feature.start, feature.end.coerceAtMost(doc.seq.length)))
+                    })
+                    add(ContextMenus.item("Copy Feature Name", "Copy this feature's displayed name.") {
+                        ContextMenus.copyToClipboard(featureLabel(feature))
+                    })
+                    addSeparator()
+                } else if (position != null) {
+                    add(ContextMenus.item("Select Base Here", "Select the base under the pointer.") {
+                        onSelect?.invoke(position, (position + 1).coerceAtMost(doc.seq.length))
+                    })
+                    addSeparator()
+                }
+                add(ContextMenus.item("Select All Bases", "Select the entire sequence.", doc.seq.length > 0) {
+                    onSelect?.invoke(0, doc.seq.length)
+                })
+                add(ContextMenus.item("Copy Selected Bases", "Copy the current base selection.", doc.hasSelection) {
+                    ContextMenus.copyToClipboard(doc.selectedBases)
+                })
+                add(ContextMenus.item("Copy Entire Sequence", "Copy the complete sequence.", doc.seq.length > 0) {
+                    ContextMenus.copyToClipboard(doc.seq.bases)
+                })
+                add(ContextMenus.item("Clear Base Selection", "Clear the current base selection.", doc.hasSelection) {
+                    doc.moveCaret(doc.caret)
+                })
+            }.show(this, e.x, e.y)
         }
 
         fun advanceLabelAnimation() {
@@ -1167,6 +1249,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             val g2 = g as Graphics2D
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
 
             val seq = doc.seq
             if (seq.length == 0) {
@@ -1187,14 +1271,18 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 labelPaintGeneration++
                 if (seq.isCircular) paintCircular(g2) else paintLinear(g2)
             } else {
-                val staticMap = staticMapImage()
+                val transform = g2.transform
+                val deviceScaleX = kotlin.math.hypot(transform.scaleX, transform.shearY).coerceAtLeast(0.1)
+                val deviceScaleY = kotlin.math.hypot(transform.scaleY, transform.shearX).coerceAtLeast(0.1)
+                val staticMap = staticMapImage(deviceScaleX, deviceScaleY)
                 restoreStaticHitRegions()
                 featureLabelHitRegions.clear()
                 featureLabelVisualBounds.clear()
                 featureLabelAlphas.clear()
                 featureLabelStripeColors.clear()
                 labelPaintGeneration++
-                g2.drawImage(staticMap, 0, 0, null)
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+                g2.drawImage(staticMap, 0, 0, width, height, null)
                 val overlay = g2.create() as Graphics2D
                 applyMapTransform(overlay)
                 renderingDynamicOverlay = true
@@ -1231,18 +1319,23 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             arcHitRegions += staticArcHitRegions
         }
 
-        private fun staticMapImage(): BufferedImage {
-            val key = currentStaticMapCacheKey()
+        private fun staticMapImage(deviceScaleX: Double = 1.0, deviceScaleY: Double = 1.0): BufferedImage {
+            val key = currentStaticMapCacheKey(deviceScaleX, deviceScaleY)
             val cached = staticMapImage
             if (cached != null && staticMapCacheKey == key && staticMapSequence === doc.seq && staticMapCutSites === doc.cutSites) {
                 return cached
             }
 
-            val image = BufferedImage(width.coerceAtLeast(1), height.coerceAtLeast(1), BufferedImage.TYPE_INT_ARGB)
+            val imageWidth = (width * deviceScaleX).roundToInt().coerceAtLeast(1)
+            val imageHeight = (height * deviceScaleY).roundToInt().coerceAtLeast(1)
+            val image = BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_ARGB)
             val graphics = image.createGraphics()
             try {
                 graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
                 graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+                graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+                graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+                graphics.scale(deviceScaleX, deviceScaleY)
                 applyMapTransform(graphics)
                 clearInteractiveHitRegions()
                 centerX = logicalWidth / 2
@@ -1265,13 +1358,15 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             return image
         }
 
-        private fun currentStaticMapCacheKey(): StaticMapCacheKey {
+        private fun currentStaticMapCacheKey(deviceScaleX: Double = 1.0, deviceScaleY: Double = 1.0): StaticMapCacheKey {
             val choice = activeFeatureLabelChoice()
             return StaticMapCacheKey(
                 logicalWidth,
                 logicalHeight,
                 width,
                 height,
+                deviceScaleX,
+                deviceScaleY,
                 zoomPercent,
                 renderScale,
                 choice.id,

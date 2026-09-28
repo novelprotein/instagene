@@ -129,6 +129,8 @@ data class UserPrefs(
     val graphStepSize: Int = 50,
     val graphOrfMinAa: Int = 30,
     val graphOrfWindowSize: Int = 200,
+    /** Color scheme used by the graph analysis workspaces. */
+    val graphTheme: String = "STANDARD",
     /** Reopened analysis controls use the last explicitly run values. */
     val analysisDefaults: AnalysisDefaults = AnalysisDefaults(),
     /** NCBI response caching stays network-only until the researcher opts in. */

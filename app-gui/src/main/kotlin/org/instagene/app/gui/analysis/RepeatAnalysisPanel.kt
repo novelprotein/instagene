@@ -1,6 +1,8 @@
 package org.instagene.app.gui.analysis
 
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.theme.Palette
+import org.instagene.app.gui.theme.ThemeRefreshable
 import org.instagene.core.*
 import org.instagene.core.io.SeqIO
 import java.awt.*
@@ -8,14 +10,18 @@ import java.io.File
 import javax.swing.*
 
 /** Interactive dot-plot plus direct/inverted-repeat view for the active sequence. */
-internal class RepeatAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel() {
+internal class RepeatAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPanel(), ThemeRefreshable {
     private val savedSettings = prefs.value.analysisDefaults
     private val wordSize = JSpinner(SpinnerNumberModel(savedSettings.repeatWordSize.coerceIn(1, 1_000), 1, 1_000, 1))
     private val minimumLength = JSpinner(SpinnerNumberModel(savedSettings.repeatMinimumLength.coerceIn(1, 10_000), 1, 10_000, 1))
     private val maxPoints = JSpinner(SpinnerNumberModel(savedSettings.repeatMaxPoints.coerceIn(100, 200_000), 100, 200_000, 100))
     private val includeInverted = JCheckBox("Show inverted matches", savedSettings.repeatIncludeInverted)
     private val queryName = JTextField("Self comparison", 18).apply { isEditable = false }
-    private val canvas = DotPlotCanvas()
+    private val graphTheme = JComboBox(GraphTheme.entries.toTypedArray()).apply {
+        selectedItem = GraphTheme.fromId(prefs.value.graphTheme)
+        toolTipText = "Choose the graph color scheme"
+    }
+    private val canvas = DotPlotCanvas { graphTheme.selectedItem as? GraphTheme ?: GraphTheme.APPLICATION }
     private val output = output()
     private val run = JButton("Analyze")
     private val exportPlot = JButton("Export plot").apply { isEnabled = false }
@@ -23,6 +29,7 @@ internal class RepeatAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPane
     private var queryFile: File? = null
     private var task: SwingWorker<AnalysisRun, Unit>? = null
     private var displayed: AnalysisRun? = null
+    private var loadingGraphTheme = false
 
     init {
         val chooseQuery = JButton("Compare to…").apply {
@@ -46,7 +53,7 @@ internal class RepeatAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPane
 
         add(
             row(
-                chooseQuery, clearQuery, queryName, JLabel("Word"), wordSize, JLabel("Min repeat"), minimumLength,
+                chooseQuery, clearQuery, queryName, JLabel("Theme"), graphTheme, JLabel("Word"), wordSize, JLabel("Min repeat"), minimumLength,
                 JLabel("Max points"), maxPoints, includeInverted, run, exportPlot, exportRepeats,
             ),
             BorderLayout.NORTH,
@@ -56,9 +63,26 @@ internal class RepeatAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPane
             dividerLocation = 430
         }
         add(split, BorderLayout.CENTER)
+        graphTheme.addActionListener {
+            if (!loadingGraphTheme) {
+                prefs.update { it.copy(graphTheme = (graphTheme.selectedItem as? GraphTheme ?: GraphTheme.APPLICATION).name) }
+                canvas.refreshTheme()
+            }
+        }
+        prefs.addListener {
+            loadingGraphTheme = true
+            try { graphTheme.selectedItem = GraphTheme.fromId(prefs.value.graphTheme) }
+            finally { loadingGraphTheme = false }
+            canvas.refreshTheme()
+        }
     }
 
     override fun refreshDocument() = clearResults()
+
+    override fun refreshTheme() {
+        canvas.repaint()
+        repaint()
+    }
 
     private fun chooseQuery() {
         val chooser = JFileChooser().apply { dialogTitle = "Choose dot-plot comparison sequence" }
@@ -191,7 +215,7 @@ internal class RepeatAnalysisPanel(private val prefs: Prefs) : BoundAnalysisPane
 }
 
 /** Lightweight renderer that does not require a charting dependency or another analysis pass. */
-private class DotPlotCanvas : JPanel(BorderLayout()) {
+private class DotPlotCanvas(private val graphTheme: () -> GraphTheme) : JPanel(BorderLayout()), ThemeRefreshable {
     var result: DotPlotResult? = null
         set(value) {
             field = value
@@ -200,7 +224,12 @@ private class DotPlotCanvas : JPanel(BorderLayout()) {
 
     init {
         preferredSize = Dimension(760, 470)
-        background = Color.WHITE
+        background = graphTheme().background()
+    }
+
+    override fun refreshTheme() {
+        background = graphTheme().background()
+        repaint()
     }
 
     override fun paintComponent(graphics: Graphics) {
@@ -208,7 +237,7 @@ private class DotPlotCanvas : JPanel(BorderLayout()) {
         val g = graphics as Graphics2D
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
         val dot = result ?: run {
-            g.color = Color(0x546E7A)
+            g.color = Palette.MUTED
             g.drawString("Run analysis to display a dot plot.", 20, 28)
             return
         }
@@ -217,24 +246,24 @@ private class DotPlotCanvas : JPanel(BorderLayout()) {
         val plotHeight = (height - margin * 1.5).coerceAtLeast(1.0)
         fun x(position: Int) = margin + position.toDouble() / dot.horizontalLength.coerceAtLeast(1) * plotWidth
         fun y(position: Int) = margin + position.toDouble() / dot.verticalLength.coerceAtLeast(1) * plotHeight
-        g.color = Color(0xFAFAFA)
+        g.color = graphTheme().background()
         g.fillRect(margin.toInt(), margin.toInt(), plotWidth.toInt(), plotHeight.toInt())
-        g.color = Color(0x455A64)
+        g.color = graphTheme().grid()
         g.stroke = BasicStroke(1f)
         g.drawRect(margin.toInt(), margin.toInt(), plotWidth.toInt(), plotHeight.toInt())
         dot.points.forEach { point ->
-            g.color = if (point.orientation == RepeatOrientation.DIRECT) Color(0x1565C0) else Color(0xAD1457)
+            g.color = graphTheme().series(if (point.orientation == RepeatOrientation.DIRECT) 0 else 1)
             g.fillOval((x(point.horizontalPosition) - 1).toInt(), (y(point.verticalPosition) - 1).toInt(), 3, 3)
         }
-        g.color = Color(0x263238)
+        g.color = graphTheme().foreground()
         g.drawString("${dot.horizontalName} (${dot.horizontalLength})", margin.toInt(), height - 14)
         g.drawString("${dot.verticalName} (${dot.verticalLength})", 8, margin.toInt() - 12)
-        g.color = Color(0x1565C0)
+        g.color = graphTheme().series(0)
         g.drawString("● direct", width - 170, 20)
-        g.color = Color(0xAD1457)
+        g.color = graphTheme().series(1)
         g.drawString("● inverted", width - 90, 20)
         if (dot.truncated) {
-            g.color = Color(0xB71C1C)
+            g.color = Color(0xC0392B)
             g.drawString("Capped at ${dot.points.size} points", margin.toInt(), 20)
         }
     }

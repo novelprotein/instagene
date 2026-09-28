@@ -2,6 +2,7 @@ package org.instagene.app.gui.dialog
 
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.theme.ThemeManager
+import org.instagene.app.gui.tool.SequenceGraphics
 import org.instagene.core.ExternalTools
 import org.instagene.core.ToolHealth
 import org.instagene.core.ToolHealthStatus
@@ -20,6 +21,9 @@ object SettingsDialog {
     fun showPreferences(frame: JFrame?, prefs: Prefs, initialTab: Int = 0) {
         val current = prefs.value
         val fontPreferences = FontPreferencesPanel(current)
+        val graphicsDetail = JComboBox(SequenceGraphics.entries.toTypedArray()).apply {
+            selectedItem = if (current.detailedSequenceGraphics) SequenceGraphics.DETAILED else SequenceGraphics.SIMPLIFIED
+        }
         val themes = ThemeManager.themes
         val theme = JComboBox(themes.map { it.displayName }.toTypedArray()).apply {
             selectedIndex = themes.indexOfFirst { it.id == current.theme }.coerceAtLeast(0)
@@ -48,6 +52,7 @@ object SettingsDialog {
                     add(second); add(JLabel(""))
                     add(JLabel("Feature transparency (%)")); add(transparency)
                     add(JLabel("Bases per sequence row")); add(width)
+                    add(JLabel("Sequence graphics detail")); add(graphicsDetail)
                 }, BorderLayout.NORTH)
                 add(fontPreferences, BorderLayout.CENTER)
             })
@@ -77,6 +82,7 @@ object SettingsDialog {
                 theme = selectedTheme.id,
                 interfaceFontFamily = fontPreferences.selectedFamily,
                 interfaceFontSize = fontPreferences.selectedSize,
+                detailedSequenceGraphics = graphicsDetail.selectedItem == SequenceGraphics.DETAILED,
                 inlineFeatureMode = inline.isSelected,
                 showSecondStrand = second.isSelected,
                 featureTransparency = (transparency.value as Number).toInt(),

@@ -321,6 +321,23 @@ class PlasmidMapPanelTest {
     }
 
     @Test
+    fun largeCircularMapKeepsFontSizeAtFitAndScrollsItsLabelCanvas() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(SeqIO.Samples.PBR322_NCBI))
+            map.setSize(800, 700)
+            map.doLayout()
+
+            val canvas = map.canvasForTest()
+            val viewport = map.viewportExtentForTest()
+            assertEquals(14, (map.mapFontSize.value as Number).toInt())
+            assertEquals(100, map.zoomPercent)
+            assertTrue(canvas.height > viewport.height, "crowded feature labels should use vertical viewport scrolling")
+            assertTrue(canvas.width <= viewport.width, "the map should remain fitted horizontally")
+            assertTrue(map.viewportPositionForTest().y > 0, "the viewport should initially center the plasmid")
+        }
+    }
+
+    @Test
     fun clickOnCrowdedCircularCalloutSelectsTheWholeFeature() {
         SwingUtilities.invokeAndWait {
             val content = InstaGeneContent()
@@ -1100,6 +1117,27 @@ class PlasmidMapPanelTest {
             assertEquals(canvas.width, cacheSize.width)
             assertEquals(canvas.height, cacheSize.height)
             assertTrue(cacheSize.width > 320, "zoomed static cache should not be limited to logical map width")
+        }
+    }
+
+    @Test
+    fun staticMapCacheRendersAtTheDisplayDeviceScale() {
+        SwingUtilities.invokeAndWait {
+            val map = PlasmidMapPanel(SeqDocument(circular))
+            map.setSize(420, 360)
+            map.doLayout()
+            val canvas = map.canvasForTest()
+            canvas.setSize(canvas.preferredSize)
+            val image = BufferedImage(canvas.width * 2, canvas.height * 2, BufferedImage.TYPE_INT_ARGB)
+            val graphics = image.createGraphics()
+            try {
+                graphics.scale(2.0, 2.0)
+                canvas.paint(graphics)
+            } finally {
+                graphics.dispose()
+            }
+
+            assertEquals(java.awt.Dimension(canvas.width * 2, canvas.height * 2), map.ensureStaticMapImageSizeForTest(2.0, 2.0))
         }
     }
 

@@ -299,6 +299,24 @@ ${it.notes}"""
             hasRow,
         ) { revealFeature(row ?: -1) })
         add(ContextMenus.item(
+            "Copy Feature Bases",
+            "Copy the bases covered by this feature.",
+            hasRow,
+        ) {
+            doc.seq.features.getOrNull(row ?: -1)?.let { feature ->
+                ContextMenus.copyToClipboard(doc.seq.sub(feature.start, feature.end))
+            }
+        })
+        add(ContextMenus.item(
+            "Copy Feature Details",
+            "Copy the selected feature name, type, range, strand, and notes.",
+            hasRow,
+        ) {
+            doc.seq.features.getOrNull(row ?: -1)?.let { feature ->
+                ContextMenus.copyToClipboard("${feature.name}\t${feature.type}\t${feature.displayRange()}\t${feature.strand.symbol}\t${feature.notes}")
+            }
+        })
+        add(ContextMenus.item(
             "Edit Element…",
             "Edit this feature's name, type, coordinates, strand, color, visibility, order, and description.",
             hasRow,

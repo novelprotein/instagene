@@ -1400,7 +1400,7 @@ class InstaGeneContent(
             isContentAreaFilled = false
             isOpaque = false
             margin = Insets(0, 0, 0, 0)
-            preferredSize = Dimension(16, 16)
+            preferredSize = Dimension(20, 20)
             toolTipText = "Close tab"
             addActionListener { closeTab(doc) }
         }
@@ -1720,14 +1720,6 @@ class InstaGeneContent(
             addTab("Map", plasmidMapPanel)
             addTab("Sequence", JPanel(BorderLayout()).apply {
                 add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 4)).apply {
-                    add(JLabel("Graphics"))
-                    add(javax.swing.JComboBox(SequenceGraphics.entries.toTypedArray()).apply {
-                        selectedItem = sequenceView.graphicsMode
-                        addActionListener {
-                            sequenceView.graphicsMode = selectedItem as SequenceGraphics
-                            prefs.update { it.copy(detailedSequenceGraphics = sequenceView.graphicsMode == SequenceGraphics.DETAILED) }
-                        }
-                    })
                     val back = JButton("Back").apply { isEnabled = false; addActionListener { sequenceInteraction.back() } }
                     val open = JButton("Open selected annotation").apply { isEnabled = false; addActionListener { sequenceInteraction.openSelected() } }
                     val bases = JButton("Select bases").apply { isEnabled = false; addActionListener { sequenceInteraction.selectBases() } }
