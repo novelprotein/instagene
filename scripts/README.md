@@ -90,3 +90,4 @@ QUIET level). Program arguments can be passed the Gradle way, e.g.
 | `install-hooks.sh`        | Installs the repo git hooks (`.githooks/`) via `core.hooksPath`.   |
 | `check-docs.sh`           | Builds the MkDocs site in strict mode.                             |
 | `check-distributions.sh`  | Verifies standalone JARs, CLI distribution ZIPs and file associations. |
+| `package.sh`              | Builds a native GUI installer (`DEB`, `MSI` or `DMG`) on its target OS. |
