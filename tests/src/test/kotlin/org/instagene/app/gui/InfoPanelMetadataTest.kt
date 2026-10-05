@@ -114,7 +114,7 @@ class InfoPanelMetadataTest {
             panel.authorField.text = "Record author"
             panel.nucleicAcidCategoryCombo.selectedItem = "Bacterial"
             panel.labHostTypeCombo.selectedItem = "Bacterial"
-            panel.hostStrainField.text = "DH5Î±"
+            panel.hostStrainField.text = "DH5α"
             panel.originCombo.selectedItem = SequenceOrigin.SYNTHETIC
             panel.originLockCheck.isSelected = true
             panel.commentsArea.text = "first comment\nsecond comment"
@@ -124,7 +124,7 @@ class InfoPanelMetadataTest {
             assertEquals("Record author", document.seq.recordMetadata.author)
             assertEquals("Bacterial", document.seq.recordMetadata.nucleicAcidCategory)
             assertEquals("Bacterial", document.seq.recordMetadata.labHostType)
-            assertEquals("DH5Î±", document.seq.recordMetadata.hostStrain)
+            assertEquals("DH5α", document.seq.recordMetadata.hostStrain)
             assertEquals(SequenceOrigin.SYNTHETIC, document.seq.recordMetadata.origin)
             assertEquals(false, document.seq.recordMetadata.originLocked)
             assertEquals(listOf("first comment", "second comment"), document.seq.recordMetadata.comments)
@@ -143,7 +143,7 @@ class InfoPanelMetadataTest {
         onEdt {
             val panel = InfoPanel(SeqDocument(Seq(name = "record", bases = "AAGATCAA")))
             panel.labHostTypeCombo.selectedItem = "Bacterial"
-            panel.hostStrainField.text = "DH5Î±"
+            panel.hostStrainField.text = "DH5α"
             panel.inferMethylationButton.doClick()
             assertEquals(MethylationState.METHYLATED, panel.damMethylationCombo.selectedItem)
 
@@ -221,7 +221,7 @@ class InfoPanelMetadataTest {
             assertTrue(panel.commentsArea.closestTitledPanel("Record metadata"))
             assertTrue(!panel.commentsArea.closestTitledPanel("References"))
             assertTrue(panel.freeformReferencesArea.closestTitledPanel("References"))
-            assertEquals("5â€²â†’3â€² / 3â€²â†’5â€²; 5â€² phosphorylated", panel.orientationAndEndChemistryLabel.text)
+            assertEquals("5′→3′ / 3′→5′; 5′ phosphorylated", panel.orientationAndEndChemistryLabel.text)
             assertEquals("-", panel.createdDateLabel.text)
             assertEquals("-", panel.modifiedDateLabel.text)
             assertTrue(!panel.openFileButton.isVisible)
@@ -272,7 +272,7 @@ class InfoPanelMetadataTest {
             val panel = InfoPanel(document, {}, null, {}, {}, {}, prefs)
 
             assertTrue((0 until panel.labHostTypeCombo.itemCount).map(panel.labHostTypeCombo::getItemAt).contains("Plant"))
-            assertTrue((0 until panel.hostStrainCombo.itemCount).map(panel.hostStrainCombo::getItemAt).contains("DH5Î±"))
+            assertTrue((0 until panel.hostStrainCombo.itemCount).map(panel.hostStrainCombo::getItemAt).contains("DH5α"))
             assertTrue(panel.hostStrainCombo.itemCount > 5)
             panel.hostStrainField.text = "My local host"
             panel.hostStrainField.dispatchEvent(FocusEvent(panel.hostStrainField, FocusEvent.FOCUS_GAINED))
@@ -297,7 +297,7 @@ class InfoPanelMetadataTest {
 
                 panel.hostStrainField.dispatchEvent(FocusEvent(panel.hostStrainField, FocusEvent.FOCUS_GAINED))
 
-                assertEquals("DH5Î±", panel.hostStrainCombo.getItemAt(1))
+                assertEquals("DH5α", panel.hostStrainCombo.getItemAt(1))
             }
         }
     }

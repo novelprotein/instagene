@@ -23,7 +23,7 @@ class LibraryPanelTest {
         val doc = SeqDocument(Seq(bases = "ACGT"))
         val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
 
-        assertTrue(panel.button("Add Itemâ€¦").isVisible)
+        assertTrue(panel.button("Add Item…").isVisible)
 
         assertNull(
             panel.addLibraryItem(
@@ -64,7 +64,7 @@ class LibraryPanelTest {
         assertEquals("promoter", saved[2].feature?.type)
         assertEquals(Strand.REVERSE, saved[2].feature?.strand)
         assertEquals("Inducible promoter", saved[2].description)
-        assertEquals(listOf("â€”", "â€”", "â€”"), (0..2).map { panel.libraryTable.model.getValueAt(it, 3) })
+        assertEquals(listOf("—", "—", "—"), (0..2).map { panel.libraryTable.model.getValueAt(it, 3) })
 
         val beforeInvalidAdds = prefs.value
         assertNotNull(panel.addLibraryItem(SavedKind.PRIMER, "", SeqKind.DNA, "ACGT"))
@@ -176,7 +176,7 @@ class LibraryPanelTest {
             val jump = panel.button("Jump to source")
             assertTrue(insert.isEnabled)
             assertFalse(jump.isEnabled)
-            assertEquals("â€”", panel.libraryTable.model.getValueAt(0, 3))
+            assertEquals("—", panel.libraryTable.model.getValueAt(0, 3))
 
             doc.moveCaret(1)
             insert.doClick()

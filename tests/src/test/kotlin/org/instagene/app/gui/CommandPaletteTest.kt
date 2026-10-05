@@ -13,9 +13,9 @@ class CommandPaletteTest {
     @Test
     fun filterMatchesLabelsKeywordsAndCompactSubsequences() {
         val commands = listOf(
-            CommandPaletteCommand("file.open", "Open filesâ€¦", keywords = listOf("import")) {},
+            CommandPaletteCommand("file.open", "Open files…", keywords = listOf("import")) {},
             CommandPaletteCommand("analysis.sanger", "Open Sanger Alignment", keywords = listOf("trace chromatogram")) {},
-            CommandPaletteCommand("project.search", "Search projectâ€¦", keywords = listOf("find")) {},
+            CommandPaletteCommand("project.search", "Search project…", keywords = listOf("find")) {},
         )
 
         assertEquals(listOf("analysis.sanger"), CommandPalette.filter(commands, "trace").map { it.id })

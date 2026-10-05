@@ -121,7 +121,7 @@ class GuiSmokeTest {
             doc.setMappedEnzymes(listOf(Enzymes.require("EcoRI")))
             doc.select(0, 6)
 
-            assertTrue(view.statusText().contains("Selected range 1â€“6 (6 bp"))
+            assertTrue(view.statusText().contains("Selected range 1–6 (6 bp"))
             paintComponent(view, 900, 400)
             assertTrue(view.cutSiteLabelsForTest().contains("EcoRI"), "selected enzyme label should remain visible")
         }
@@ -144,7 +144,7 @@ class GuiSmokeTest {
             assertTrue(descendants(digest, JLabel::class.java).any { it.text.startsWith("Matches for EcoRI (2)") })
 
             doc.select(6, 12)
-            assertTrue(digest.scopeTextForTest().contains("selected range 7â€“12 (6 bp; context only)"))
+            assertTrue(digest.scopeTextForTest().contains("selected range 7–12 (6 bp; context only)"))
 
             digest.dispose()
 
@@ -157,7 +157,7 @@ class GuiSmokeTest {
                 })
                 content.activeDocument.select(6, 12)
                 assertTrue(descendants(content.analysisPanel, JLabel::class.java).any {
-                    it.text.contains("selected range 7â€“12 (6 bp; context only)")
+                    it.text.contains("selected range 7–12 (6 bp; context only)")
                 })
             } finally {
                 content.dispose()
@@ -518,7 +518,7 @@ class GuiSmokeTest {
             assertTrue(bluntRow >= 0)
             assertEquals("5' overhang (4 bp): AATT", table.getValueAt(ecoRow, 3))
             assertEquals("blunt", table.getValueAt(bluntRow, 3))
-            assertTrue(table.getValueAt(ecoRow, 3).toString() != "â€”")
+            assertTrue(table.getValueAt(ecoRow, 3).toString() != "—")
             panel.dispose()
         }
     }
@@ -594,11 +594,11 @@ class GuiSmokeTest {
             assertEquals("GAATTC", table.getValueAt(matchRow, 5))
             assertTrue(table.getValueAt(matchRow, 6).toString().isNotBlank())
 
-            val fragmentOnlyRow = (0 until table.rowCount).first { table.getValueAt(it, 3) == "â€”" }
+            val fragmentOnlyRow = (0 until table.rowCount).first { table.getValueAt(it, 3) == "—" }
             assertTrue(table.getValueAt(fragmentOnlyRow, 0).toString().endsWith("bp"))
             assertTrue(table.getValueAt(fragmentOnlyRow, 1).toString().isNotBlank())
             assertTrue(table.getValueAt(fragmentOnlyRow, 2).toString().isNotBlank())
-            assertEquals(listOf("â€”", "â€”", "â€”", "â€”"), (3..6).map { table.getValueAt(fragmentOnlyRow, it) })
+            assertEquals(listOf("—", "—", "—", "—"), (3..6).map { table.getValueAt(fragmentOnlyRow, it) })
             panel.dispose()
         }
     }

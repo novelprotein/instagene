@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  *
  * It times the restriction-site scans over a synthetic genome and prints the
  * numbers, then asserts generous upper bounds so a serious regression (an
- * accidental O(nÂ²) scan, an allocation storm, or EDT-stalling code) fails the
+ * accidental O(n²) scan, an allocation storm, or EDT-stalling code) fails the
  * run instead of going unnoticed.
  */
 class PerformanceBenchmarkTest {

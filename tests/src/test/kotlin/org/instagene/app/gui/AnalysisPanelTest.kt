@@ -63,10 +63,10 @@ class AnalysisPanelTest {
 
         panel.selectTool("Assembly")
 
-        val wizard = descendants(panel, JButton::class.java).firstOrNull { it.text == "PCR-cloning wizardâ€¦" }
+        val wizard = descendants(panel, JButton::class.java).firstOrNull { it.text == "PCR-cloning wizard…" }
         assertTrue(wizard != null, "Assembly tools must expose the guided PCR-cloning workflow")
         assertTrue(wizard.toolTipText.orEmpty().contains("validate restriction cloning", ignoreCase = true))
-        val replay = descendants(panel, JButton::class.java).firstOrNull { it.text == "Replay recipeâ€¦" }
+        val replay = descendants(panel, JButton::class.java).firstOrNull { it.text == "Replay recipe…" }
         assertTrue(replay != null, "Assembly tools must expose identity-checked recipe replay")
     }
 
@@ -104,7 +104,7 @@ class AnalysisPanelTest {
 
         panel.selectTool("Alignment")
 
-        val export = descendants(panel, JButton::class.java).firstOrNull { it.text == "Export alignmentâ€¦" }
+        val export = descendants(panel, JButton::class.java).firstOrNull { it.text == "Export alignment…" }
         assertTrue(export != null, "Alignment tools must offer a researcher-readable export action")
         assertTrue(export.toolTipText.orEmpty().contains("Stockholm"))
         assertTrue(export.toolTipText.orEmpty().contains("PNG"))

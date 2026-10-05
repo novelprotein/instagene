@@ -17,7 +17,7 @@ class HostStrainSuggestionTest {
                 taxonomy = listOf("Bacteria", "Proteobacteria", "Enterobacteriaceae"),
             ),
         )
-        assertEquals("DH5Î±", suggestions.first().strain)
+        assertEquals("DH5α", suggestions.first().strain)
         assertTrue(suggestions.first().rationale.contains("organism/taxonomy"))
     }
 

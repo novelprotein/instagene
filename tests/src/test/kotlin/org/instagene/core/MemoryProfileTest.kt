@@ -57,10 +57,10 @@ class MemoryProfileTest {
             val abiFiles = (0 until traceCount).map { index ->
                 File(root, "read-$index.ab1").apply { writeBytes(minimalAbi()) }
             }
-            val scfReads = profile("SCF batch ($traceCount Ã— $TRACE_BASES called bases)") {
+            val scfReads = profile("SCF batch ($traceCount × $TRACE_BASES called bases)") {
                 scfFiles.map(SeqIO::read)
             }
-            val abiReads = profile("ABI batch ($traceCount Ã— $TRACE_BASES called bases)") {
+            val abiReads = profile("ABI batch ($traceCount × $TRACE_BASES called bases)") {
                 abiFiles.map(SeqIO::read)
             }
             assertEquals(traceCount, scfReads.size)

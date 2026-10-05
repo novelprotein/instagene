@@ -708,7 +708,7 @@ class PlasmidMapPanelTest {
             assertTrue(text.contains("width=\"640\""))
             assertTrue(text.contains("height=\"480\""))
             assertFalse(text.contains("font-size=\"24\""))
-            assertFalse(text.contains("features Â·"))
+            assertFalse(text.contains("features ·"))
         }
     }
 

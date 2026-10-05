@@ -18,7 +18,7 @@ class WorkflowLibraryPanelTest {
         assertTrue(content.commandPaletteCommands().any { it.id == "workflow.library" })
         val projectMenu = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it) }.single { it.text == "Project" }
         assertTrue(projectMenu.isEnabled)
-        assertTrue(projectMenu.menuComponents.filterIsInstance<JMenuItem>().single { it.text == "Workflow Libraryâ€¦" }.isEnabled)
+        assertTrue(projectMenu.menuComponents.filterIsInstance<JMenuItem>().single { it.text == "Workflow Library…" }.isEnabled)
     }
 
     private fun onEdt(block: () -> Unit) {
@@ -55,11 +55,11 @@ class WorkflowLibraryPanelTest {
         assertFalse(panel.saveEntry())
         assertTrue(errors.single().contains("title"))
         title.text = "Routine"
-        body.text = "Instructions\nÎ±Î²"
+        body.text = "Instructions\nαβ"
         assertFalse(panel.canLeave())
         answer = 0
         assertTrue(panel.canLeave())
-        assertEquals("Instructions\nÎ±Î²", WorkflowLibraryStore(file).load().entries.single().instructions)
+        assertEquals("Instructions\nαβ", WorkflowLibraryStore(file).load().entries.single().instructions)
         button("Duplicate").doClick()
         answer = 2
         assertFalse(panel.canLeave())
@@ -79,7 +79,7 @@ class WorkflowLibraryPanelTest {
         val search = components(panel).filterIsInstance<JTextField>().single { it.name == "workflowSearch" }
         search.text = "no match"
         assertEquals(0, entries.model.size)
-        search.text = "Î±Î²"
+        search.text = "αβ"
         assertEquals(1, entries.model.size)
     }
 

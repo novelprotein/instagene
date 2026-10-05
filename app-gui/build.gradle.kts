@@ -103,7 +103,7 @@ val verifyStandaloneJar = tasks.register("verifyStandaloneJar") {
             }
             listOf(
                 "org/instagene/app/gui/GuiMainKt.class",
-                "org/instagene/core/NcbiClient.class",
+                "org/instagene/core/integration/NcbiClient.class",
                 "kotlin/jvm/internal/Intrinsics.class",
                 "kotlinx/serialization/json/Json.class",
                 "com/formdev/flatlaf/FlatLightLaf.class",

@@ -54,7 +54,7 @@ class TableLabelsTest {
 
         assertEquals("4 bp", table(features).getValueAt(0, 5))
         assertTrue(table(primers).getValueAt(0, 2).toString().endsWith("nt"))
-        assertTrue(table(primers).getValueAt(0, 3).toString().endsWith("Â°C"))
+        assertTrue(table(primers).getValueAt(0, 3).toString().endsWith("°C"))
         assertTrue(table(primers).getValueAt(0, 4).toString().endsWith("%"))
 
         digest.dispose()

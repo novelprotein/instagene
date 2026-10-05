@@ -54,12 +54,12 @@ class InfoMetadataTest {
 
     @Test
     fun hostInferenceRecognizesCommonBacterialStrainsAndLeavesUnknownHostsConservative() {
-        val positive = HostMethylationInferenceRules.infer("E. coli", "DH5Î±")
+        val positive = HostMethylationInferenceRules.infer("E. coli", "DH5α")
         assertEquals(true, positive.profile.dam)
         assertEquals(true, positive.profile.dcm)
-        assertEquals("DH5Î±", positive.matchedHost)
+        assertEquals("DH5α", positive.matchedHost)
 
-        val strainOnly = HostMethylationInferenceRules.infer(null, "DH5Î±")
+        val strainOnly = HostMethylationInferenceRules.infer(null, "DH5α")
         assertEquals(true, strainOnly.profile.dam)
         assertEquals(true, strainOnly.profile.dcm)
 
@@ -113,7 +113,7 @@ class InfoMetadataTest {
                 author = "Record author",
                 nucleicAcidCategory = "Bacterial",
                 labHostType = "Bacterial",
-                hostStrain = "DH5Î±",
+                hostStrain = "DH5α",
                 origin = SequenceOrigin.SYNTHETIC,
                 originLocked = true,
                 createdAt = 1_700_000_000_000,

@@ -12,8 +12,8 @@ class WorkflowLibraryTest {
         val file = Files.createTempDirectory("workflow-library").resolve("library.json").toFile()
         val store = WorkflowLibraryStore(file)
         assertEquals(WorkflowLibrary(), store.load())
-        val protocol = WorkflowLibraryEntry(kind = WorkflowEntryKind.PROTOCOL, title = "Protocol Î±",
-            instructions = "# Notes\nUnicode: Î¼", steps = listOf(
+        val protocol = WorkflowLibraryEntry(kind = WorkflowEntryKind.PROTOCOL, title = "Protocol α",
+            instructions = "# Notes\nUnicode: μ", steps = listOf(
                 WorkflowLibraryStep("Second", "line one\nline two"), WorkflowLibraryStep("First", "")))
         val procedure = WorkflowLibraryEntry(kind = WorkflowEntryKind.PROCEDURE, title = "General instructions")
         val library = WorkflowLibrary(entries = listOf(protocol, procedure))

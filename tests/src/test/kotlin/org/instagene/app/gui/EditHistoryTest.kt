@@ -115,12 +115,12 @@ class EditHistoryTest {
             // and the change summary (label + detail) joined into the Change cell.
             val model = content.editHistoryPanel.table.model
             assertEquals(entries.size, model.rowCount)
-            assertEquals("Saved â€” a.fasta", model.getValueAt(0, 2))
-            assertEquals("Redo replace 2 bases â€” 4 -> 2 bp", model.getValueAt(1, 2))
-            assertEquals("Undo replace 2 bases â€” 2 -> 4 bp", model.getValueAt(2, 2))
-            assertEquals("replace 2 bases â€” 4 -> 2 bp", model.getValueAt(3, 2))
+            assertEquals("Saved — a.fasta", model.getValueAt(0, 2))
+            assertEquals("Redo replace 2 bases — 4 -> 2 bp", model.getValueAt(1, 2))
+            assertEquals("Undo replace 2 bases — 2 -> 4 bp", model.getValueAt(2, 2))
+            assertEquals("replace 2 bases — 4 -> 2 bp", model.getValueAt(3, 2))
             assertEquals("a.fasta", model.getValueAt(3, 1))
-            assertEquals("Project opened â€” ${root.name}", model.getValueAt(4, 2))
+            assertEquals("Project opened — ${root.name}", model.getValueAt(4, 2))
 
             // Closing the tab logs it.
             content.closeTab(doc, force = true)

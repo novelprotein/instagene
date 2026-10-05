@@ -409,6 +409,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                     minOf(1.0, extent.width.toDouble() / baseCanvasWidth, extent.height.toDouble() / baseCanvasHeight)
                 }
             } else 1.0
+        } else if (doc.seq.isCircular) {
+            // Zoomed labels are laid out in logical coordinates, so keep enough
+            // logical canvas height for the callout rows before scaling them.
+            baseCanvasHeight = maxOf(baseCanvasHeight, mapCanvas.requiredCircularCanvasHeight())
         }
         val preferred = mapCanvas.preferredSize
         mapCanvas.setSize(maxOf(extent.width, preferred.width), maxOf(extent.height, preferred.height))
@@ -1484,7 +1488,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
             // Feature arcs, one packed ring per lane so overlaps stay readable.
             g2.font = labelFont
-            val fm = g2.fontMetrics
+            // Use component-space metrics so a HiDPI graphics transform does
+            // not inflate the logical row measurements used by the packer.
+            val fm = getFontMetrics(labelFont)
             val labels = ArrayList<CircularLabel>(seq.features.size)
             visibleFeatures().forEachIndexed { index, f ->
                 val ring = r - 24 - (ringOf[f] ?: 0) * (exportFeatureLaneSpacing ?: 15)
@@ -1639,7 +1645,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         ): List<Int> {
             if (labels.isEmpty()) return emptyList()
             val preferredSpacing = fm.height + 15 + zoomLabelPadding()
-            val minimumSpacing = textBounds(fm, "Ag", 0, 0).height + 6
+            val minimumSpacing = textBounds(fm, "Ag", 0, 0).height + 10
             val canFitInViewport = labels.size <= 1 || viewport.height >= minimumSpacing * (labels.size - 1) + fm.height + 16
             val topLimit = fm.ascent + 11
             val bottomLimit = (logicalHeight - fm.descent - 11).coerceAtLeast(topLimit)
@@ -1668,7 +1674,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             val spacing = if (labels.size == 1) {
                 preferredSpacing
             } else {
-                minOf(preferredSpacing, availableSpacing).coerceAtLeast(1)
+                minOf(preferredSpacing, availableSpacing).coerceAtLeast(minimumSpacing)
             }
             val totalSpacing = spacing * (labels.size - 1)
             val firstBaseline = if (totalSpacing <= maxBaseline - minBaseline) {
@@ -1710,7 +1716,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             val maxCallouts = maxOf(leftCount, rightCount)
             if (maxCallouts <= 1) return 380
             val topBaseline = fm.ascent + 11
-            val spacing = fm.height + 15
+            val spacing = fm.height + 15 + zoomLabelPadding()
             val lastBaseline = topBaseline + (maxCallouts - 1) * spacing
             return maxOf(380, lastBaseline + fm.descent + 16)
         }

@@ -18,9 +18,9 @@ class SequenceStatisticsTest {
         val islands = SequenceStatistics.cpgIslands(seq)
         assertTrue(islands.isNotEmpty(), "Should detect CpG island in GC-rich region")
         val found = islands.first()
-        assertTrue(found.gcContent >= 50.0, "Island GC should be â‰¥50%")
-        assertTrue(found.oeRatio >= 0.6, "Island OE ratio should be â‰¥0.6")
-        assertTrue(found.length >= 200, "Island length should be â‰¥200bp")
+        assertTrue(found.gcContent >= 50.0, "Island GC should be ≥50%")
+        assertTrue(found.oeRatio >= 0.6, "Island OE ratio should be ≥0.6")
+        assertTrue(found.length >= 200, "Island length should be ≥200bp")
     }
 
     @Test
