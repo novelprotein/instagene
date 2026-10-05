@@ -1,9 +1,10 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
-import org.instagene.app.gui.tool.FeaturesPanel
+
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.core.Feature
-import org.instagene.core.Seq
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
 import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals

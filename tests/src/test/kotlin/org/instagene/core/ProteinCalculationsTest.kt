@@ -1,4 +1,8 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.molecular.MolecularCalculators
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
 
 import kotlin.test.Test
 import kotlin.test.assertFailsWith

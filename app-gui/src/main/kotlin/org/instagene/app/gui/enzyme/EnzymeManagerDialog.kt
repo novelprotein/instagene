@@ -1,33 +1,15 @@
 package org.instagene.app.gui.enzyme
 
-import org.instagene.app.gui.TableLabels
-import org.instagene.app.gui.ContextMenus
-import org.instagene.app.gui.installRowContextMenu
+import org.instagene.app.gui.component.ContextMenus
+import org.instagene.app.gui.component.TableLabels
+import org.instagene.app.gui.component.installRowContextMenu
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.core.Enzyme
-import org.instagene.core.LabLibraryFiles
-import org.instagene.core.LibraryImportMode
-import java.awt.BorderLayout
-import java.awt.Color
-import java.awt.Dimension
-import java.awt.FlowLayout
-import java.awt.Frame
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.library.LabLibraryFiles
+import org.instagene.core.library.LibraryImportMode
+import java.awt.*
 import java.io.File
-import javax.swing.BorderFactory
-import javax.swing.BoxLayout
-import javax.swing.JButton
-import javax.swing.JDialog
-import javax.swing.JLabel
-import javax.swing.JFileChooser
-import javax.swing.JPopupMenu
-import javax.swing.JOptionPane
-import javax.swing.JPanel
-import javax.swing.JScrollPane
-import javax.swing.JSpinner
-import javax.swing.JTable
-import javax.swing.JTextField
-import javax.swing.ListSelectionModel
-import javax.swing.SpinnerNumberModel
+import javax.swing.*
 import javax.swing.table.AbstractTableModel
 
 /**

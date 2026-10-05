@@ -1,10 +1,6 @@
 package org.instagene.core.io
 
-import org.instagene.core.FeatureLocationNode
-import org.instagene.core.FeatureLocationOperator
-import org.instagene.core.FeatureSegment
-import org.instagene.core.LocationBoundary
-import org.instagene.core.Strand
+import org.instagene.core.sequence.*
 
 /** Recursive parser and formatter for the INSDC feature-location grammar. */
 internal object GenBankLocations {

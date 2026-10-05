@@ -2,9 +2,8 @@ package org.instagene.app.gui.enzyme
 
 import org.instagene.app.gui.prefs.EnzymeOverride
 import org.instagene.app.gui.prefs.UserPrefs
-import org.instagene.core.Enzyme
-import org.instagene.core.Enzymes
-
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.enzyme.Enzymes
 /**
  * The effective GUI enzyme catalog. Built-in overrides deliberately live here
  * rather than in the core catalog, keeping command-line and engine defaults

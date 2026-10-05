@@ -1,4 +1,7 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.primer.PrimerThermodynamics
+import org.instagene.core.primer.StructureAssessment
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

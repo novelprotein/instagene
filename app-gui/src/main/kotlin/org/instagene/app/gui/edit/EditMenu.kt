@@ -1,23 +1,17 @@
 package org.instagene.app.gui.edit
 
-import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.document.Doc
+import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.menu.menuShortcut
-import org.instagene.app.gui.tool.FeaturesPanel
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.SavedContext
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
-import org.instagene.core.SeqKind
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.sequence.SeqKind
 import java.awt.event.KeyEvent
-import javax.swing.JFrame
-import javax.swing.JCheckBox
-import javax.swing.JMenu
-import javax.swing.JMenuItem
-import javax.swing.JOptionPane
-import javax.swing.JPanel
-import javax.swing.JTextField
-import javax.swing.KeyStroke
+import javax.swing.*
 
 class EditMenu(
     private val frame: JFrame?,
@@ -25,7 +19,7 @@ class EditMenu(
     private val editor: EditActions,
     private val prefs: Prefs = Prefs(),
     private val featuresPanel: FeaturesPanel? = null,
-    private val sequenceView: org.instagene.app.gui.tool.SequenceView? = null,
+    private val sequenceView: SequenceView? = null,
     private val onEditProperties: (() -> Unit)? = null,
 ) {
 

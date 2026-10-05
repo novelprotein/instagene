@@ -1,8 +1,8 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.menu.FileMenu
-import org.instagene.core.Seq
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.Seq
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter

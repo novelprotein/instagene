@@ -1,10 +1,13 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.enzyme.Digest
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.sequence.Seq
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.random.Random
 import kotlin.system.measureNanoTime
 import kotlin.test.Test
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Assumptions.assumeTrue
 
 /**
  * Opt-in micro-benchmark for the digest hot paths.
@@ -16,7 +19,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
  *
  * It times the restriction-site scans over a synthetic genome and prints the
  * numbers, then asserts generous upper bounds so a serious regression (an
- * accidental O(n²) scan, an allocation storm, or EDT-stalling code) fails the
+ * accidental O(nÂ²) scan, an allocation storm, or EDT-stalling code) fails the
  * run instead of going unnoticed.
  */
 class PerformanceBenchmarkTest {

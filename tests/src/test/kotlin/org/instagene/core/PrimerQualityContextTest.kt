@@ -1,6 +1,11 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.alignment.SangerAlignment
+import org.instagene.core.alignment.SangerOptions
+import org.instagene.core.alignment.SangerRead
 import org.instagene.core.io.FastaQualRecord
+import org.instagene.core.primer.*
+import org.instagene.core.sequence.Seq
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

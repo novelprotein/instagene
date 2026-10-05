@@ -1,12 +1,15 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
-import org.instagene.app.gui.tool.WorkflowLibraryPanel
-import org.instagene.core.*
+import org.instagene.app.gui.tool.library.WorkflowLibraryPanel
+import org.instagene.core.workflow.*
 import java.awt.Component
 import java.awt.Container
 import java.nio.file.Files
 import javax.swing.*
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class WorkflowLibraryPanelTest {
     @Test
@@ -15,7 +18,7 @@ class WorkflowLibraryPanelTest {
         assertTrue(content.commandPaletteCommands().any { it.id == "workflow.library" })
         val projectMenu = (0 until content.menuBar.menuCount).map { content.menuBar.getMenu(it) }.single { it.text == "Project" }
         assertTrue(projectMenu.isEnabled)
-        assertTrue(projectMenu.menuComponents.filterIsInstance<JMenuItem>().single { it.text == "Workflow Library…" }.isEnabled)
+        assertTrue(projectMenu.menuComponents.filterIsInstance<JMenuItem>().single { it.text == "Workflow Libraryâ€¦" }.isEnabled)
     }
 
     private fun onEdt(block: () -> Unit) {
@@ -52,11 +55,11 @@ class WorkflowLibraryPanelTest {
         assertFalse(panel.saveEntry())
         assertTrue(errors.single().contains("title"))
         title.text = "Routine"
-        body.text = "Instructions\nαβ"
+        body.text = "Instructions\nÎ±Î²"
         assertFalse(panel.canLeave())
         answer = 0
         assertTrue(panel.canLeave())
-        assertEquals("Instructions\nαβ", WorkflowLibraryStore(file).load().entries.single().instructions)
+        assertEquals("Instructions\nÎ±Î²", WorkflowLibraryStore(file).load().entries.single().instructions)
         button("Duplicate").doClick()
         answer = 2
         assertFalse(panel.canLeave())
@@ -76,7 +79,7 @@ class WorkflowLibraryPanelTest {
         val search = components(panel).filterIsInstance<JTextField>().single { it.name == "workflowSearch" }
         search.text = "no match"
         assertEquals(0, entries.model.size)
-        search.text = "αβ"
+        search.text = "Î±Î²"
         assertEquals(1, entries.model.size)
     }
 

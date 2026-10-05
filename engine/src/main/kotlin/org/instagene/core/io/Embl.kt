@@ -1,18 +1,6 @@
 package org.instagene.core.io
 
-import org.instagene.core.Alphabet
-import org.instagene.core.Feature
-import org.instagene.core.FeatureLocationMetadata
-import org.instagene.core.MoleculeProperties
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.RecordHeaderField
-import org.instagene.core.SequenceRecordMetadata
-import org.instagene.core.SequenceReference
-import org.instagene.core.SequenceOrigin
-import org.instagene.core.MethylationSource
-import org.instagene.core.Strand
-import org.instagene.core.Topology
+import org.instagene.core.sequence.*
 
 /** EMBL/ENA and Swiss-Prot flat-file support for sequences, descriptions, and feature annotations. */
 object Embl {
@@ -175,8 +163,8 @@ object Embl {
         ).withResolvedAuthor()
         val methylationFieldsPresent = metadata.keys.any { it == "IG_DAM" || it == "IG_DCM" || it == "IG_CPG" }
         val molecule = MoleculeProperties(
-            strandedness = metadata["IG_STRANDS"]?.let { runCatching { org.instagene.core.Strandedness.valueOf(it) }.getOrNull() }
-                ?: if (kind == SeqKind.PROTEIN) org.instagene.core.Strandedness.SINGLE else org.instagene.core.Strandedness.DOUBLE,
+            strandedness = metadata["IG_STRANDS"]?.let { runCatching { Strandedness.valueOf(it) }.getOrNull() }
+                ?: if (kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
             damMethylated = metadata["IG_DAM"]?.toBooleanStrictOrNull() ?: false,
             dcmMethylated = metadata["IG_DCM"]?.toBooleanStrictOrNull() ?: false,
             cpgMethylated = metadata["IG_CPG"]?.toBooleanStrictOrNull() ?: false,
@@ -184,11 +172,11 @@ object Embl {
                 runCatching { MethylationSource.valueOf(it) }.getOrNull()
             } ?: if (methylationFieldsPresent) MethylationSource.IMPORTED else MethylationSource.UNKNOWN,
             damStateOverride = metadata["IG_DAM"]?.takeIf { it.equals("unknown", true) }
-                ?.let { org.instagene.core.MethylationState.UNKNOWN },
+                ?.let { MethylationState.UNKNOWN },
             dcmStateOverride = metadata["IG_DCM"]?.takeIf { it.equals("unknown", true) }
-                ?.let { org.instagene.core.MethylationState.UNKNOWN },
+                ?.let { MethylationState.UNKNOWN },
             cpgStateOverride = metadata["IG_CPG"]?.takeIf { it.equals("unknown", true) }
-                ?.let { org.instagene.core.MethylationState.UNKNOWN },
+                ?.let { MethylationState.UNKNOWN },
             fivePrimePhosphorylated = metadata["IG_5P"]?.toBooleanStrictOrNull() ?: true,
             threePrimePhosphorylated = metadata["IG_3P"]?.toBooleanStrictOrNull() ?: false,
             )
@@ -231,9 +219,9 @@ object Embl {
         cc("IG_ORLOCK", seq.recordMetadata.originLocked.toString())
         cc("IG_CREATED", seq.recordMetadata.createdAt?.toString())
         cc("IG_MODIFIED", seq.recordMetadata.modifiedAt?.toString())
-        cc("IG_DAM", if (seq.molecule.damState == org.instagene.core.MethylationState.UNKNOWN) "unknown" else seq.molecule.damMethylated.toString())
-        cc("IG_DCM", if (seq.molecule.dcmState == org.instagene.core.MethylationState.UNKNOWN) "unknown" else seq.molecule.dcmMethylated.toString())
-        cc("IG_CPG", if (seq.molecule.cpgState == org.instagene.core.MethylationState.UNKNOWN) "unknown" else seq.molecule.cpgMethylated.toString())
+        cc("IG_DAM", if (seq.molecule.damState == MethylationState.UNKNOWN) "unknown" else seq.molecule.damMethylated.toString())
+        cc("IG_DCM", if (seq.molecule.dcmState == MethylationState.UNKNOWN) "unknown" else seq.molecule.dcmMethylated.toString())
+        cc("IG_CPG", if (seq.molecule.cpgState == MethylationState.UNKNOWN) "unknown" else seq.molecule.cpgMethylated.toString())
         cc("IG_METHYL_SRC", seq.molecule.methylationSource.name)
         cc("IG_5P", seq.molecule.fivePrimePhosphorylated.toString())
         cc("IG_3P", seq.molecule.threePrimePhosphorylated.toString())

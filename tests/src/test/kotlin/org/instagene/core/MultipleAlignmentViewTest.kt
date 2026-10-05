@@ -1,4 +1,10 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.alignment.MultipleAlignmentAlgorithm
+import org.instagene.core.alignment.MultipleAlignmentResult
+import org.instagene.core.alignment.toFasta
+import org.instagene.core.alignment.view
+import org.instagene.core.sequence.Seq
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,10 +1,9 @@
-package org.instagene.core
+﻿package org.instagene.core
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import org.instagene.core.enzyme.EndType
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.enzyme.Enzymes
+import kotlin.test.*
 
 class EnzymesTest {
 

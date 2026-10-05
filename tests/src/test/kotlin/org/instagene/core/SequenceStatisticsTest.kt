@@ -1,9 +1,12 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.analysis.SequenceStatistics
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
 import kotlin.test.Test
-import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class SequenceStatisticsTest {
 
@@ -15,9 +18,9 @@ class SequenceStatisticsTest {
         val islands = SequenceStatistics.cpgIslands(seq)
         assertTrue(islands.isNotEmpty(), "Should detect CpG island in GC-rich region")
         val found = islands.first()
-        assertTrue(found.gcContent >= 50.0, "Island GC should be ≥50%")
-        assertTrue(found.oeRatio >= 0.6, "Island OE ratio should be ≥0.6")
-        assertTrue(found.length >= 200, "Island length should be ≥200bp")
+        assertTrue(found.gcContent >= 50.0, "Island GC should be â‰¥50%")
+        assertTrue(found.oeRatio >= 0.6, "Island OE ratio should be â‰¥0.6")
+        assertTrue(found.length >= 200, "Island length should be â‰¥200bp")
     }
 
     @Test

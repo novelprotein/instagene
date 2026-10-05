@@ -1,20 +1,11 @@
-package org.instagene.core.io
+﻿package org.instagene.core.io
 
-import org.instagene.core.Feature
-import org.instagene.core.MethylationProfile
-import org.instagene.core.MethylationSource
-import org.instagene.core.Seq
-import org.instagene.core.SequenceOrigin
-import org.instagene.core.SeqKind
-import org.instagene.core.Topology
+import org.instagene.core.enzyme.MethylationProfile
+import org.instagene.core.sequence.*
 import java.io.File
 import java.security.MessageDigest
 import kotlin.io.path.createTempDirectory
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class SeqIOTest {
 
@@ -308,8 +299,8 @@ class SeqIOTest {
                 kind = SeqKind.DNA,
                 topology = Topology.CIRCULAR,
                 features = listOf(
-                    Feature("oris", "rep_origin", 0, 4, org.instagene.core.Strand.FORWARD, ""),
-                    Feature("ampR", "CDS", 4, 16, org.instagene.core.Strand.REVERSE, "beta-lactamase"),
+                    Feature("oris", "rep_origin", 0, 4, Strand.FORWARD, ""),
+                    Feature("ampR", "CDS", 4, 16, Strand.REVERSE, "beta-lactamase"),
                     Feature("MCS", "misc_feature", 12, 16),
                 ),
                 description = "mini plasmid with a map",

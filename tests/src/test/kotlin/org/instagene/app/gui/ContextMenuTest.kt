@@ -1,4 +1,4 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.edit.EditHistoryPanel
@@ -7,30 +7,22 @@ import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.SavedItem
 import org.instagene.app.gui.prefs.SavedKind
 import org.instagene.app.gui.project.ProjectTreePanel
-import org.instagene.app.gui.tool.AnalysisPanel
-import org.instagene.app.gui.tool.DigestPanel
-import org.instagene.app.gui.tool.FeaturesPanel
-import org.instagene.app.gui.tool.LibraryPanel
-import org.instagene.app.gui.tool.PrimersPanel
-import org.instagene.app.gui.tool.SequenceView
-import org.instagene.core.Feature
-import org.instagene.core.Seq
+import org.instagene.app.gui.tool.analysis.AnalysisPanel
+import org.instagene.app.gui.tool.enzyme.DigestPanel
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.app.gui.tool.library.LibraryPanel
+import org.instagene.app.gui.tool.primer.PrimersPanel
+import org.instagene.app.gui.tool.sequence.SequenceView
 import org.instagene.core.project.SeqProject
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
 import java.awt.Component
 import java.awt.Container
 import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
-import javax.swing.JMenuItem
-import javax.swing.JPopupMenu
-import javax.swing.JTable
-import javax.swing.JTree
-import javax.swing.SwingUtilities
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
-import kotlin.test.fail
+import javax.swing.*
+import kotlin.test.*
 
 class ContextMenuTest {
 

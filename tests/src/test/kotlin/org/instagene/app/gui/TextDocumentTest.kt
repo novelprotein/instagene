@@ -1,12 +1,8 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.document.TextDocument
 import java.io.File
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /** Plain-text/notes document model: edits, dirty tracking, save and undo. */
 class TextDocumentTest {

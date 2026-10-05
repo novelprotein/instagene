@@ -1,16 +1,16 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
-import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.SavedKind
-import org.instagene.core.Feature
-import org.instagene.core.FeatureDefinition
-import org.instagene.core.LabLibraryFiles
-import org.instagene.core.LibraryImportMode
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.Strand
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.core.feature.FeatureDefinition
+import org.instagene.core.library.LabLibraryFiles
+import org.instagene.core.library.LibraryImportMode
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
+import org.instagene.core.sequence.Strand
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

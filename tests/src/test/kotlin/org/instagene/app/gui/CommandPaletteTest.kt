@@ -1,5 +1,7 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
+import org.instagene.app.gui.component.CommandPalette
+import org.instagene.app.gui.component.CommandPaletteCommand
 import org.instagene.app.gui.prefs.Prefs
 import javax.swing.SwingUtilities
 import kotlin.test.Test
@@ -11,9 +13,9 @@ class CommandPaletteTest {
     @Test
     fun filterMatchesLabelsKeywordsAndCompactSubsequences() {
         val commands = listOf(
-            CommandPaletteCommand("file.open", "Open files…", keywords = listOf("import")) {},
+            CommandPaletteCommand("file.open", "Open filesâ€¦", keywords = listOf("import")) {},
             CommandPaletteCommand("analysis.sanger", "Open Sanger Alignment", keywords = listOf("trace chromatogram")) {},
-            CommandPaletteCommand("project.search", "Search project…", keywords = listOf("find")) {},
+            CommandPaletteCommand("project.search", "Search projectâ€¦", keywords = listOf("find")) {},
         )
 
         assertEquals(listOf("analysis.sanger"), CommandPalette.filter(commands, "trace").map { it.id })

@@ -1,13 +1,13 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.dialog.FontPreferencesPanel
-import org.instagene.app.gui.prefs.PrefsStore
-import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.tool.SequenceView
-import org.instagene.core.Seq
+import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.prefs.PrefsStore
 import org.instagene.app.gui.prefs.UserPrefs
 import org.instagene.app.gui.theme.ThemeManager
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.sequence.Seq
 import java.nio.file.Files
 import javax.swing.JComboBox
 import javax.swing.JLabel

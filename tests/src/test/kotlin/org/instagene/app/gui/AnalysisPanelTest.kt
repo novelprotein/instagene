@@ -1,4 +1,4 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import com.sun.net.httpserver.HttpServer
 import org.instagene.app.gui.document.SeqDocument
@@ -6,28 +6,24 @@ import org.instagene.app.gui.prefs.AnalysisDefaults
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.PrefsStore
 import org.instagene.app.gui.prefs.UserPrefs
-import org.instagene.app.gui.tool.AnalysisPanel
-import org.instagene.app.gui.tool.FeaturesPanel
-import org.instagene.core.NcbiClient
-import org.instagene.core.Seq
-import org.instagene.core.Strand
+import org.instagene.app.gui.tool.analysis.AnalysisPanel
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.core.integration.NcbiClient
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Strand
+import org.instagene.core.sequence.Topology
 import java.awt.Component
 import java.awt.Container
 import java.awt.event.MouseEvent
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.net.http.HttpClient
-import java.nio.file.Files
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import javax.swing.JButton
-import javax.swing.JComboBox
-import javax.swing.JMenuItem
-import javax.swing.JTabbedPane
-import javax.swing.JTable
-import javax.swing.JTextField
-import javax.swing.SwingUtilities
+import javax.swing.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -60,24 +56,24 @@ class AnalysisPanelTest {
     @Test
     fun assemblyWorkspaceExposesThePcrCloningWizard() = onEdt {
         val panel = AnalysisPanel(
-            SeqDocument(Seq("circular_backbone", "GAATTCACGTACGTAAGCTT", topology = org.instagene.core.Topology.CIRCULAR)),
+            SeqDocument(Seq("circular_backbone", "GAATTCACGTACGTAAGCTT", topology = Topology.CIRCULAR)),
             {},
             { _, _ -> },
         )
 
         panel.selectTool("Assembly")
 
-        val wizard = descendants(panel, JButton::class.java).firstOrNull { it.text == "PCR-cloning wizard…" }
+        val wizard = descendants(panel, JButton::class.java).firstOrNull { it.text == "PCR-cloning wizardâ€¦" }
         assertTrue(wizard != null, "Assembly tools must expose the guided PCR-cloning workflow")
         assertTrue(wizard.toolTipText.orEmpty().contains("validate restriction cloning", ignoreCase = true))
-        val replay = descendants(panel, JButton::class.java).firstOrNull { it.text == "Replay recipe…" }
+        val replay = descendants(panel, JButton::class.java).firstOrNull { it.text == "Replay recipeâ€¦" }
         assertTrue(replay != null, "Assembly tools must expose identity-checked recipe replay")
     }
 
     @Test
     fun translationWorkspaceExposesCdsFrameValidation() = onEdt {
         val panel = AnalysisPanel(
-            SeqDocument(Seq("cds", "ATGAAATAA", features = listOf(org.instagene.core.Feature("gene", "CDS", 0, 9)))),
+            SeqDocument(Seq("cds", "ATGAAATAA", features = listOf(Feature("gene", "CDS", 0, 9)))),
             {},
             { _, _ -> },
         )
@@ -108,7 +104,7 @@ class AnalysisPanelTest {
 
         panel.selectTool("Alignment")
 
-        val export = descendants(panel, JButton::class.java).firstOrNull { it.text == "Export alignment…" }
+        val export = descendants(panel, JButton::class.java).firstOrNull { it.text == "Export alignmentâ€¦" }
         assertTrue(export != null, "Alignment tools must offer a researcher-readable export action")
         assertTrue(export.toolTipText.orEmpty().contains("Stockholm"))
         assertTrue(export.toolTipText.orEmpty().contains("PNG"))
@@ -138,7 +134,7 @@ class AnalysisPanelTest {
 
     @Test
     fun featureEditorPersistsDisplayMetadata() = onEdt {
-        val document = SeqDocument(Seq("annotated", "ACGTACGT", features = listOf(org.instagene.core.Feature("old", start = 0, end = 4))))
+        val document = SeqDocument(Seq("annotated", "ACGTACGT", features = listOf(Feature("old", start = 0, end = 4))))
         val features = FeaturesPanel(document) { _, _ -> }
         assertEquals(null, features.updateFeatureElement(0, "promoter", "promoter", 1, 4, Strand.FORWARD, "note", "#123456", false, 7))
         val updated = document.seq.features.single()
@@ -262,7 +258,7 @@ class AnalysisPanelTest {
                 fetchButton.doClick()
             }
             awaitCondition {
-                descendants(panel, javax.swing.JTextArea::class.java)
+                descendants(panel, JTextArea::class.java)
                     .any { it.text.contains("Run Search NCBI and select a result") }
             }
             assertEquals(null, fetchedId.get())
@@ -351,7 +347,7 @@ class AnalysisPanelTest {
                 assertEquals(false, fetchButton.isEnabled)
             }
             awaitCondition {
-                fetchButton.isEnabled && descendants(panel, javax.swing.JTextArea::class.java)
+                fetchButton.isEnabled && descendants(panel, JTextArea::class.java)
                     .any { it.text.contains("did not return GenBank text") }
             }
         }
@@ -371,7 +367,7 @@ class AnalysisPanelTest {
                 fetchButton.doClick()
             }
             awaitCondition {
-                descendants(panel, javax.swing.JTextArea::class.java)
+                descendants(panel, JTextArea::class.java)
                     .any { it.text.contains("Run Search NCBI and select a result") }
             }
         }
@@ -421,7 +417,7 @@ class AnalysisPanelTest {
                 ncbiQueryField(panel).text = "no hits"
                 searchButton.doClick()
             }
-            awaitCondition { descendants(panel, javax.swing.JTextArea::class.java).any { it.text.contains("0 result") } }
+            awaitCondition { descendants(panel, JTextArea::class.java).any { it.text.contains("0 result") } }
             onEdt {
                 assertEquals(0, nucleotideTable(panel).rowCount)
                 assertTrue(fetchButton.isEnabled)
@@ -616,7 +612,7 @@ class AnalysisPanelTest {
                 fetchButton.doClick()
             }
             awaitCondition {
-                descendants(panel, javax.swing.JTextArea::class.java)
+                descendants(panel, JTextArea::class.java)
                     .any { it.text.contains("then select a result to fetch GenBank") }
             }
             assertEquals(emptyList(), fetched)
@@ -739,10 +735,10 @@ class AnalysisPanelTest {
                 assertEquals("No bases selected", ncbiQueryStatus(panel).text)
 
                 searchButton.doClick()
-                assertTrue(descendants(panel, javax.swing.JTextArea::class.java)
+                assertTrue(descendants(panel, JTextArea::class.java)
                     .any { it.text.contains("Select bases in the Sequence view") })
                 runButton.doClick()
-                assertTrue(descendants(panel, javax.swing.JTextArea::class.java)
+                assertTrue(descendants(panel, JTextArea::class.java)
                     .any { it.text.contains("Select bases in the Sequence view") })
                 assertEquals(emptyList(), searches)
                 assertEquals(emptyList(), blastQueries)
@@ -870,8 +866,8 @@ class AnalysisPanelTest {
     private fun ncbiQueryField(panel: AnalysisPanel): JTextField =
         descendants(panel, JTextField::class.java).single { it.name == "ncbiSharedQuery" }
 
-    private fun ncbiQueryStatus(panel: AnalysisPanel): javax.swing.JLabel =
-        descendants(panel, javax.swing.JLabel::class.java).single { it.name == "ncbiQueryStatus" }
+    private fun ncbiQueryStatus(panel: AnalysisPanel): JLabel =
+        descendants(panel, JLabel::class.java).single { it.name == "ncbiQueryStatus" }
 
     private fun awaitCondition(timeoutMillis: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMillis

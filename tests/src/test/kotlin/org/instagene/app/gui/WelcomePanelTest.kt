@@ -1,6 +1,8 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.welcome.WelcomeExample
+import org.instagene.app.gui.welcome.WelcomePanel
 import org.instagene.core.project.SeqProject
 import java.io.File
 import java.nio.file.Files

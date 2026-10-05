@@ -2,10 +2,10 @@ package org.instagene.app.gui.dialog
 
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.theme.ThemeManager
-import org.instagene.app.gui.tool.SequenceGraphics
-import org.instagene.core.ExternalTools
-import org.instagene.core.ToolHealth
-import org.instagene.core.ToolHealthStatus
+import org.instagene.app.gui.tool.sequence.SequenceGraphics
+import org.instagene.core.integration.ExternalTools
+import org.instagene.core.integration.ToolHealth
+import org.instagene.core.integration.ToolHealthStatus
 import org.instagene.core.io.FormatSupport
 import org.instagene.core.io.SequenceFormatCatalog
 import java.awt.BorderLayout

@@ -1,10 +1,10 @@
 package org.instagene.app.gui.edit
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.tool.SequenceView
 import org.instagene.app.gui.document.TextEditorView
-import org.instagene.core.Alphabet
-import org.instagene.core.SeqKind
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.sequence.Alphabet
+import org.instagene.core.sequence.SeqKind
 
 /**
  * The editing operations an editor exposes to the Edit menu. Both the sequence

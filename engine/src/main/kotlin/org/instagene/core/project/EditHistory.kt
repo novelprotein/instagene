@@ -1,7 +1,7 @@
 package org.instagene.core.project
 
-import org.instagene.core.Seq
 import kotlinx.serialization.Serializable
+import org.instagene.core.sequence.Seq
 
 /** What kind of event an [EditEntry] records. */
 @Serializable

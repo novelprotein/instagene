@@ -1,8 +1,8 @@
-package org.instagene.core.io
+﻿package org.instagene.core.io
 
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.Topology
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
+import org.instagene.core.sequence.Topology
 import java.io.StringReader
 import kotlin.test.Test
 import kotlin.test.assertEquals

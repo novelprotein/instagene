@@ -1,7 +1,7 @@
 package org.instagene.app.gui.theme
 
 import com.formdev.flatlaf.FlatLaf
-import org.instagene.core.SeqKind
+import org.instagene.core.sequence.SeqKind
 import java.awt.Color
 import javax.swing.UIManager
 import kotlin.math.roundToInt

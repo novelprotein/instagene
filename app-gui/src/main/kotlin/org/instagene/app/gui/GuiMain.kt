@@ -1,8 +1,8 @@
 package org.instagene.app.gui
 
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.theme.ThemeManager
 import org.instagene.app.gui.prefs.PrefsStore
+import org.instagene.app.gui.theme.ThemeManager
 import java.awt.GraphicsEnvironment
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities

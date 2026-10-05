@@ -1,24 +1,9 @@
 package org.instagene.app.gui.enzyme
 
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.core.Enzyme
-import java.awt.BorderLayout
-import java.awt.Color
-import java.awt.Dimension
-import java.awt.FlowLayout
-import java.awt.Frame
-import java.awt.GridLayout
-import javax.swing.BorderFactory
-import javax.swing.JButton
-import javax.swing.JCheckBox
-import javax.swing.JDialog
-import javax.swing.JLabel
-import javax.swing.JPanel
-import javax.swing.JScrollPane
-import javax.swing.JSpinner
-import javax.swing.JTextArea
-import javax.swing.JTextField
-import javax.swing.SpinnerNumberModel
+import org.instagene.core.enzyme.Enzyme
+import java.awt.*
+import javax.swing.*
 
 /** Modal editor for every user-editable property of one effective enzyme row. */
 class EnzymeElementDialog(

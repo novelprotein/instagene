@@ -1,4 +1,7 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.enzyme.HostStrainSuggestionEngine
+import org.instagene.core.enzyme.HostStrainSuggestionInput
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,7 +17,7 @@ class HostStrainSuggestionTest {
                 taxonomy = listOf("Bacteria", "Proteobacteria", "Enterobacteriaceae"),
             ),
         )
-        assertEquals("DH5α", suggestions.first().strain)
+        assertEquals("DH5Î±", suggestions.first().strain)
         assertTrue(suggestions.first().rationale.contains("organism/taxonomy"))
     }
 

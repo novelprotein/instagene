@@ -1,4 +1,7 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.sequence.Alphabet
+import org.instagene.core.sequence.SeqKind
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

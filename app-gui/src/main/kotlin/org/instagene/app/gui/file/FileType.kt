@@ -1,9 +1,9 @@
 package org.instagene.app.gui.file
 
-import org.instagene.core.Alphabet
 import org.instagene.core.io.NativeFileAssociations
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.project.SeqProject
+import org.instagene.core.sequence.Alphabet
 import java.io.File
 import javax.swing.filechooser.FileNameExtensionFilter
 

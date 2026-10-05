@@ -1,10 +1,8 @@
-package org.instagene.core
+﻿package org.instagene.core
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import org.instagene.core.molecular.CodonDesign
+import org.instagene.core.sequence.CodonTable
+import kotlin.test.*
 
 class CodonTableTest {
 

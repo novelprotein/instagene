@@ -1,10 +1,10 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
-import org.instagene.core.ElnArtifactRole
-import org.instagene.core.Feature
-import org.instagene.core.GenericZipElnAdapter
-import org.instagene.core.Seq
-import org.instagene.core.Topology
+import org.instagene.core.integration.ElnArtifactRole
+import org.instagene.core.integration.GenericZipElnAdapter
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Topology
 import java.io.File
 import java.nio.file.Files
 import javax.swing.JMenu

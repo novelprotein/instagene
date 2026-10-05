@@ -1,10 +1,8 @@
-package org.instagene.core
+﻿package org.instagene.core
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import org.instagene.core.sequence.SequenceClassCatalog
+import org.instagene.core.sequence.SequenceClassCodeAuthority
+import kotlin.test.*
 
 class SequenceClassCatalogTest {
 

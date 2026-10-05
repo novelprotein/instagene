@@ -1,4 +1,6 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.benchmark.PerformanceTargets
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

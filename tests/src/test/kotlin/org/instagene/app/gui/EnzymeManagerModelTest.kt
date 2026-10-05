@@ -1,21 +1,17 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.enzyme.EnzymeManagerModel
 import org.instagene.app.gui.enzyme.enzymeDescriptionFor
 import org.instagene.app.gui.enzyme.enzymePool
 import org.instagene.app.gui.enzyme.findEnzyme
+import org.instagene.app.gui.prefs.EnzymeOverride
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.UserPrefs
-import org.instagene.app.gui.prefs.EnzymeOverride
-import org.instagene.core.Enzyme
-import org.instagene.core.LabLibraryFiles
-import org.instagene.core.LibraryImportMode
-import org.instagene.core.Enzymes
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.library.LabLibraryFiles
+import org.instagene.core.library.LibraryImportMode
+import kotlin.test.*
 
 class EnzymeManagerModelTest {
 

@@ -1,16 +1,7 @@
-package org.instagene.core.io
+﻿package org.instagene.core.io
 
-import org.instagene.core.Feature
-import org.instagene.core.LocationBoundary
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.Strand
-import org.instagene.core.Topology
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import org.instagene.core.sequence.*
+import kotlin.test.*
 
 class GenBankTest {
 

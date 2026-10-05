@@ -1,40 +1,20 @@
 package org.instagene.app.gui.project
 
+import org.instagene.app.gui.component.row
 import org.instagene.app.gui.file.FileType
 import org.instagene.app.gui.file.FileTypes
-import org.instagene.app.gui.row
-import org.instagene.core.FeatureDefinition
-import org.instagene.core.MoleculeProperties
-import org.instagene.core.Strandedness
-import org.instagene.core.Topology
+import org.instagene.core.feature.FeatureDefinition
 import org.instagene.core.io.SeqFormat
-import org.instagene.core.project.BatchOperations
-import org.instagene.core.project.BatchResult
-import org.instagene.core.project.CollectionDocument
-import org.instagene.core.project.CollectionStore
-import org.instagene.core.project.SeqProject
+import org.instagene.core.project.*
+import org.instagene.core.sequence.MethylationSource
+import org.instagene.core.sequence.MoleculeProperties
+import org.instagene.core.sequence.Strandedness
+import org.instagene.core.sequence.Topology
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.io.File
-import javax.swing.BorderFactory
-import javax.swing.BoxLayout
-import javax.swing.JButton
-import javax.swing.JCheckBox
-import javax.swing.JComboBox
-import javax.swing.JFileChooser
-import javax.swing.JFrame
-import javax.swing.JLabel
-import javax.swing.JOptionPane
-import javax.swing.JPanel
-import javax.swing.JScrollPane
-import javax.swing.JTable
-import javax.swing.JTextArea
-import javax.swing.JTextField
-import javax.swing.ListSelectionModel
-import javax.swing.SpinnerNumberModel
-import javax.swing.JSpinner
-import javax.swing.SwingWorker
+import javax.swing.*
 import javax.swing.table.DefaultTableModel
 
 object ProjectDialogs {
@@ -366,7 +346,7 @@ class BatchOperationPanel(
         damMethylated = dam.isSelected,
         dcmMethylated = dcm.isSelected,
         cpgMethylated = cpg.isSelected,
-        methylationSource = org.instagene.core.MethylationSource.MANUAL,
+        methylationSource = MethylationSource.MANUAL,
         fivePrimePhosphorylated = fivePrime.isSelected,
         threePrimePhosphorylated = threePrime.isSelected,
     )

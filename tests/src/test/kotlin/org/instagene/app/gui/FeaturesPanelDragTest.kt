@@ -1,6 +1,6 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
-import org.instagene.core.Seq
+import org.instagene.core.sequence.Seq
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import javax.swing.SwingUtilities

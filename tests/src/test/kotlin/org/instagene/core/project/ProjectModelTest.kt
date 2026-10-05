@@ -1,13 +1,9 @@
-package org.instagene.core.project
+﻿package org.instagene.core.project
 
+import org.junit.jupiter.api.Assumptions
 import java.io.File
 import java.nio.file.Files
-import org.junit.jupiter.api.Assumptions
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * The engine project model: manifest load/save round-trips, path resolution
@@ -182,7 +178,7 @@ class ProjectModelTest {
         val project = SeqProject.open(root)
         try {
             assertNull(project.relativePath(outside))
-            kotlin.test.assertFailsWith<IllegalArgumentException> {
+            assertFailsWith<IllegalArgumentException> {
                 project.addDocument(outside)
             }
         } finally {

@@ -2,13 +2,13 @@
 
 package org.instagene.app.gui.document
 
-import org.instagene.core.CutSite
-import org.instagene.core.Digest
-import org.instagene.core.Enzyme
-import org.instagene.core.MethylationProfile
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
+import org.instagene.core.enzyme.CutSite
+import org.instagene.core.enzyme.Digest
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.enzyme.MethylationProfile
 import org.instagene.core.project.EditKind
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
 import java.io.File
 
 /**

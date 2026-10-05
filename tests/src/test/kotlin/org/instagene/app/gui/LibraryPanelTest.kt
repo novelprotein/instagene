@@ -1,28 +1,18 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.prefs.SavedFeatureMetadata
-import org.instagene.app.gui.prefs.SavedContext
-import org.instagene.app.gui.prefs.SavedItem
-import org.instagene.app.gui.prefs.SavedKind
-import org.instagene.app.gui.tool.LibraryPanel
-import org.instagene.app.gui.tool.SequenceView
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.Strand
-import org.instagene.core.Topology
+import org.instagene.app.gui.prefs.*
+import org.instagene.app.gui.tool.library.LibraryPanel
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
+import org.instagene.core.sequence.Strand
+import org.instagene.core.sequence.Topology
 import java.awt.Component
 import java.awt.Container
 import javax.swing.JButton
 import javax.swing.SwingUtilities
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.test.fail
+import kotlin.test.*
 
 /** Regression coverage for creating and reusing all three Library item kinds. */
 class LibraryPanelTest {
@@ -33,7 +23,7 @@ class LibraryPanelTest {
         val doc = SeqDocument(Seq(bases = "ACGT"))
         val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
 
-        assertTrue(panel.button("Add Item…").isVisible)
+        assertTrue(panel.button("Add Itemâ€¦").isVisible)
 
         assertNull(
             panel.addLibraryItem(
@@ -74,7 +64,7 @@ class LibraryPanelTest {
         assertEquals("promoter", saved[2].feature?.type)
         assertEquals(Strand.REVERSE, saved[2].feature?.strand)
         assertEquals("Inducible promoter", saved[2].description)
-        assertEquals(listOf("—", "—", "—"), (0..2).map { panel.libraryTable.model.getValueAt(it, 3) })
+        assertEquals(listOf("â€”", "â€”", "â€”"), (0..2).map { panel.libraryTable.model.getValueAt(it, 3) })
 
         val beforeInvalidAdds = prefs.value
         assertNotNull(panel.addLibraryItem(SavedKind.PRIMER, "", SeqKind.DNA, "ACGT"))
@@ -186,7 +176,7 @@ class LibraryPanelTest {
             val jump = panel.button("Jump to source")
             assertTrue(insert.isEnabled)
             assertFalse(jump.isEnabled)
-            assertEquals("—", panel.libraryTable.model.getValueAt(0, 3))
+            assertEquals("â€”", panel.libraryTable.model.getValueAt(0, 3))
 
             doc.moveCaret(1)
             insert.doClick()

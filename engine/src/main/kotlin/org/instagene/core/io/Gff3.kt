@@ -1,9 +1,8 @@
 package org.instagene.core.io
 
-import org.instagene.core.Feature
-import org.instagene.core.Seq
-import org.instagene.core.Strand
-
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Strand
 /** Minimal, standards-shaped GFF3 annotation import/export for an existing sequence. */
 object Gff3 {
     fun looksLikeGff3(text: String): Boolean = text.lineSequence().take(3).any { it == "##gff-version 3" || it.contains("\t") && it.split('\t').size >= 8 }

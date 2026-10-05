@@ -1,17 +1,18 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.edit.EditHistoryPanel
 import org.instagene.app.gui.edit.EditRecorder
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.tool.DigestPanel
-import org.instagene.app.gui.tool.FeaturesPanel
-import org.instagene.app.gui.tool.LibraryPanel
-import org.instagene.app.gui.tool.PrimersPanel
-import org.instagene.app.gui.tool.SequenceView
-import org.instagene.core.Feature
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
+import org.instagene.app.gui.prefs.SavedKind
+import org.instagene.app.gui.tool.enzyme.DigestPanel
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.app.gui.tool.library.LibraryPanel
+import org.instagene.app.gui.tool.primer.PrimersPanel
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
 import java.awt.Component
 import java.awt.Container
 import javax.swing.JTable
@@ -53,7 +54,7 @@ class TableLabelsTest {
 
         assertEquals("4 bp", table(features).getValueAt(0, 5))
         assertTrue(table(primers).getValueAt(0, 2).toString().endsWith("nt"))
-        assertTrue(table(primers).getValueAt(0, 3).toString().endsWith("°C"))
+        assertTrue(table(primers).getValueAt(0, 3).toString().endsWith("Â°C"))
         assertTrue(table(primers).getValueAt(0, 4).toString().endsWith("%"))
 
         digest.dispose()
@@ -65,8 +66,8 @@ class TableLabelsTest {
         val doc = SeqDocument(Seq(bases = "ACGT"))
         val panel = LibraryPanel(prefs, doc, SequenceView(doc)) { _ -> }
 
-        panel.addLibraryItem(org.instagene.app.gui.prefs.SavedKind.FRAGMENT, "dna", SeqKind.DNA, "ACGT")
-        panel.addLibraryItem(org.instagene.app.gui.prefs.SavedKind.FRAGMENT, "rna", SeqKind.RNA, "ACGU")
+        panel.addLibraryItem(SavedKind.FRAGMENT, "dna", SeqKind.DNA, "ACGT")
+        panel.addLibraryItem(SavedKind.FRAGMENT, "rna", SeqKind.RNA, "ACGU")
 
         assertEquals("4 bp", panel.libraryTable.model.getValueAt(0, 2))
         assertEquals("4 nt", panel.libraryTable.model.getValueAt(1, 2))

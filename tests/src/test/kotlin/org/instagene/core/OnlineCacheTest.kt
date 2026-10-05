@@ -1,15 +1,12 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.integration.*
 import java.io.IOException
 import java.nio.file.Files
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class OnlineCacheTest {
     private val clock = Clock.fixed(Instant.parse("2026-08-23T12:00:00Z"), ZoneOffset.UTC)

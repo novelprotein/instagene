@@ -1,12 +1,15 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.feature.FeatureDefinition
+import org.instagene.core.library.FeatureLibraryFile
+import org.instagene.core.library.LabLibraryFiles
+import org.instagene.core.library.LibraryImportMode
+import org.instagene.core.sequence.Strand
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
-import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class LabLibraryFilesTest {
 

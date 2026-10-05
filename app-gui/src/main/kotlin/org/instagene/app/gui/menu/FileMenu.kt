@@ -5,9 +5,9 @@ import org.instagene.app.gui.document.Doc
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.document.TextDocument
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.core.Seq
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.Seq
 import java.awt.event.KeyEvent
 import java.io.File
 import javax.swing.*

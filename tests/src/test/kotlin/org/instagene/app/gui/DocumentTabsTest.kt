@@ -1,28 +1,17 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.menu.ViewMenu
-import org.instagene.core.Seq
 import org.instagene.core.project.ProjectLayout
 import org.instagene.core.project.SeqProject
+import org.instagene.core.sequence.Seq
 import java.awt.BorderLayout
 import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
-import javax.swing.JButton
-import javax.swing.JCheckBoxMenuItem
-import javax.swing.JMenuItem
-import javax.swing.JPanel
-import javax.swing.SwingUtilities
+import javax.swing.*
 import javax.swing.plaf.basic.BasicSplitPaneUI
 import kotlin.math.abs
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
-import kotlin.test.fail
+import kotlin.test.*
 
 /**
  * Multi-document editing: tabs open, switch, mark dirty and close, with the
@@ -536,7 +525,7 @@ class DocumentTabsTest {
             val layout = working?.layout as? BorderLayout
             assertEquals(content.docTabs, layout?.getLayoutComponent(BorderLayout.NORTH), "tabs must be the working view's top")
             assertFalse(
-                working.components.any { it is javax.swing.AbstractButton },
+                working.components.any { it is AbstractButton },
                 "the working view must have no toolbar buttons",
             )
             assertFalse("New" in collectButtonTexts(content), "the New button must be removed")
@@ -547,7 +536,7 @@ class DocumentTabsTest {
     private fun collectButtonTexts(container: java.awt.Container): List<String> {
         val texts = ArrayList<String>()
         for (c in container.components) {
-            if (c is javax.swing.AbstractButton) texts += c.text
+            if (c is AbstractButton) texts += c.text
             if (c is java.awt.Container) texts += collectButtonTexts(c)
         }
         return texts

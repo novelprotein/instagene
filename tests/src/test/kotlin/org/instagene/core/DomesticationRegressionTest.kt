@@ -1,6 +1,15 @@
-package org.instagene.core
+﻿package org.instagene.core
 
-import kotlin.test.*
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.feature.FeatureTranslations
+import org.instagene.core.molecular.SiteDomestication
+import org.instagene.core.sequence.Alphabet
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Strand
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class DomesticationRegressionTest {
     @Test fun reverseStrandEditsPreserveProteinAndRemoveSites() {

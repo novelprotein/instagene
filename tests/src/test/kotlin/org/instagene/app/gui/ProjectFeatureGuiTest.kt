@@ -1,15 +1,16 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
+
 
 import org.instagene.app.gui.dialog.SettingsDialog
 import org.instagene.app.gui.project.BatchOperation
 import org.instagene.app.gui.project.BatchOperationPanel
 import org.instagene.app.gui.project.ProjectCollectionsPanel
-import org.instagene.core.ExternalTools
-import org.instagene.core.Seq
-import org.instagene.core.io.SequenceFormatCatalog
+import org.instagene.core.integration.ExternalTools
 import org.instagene.core.io.SeqIO
+import org.instagene.core.io.SequenceFormatCatalog
 import org.instagene.core.project.CollectionStore
 import org.instagene.core.project.SeqProject
+import org.instagene.core.sequence.Seq
 import java.awt.Component
 import java.awt.Container
 import java.io.File
@@ -18,11 +19,7 @@ import javax.swing.JMenu
 import javax.swing.JTabbedPane
 import javax.swing.JTable
 import javax.swing.SwingUtilities
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlin.test.fail
+import kotlin.test.*
 
 class ProjectFeatureGuiTest {
     private fun <T> onEdt(block: () -> T): T {
@@ -65,7 +62,7 @@ class ProjectFeatureGuiTest {
         assertFalse(onEdt { content.menuBar.getMenu(4)!!.isEnabled }, "Sequence Tools stay disabled without a sequence tab.")
         assertFalse(onEdt { content.menuBar.getMenu(6)!!.isEnabled }, "Sequence Actions stay disabled without a sequence tab.")
         assertEquals(
-            listOf("Workflow Library…", "New Project...", "Open Project...", "Close Project", "Reload Project from Disk", "ELN / Lab Notebook", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
+            listOf("Workflow Libraryâ€¦", "New Project...", "Open Project...", "Close Project", "Reload Project from Disk", "ELN / Lab Notebook", "Search Project...", "Collections...", "Batch Convert...", "Batch Annotate...", "Batch Update Properties...", "Recent Projects"),
             menuItemTexts(projectMenu),
         )
         assertFalse(

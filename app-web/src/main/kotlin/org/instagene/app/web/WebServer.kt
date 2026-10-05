@@ -4,8 +4,14 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import org.instagene.core.*
+import org.instagene.core.analysis.GelLane
+import org.instagene.core.analysis.SearchMode
+import org.instagene.core.analysis.VirtualGel
+import org.instagene.core.enzyme.Digest
+import org.instagene.core.enzyme.Enzymes
 import org.instagene.core.io.SeqIO
+import org.instagene.core.report.Reports
+import org.instagene.core.sequence.*
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ExecutorService

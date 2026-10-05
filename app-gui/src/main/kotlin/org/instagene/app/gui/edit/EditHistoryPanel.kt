@@ -1,25 +1,14 @@
 package org.instagene.app.gui.edit
 
-import org.instagene.app.gui.ContextMenus
-import org.instagene.app.gui.installRowContextMenu
+import org.instagene.app.gui.component.ContextMenus
+import org.instagene.app.gui.component.installRowContextMenu
 import org.instagene.core.project.EditEntry
 import org.instagene.core.project.EditKind
-import java.awt.BorderLayout
-import java.awt.CardLayout
-import java.awt.Color
-import java.awt.Component
-import java.awt.Font
+import java.awt.*
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import javax.swing.BorderFactory
-import javax.swing.JLabel
-import javax.swing.JPanel
-import javax.swing.JPopupMenu
-import javax.swing.JScrollPane
-import javax.swing.JTable
-import javax.swing.JTextField
-import javax.swing.RowFilter
+import javax.swing.*
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.TableRowSorter
 

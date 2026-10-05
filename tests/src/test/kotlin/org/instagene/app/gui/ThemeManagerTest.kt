@@ -1,4 +1,4 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.prefs.PrefsStore

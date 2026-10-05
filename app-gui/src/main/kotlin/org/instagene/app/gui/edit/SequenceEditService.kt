@@ -1,8 +1,9 @@
 package org.instagene.app.gui.edit
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.core.Alphabet
-import org.instagene.core.SeqKind
+import org.instagene.core.sequence.Alphabet
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
 
 /** Shared, validated sequence-edit commands used by menus, keyboard input, and quick actions. */
 object SequenceEditService {
@@ -44,7 +45,7 @@ object SequenceEditService {
         return true
     }
 
-    fun extractSelection(doc: SeqDocument): org.instagene.core.Seq? {
+    fun extractSelection(doc: SeqDocument): Seq? {
         if (!doc.hasSelection) return null
         val start = doc.selectionStart
         val end = doc.selectionEnd

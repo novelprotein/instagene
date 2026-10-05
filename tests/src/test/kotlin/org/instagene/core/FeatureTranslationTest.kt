@@ -1,4 +1,10 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.feature.FeatureTranslations
+import org.instagene.core.feature.TranslationValidationSeverity
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Strand
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

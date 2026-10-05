@@ -1,6 +1,6 @@
 package org.instagene.core.io
 
-import org.instagene.core.ChromatogramReader
+import org.instagene.core.alignment.ChromatogramReader
 import java.io.File
 
 /**

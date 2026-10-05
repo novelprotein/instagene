@@ -1,23 +1,6 @@
 package org.instagene.core.io
 
-import org.instagene.core.Alphabet
-import org.instagene.core.Feature
-import org.instagene.core.FeatureLocationNode
-import org.instagene.core.MoleculeProperties
-import org.instagene.core.PrimerAnnotation
-import org.instagene.core.ProcedureRecord
-import org.instagene.core.RecordHeaderField
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.Strand
-import org.instagene.core.Strandedness
-import org.instagene.core.Topology
-import org.instagene.core.FeatureLocationMetadata
-import org.instagene.core.SequenceRecordMetadata
-import org.instagene.core.SequenceReference
-import org.instagene.core.SequenceOrigin
-import org.instagene.core.MethylationSource
-import org.instagene.core.MethylationState
+import org.instagene.core.sequence.*
 import java.io.Reader
 import java.io.StringReader
 import java.time.Instant
@@ -25,7 +8,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatterBuilder
-import java.util.Locale
+import java.util.*
 
 /**
  * A pragmatic GenBank flat-file reader/writer.
@@ -548,7 +531,7 @@ object GenBank {
     private fun legacyLocation(feature: Feature): String {
         val children = feature.locationSegments.map { segment -> FeatureLocationNode(segment = segment) }
         val node = if (children.size == 1) children.single() else FeatureLocationNode(
-            operator = org.instagene.core.FeatureLocationOperator.JOIN,
+            operator = FeatureLocationOperator.JOIN,
             children = children,
         )
         val location = GenBankLocations.format(node)

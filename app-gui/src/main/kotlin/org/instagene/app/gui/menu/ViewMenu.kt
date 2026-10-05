@@ -1,14 +1,10 @@
 package org.instagene.app.gui.menu
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.tool.SequenceView
-import org.instagene.core.SeqKind
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.sequence.SeqKind
 import java.awt.event.KeyEvent
-import javax.swing.JCheckBoxMenuItem
-import javax.swing.JMenu
-import javax.swing.JMenuItem
-import javax.swing.JOptionPane
-import javax.swing.KeyStroke
+import javax.swing.*
 
 class ViewMenu(
     private val doc: SeqDocument,

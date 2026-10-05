@@ -38,7 +38,7 @@ tasks.register<JavaExec>("desktopBench") {
     group = "application"
     description = "Runs headless desktop viewport benchmarks for the performance dashboard."
     classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("org.instagene.app.gui.DesktopBenchmark")
+    mainClass.set("org.instagene.app.gui.benchmark.DesktopBenchmark")
     jvmArgs("-Djava.awt.headless=true")
 }
 

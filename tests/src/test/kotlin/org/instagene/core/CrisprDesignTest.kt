@@ -1,4 +1,10 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.molecular.CrisprDesign
+import org.instagene.core.molecular.GuideRNA
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Strand
+import org.instagene.core.sequence.Topology
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,55 +1,41 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
+
+import org.instagene.app.gui.component.StatusBar
+import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.document.TextDocument
 import org.instagene.app.gui.document.TextEditorView
 import org.instagene.app.gui.edit.EditMenu
 import org.instagene.app.gui.edit.SequenceEditActions
 import org.instagene.app.gui.edit.TextEditActions
 import org.instagene.app.gui.enzyme.EnzymeManagerModel
-import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.prefs.SavedItem
-import org.instagene.core.Enzymes
-import org.instagene.core.Feature
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.TestSequenceFixtures
-import org.instagene.core.Topology
-import org.instagene.app.gui.prefs.SavedKind
-import org.instagene.app.gui.tool.DigestPanel
-import org.instagene.app.gui.tool.FeaturesPanel
 import org.instagene.app.gui.menu.FileMenu
-import org.instagene.app.gui.tool.InfoPanel
-import org.instagene.app.gui.tool.LibraryPanel
-import org.instagene.app.gui.tool.PlasmidMapPanel
-import org.instagene.app.gui.tool.PrimersPanel
-import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.tool.SequenceView
-import org.instagene.app.gui.tool.SequenceInteraction
-import org.instagene.app.gui.tool.SequenceObject
 import org.instagene.app.gui.menu.ToolsMenu
 import org.instagene.app.gui.menu.ViewMenu
+import org.instagene.app.gui.prefs.Prefs
+import org.instagene.app.gui.prefs.SavedContext
+import org.instagene.app.gui.prefs.SavedItem
+import org.instagene.app.gui.prefs.SavedKind
+import org.instagene.app.gui.tool.enzyme.DigestPanel
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.app.gui.tool.info.InfoPanel
+import org.instagene.app.gui.tool.library.LibraryPanel
+import org.instagene.app.gui.tool.map.PlasmidMapPanel
+import org.instagene.app.gui.tool.primer.PrimersPanel
+import org.instagene.app.gui.tool.sequence.SequenceInteraction
+import org.instagene.app.gui.tool.sequence.SequenceObject
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.TestSequenceFixtures
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.sequence.*
 import java.awt.Container
 import java.awt.GraphicsEnvironment
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import java.io.File
-import javax.swing.JCheckBox
-import javax.swing.JMenu
-import javax.swing.JMenuItem
-import javax.swing.JScrollPane
-import javax.swing.JLabel
-import javax.swing.JTextField
-import javax.swing.SwingUtilities
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
-import kotlin.test.fail
+import javax.swing.*
+import kotlin.test.*
 
 /**
  * Headless Swing smoke tests: construct UI on the EDT, exercise model-driven
@@ -135,7 +121,7 @@ class GuiSmokeTest {
             doc.setMappedEnzymes(listOf(Enzymes.require("EcoRI")))
             doc.select(0, 6)
 
-            assertTrue(view.statusText().contains("Selected range 1–6 (6 bp"))
+            assertTrue(view.statusText().contains("Selected range 1â€“6 (6 bp"))
             paintComponent(view, 900, 400)
             assertTrue(view.cutSiteLabelsForTest().contains("EcoRI"), "selected enzyme label should remain visible")
         }
@@ -158,7 +144,7 @@ class GuiSmokeTest {
             assertTrue(descendants(digest, JLabel::class.java).any { it.text.startsWith("Matches for EcoRI (2)") })
 
             doc.select(6, 12)
-            assertTrue(digest.scopeTextForTest().contains("selected range 7–12 (6 bp; context only)"))
+            assertTrue(digest.scopeTextForTest().contains("selected range 7â€“12 (6 bp; context only)"))
 
             digest.dispose()
 
@@ -171,7 +157,7 @@ class GuiSmokeTest {
                 })
                 content.activeDocument.select(6, 12)
                 assertTrue(descendants(content.analysisPanel, JLabel::class.java).any {
-                    it.text.contains("selected range 7–12 (6 bp; context only)")
+                    it.text.contains("selected range 7â€“12 (6 bp; context only)")
                 })
             } finally {
                 content.dispose()
@@ -367,7 +353,7 @@ class GuiSmokeTest {
                     type = "promoter",
                     start = 1,
                     end = 5,
-                    strand = org.instagene.core.Strand.REVERSE,
+                    strand = Strand.REVERSE,
                 )
                 content.openSequence(Seq(name = "source", bases = "AACCGG", features = listOf(feature)))
                 content.featuresPanel.selectFeatureRow(0)
@@ -523,7 +509,7 @@ class GuiSmokeTest {
         }
         awaitDigestCounts(panel)
         onEdt {
-            val table = descendants(panel, javax.swing.JTable::class.java).single {
+            val table = descendants(panel, JTable::class.java).single {
                 it.getColumnName(0) == "Use"
             }
             val ecoRow = panel.displayedEnzymes().indexOfFirst { it.name == "EcoRI" }
@@ -532,7 +518,7 @@ class GuiSmokeTest {
             assertTrue(bluntRow >= 0)
             assertEquals("5' overhang (4 bp): AATT", table.getValueAt(ecoRow, 3))
             assertEquals("blunt", table.getValueAt(bluntRow, 3))
-            assertTrue(table.getValueAt(ecoRow, 3).toString() != "—")
+            assertTrue(table.getValueAt(ecoRow, 3).toString() != "â€”")
             panel.dispose()
         }
     }
@@ -555,7 +541,7 @@ class GuiSmokeTest {
     fun digestPanelOmitsRedundantListSitesButton() {
         onEdt {
             val panel = DigestPanel(SeqDocument(Seq(bases = "ACGAATTCGGATCCGAATTCACGT")), {}, { _, _ -> })
-            val buttons = descendants(panel, javax.swing.JButton::class.java)
+            val buttons = descendants(panel, JButton::class.java)
             assertTrue(buttons.none { it.text == "List sites" })
             assertTrue(buttons.any { it.text == "Diagnostic sites" })
             assertTrue(buttons.any { it.text == "Clear" })
@@ -575,7 +561,7 @@ class GuiSmokeTest {
             assertEquals(2, eco.size)
             assertEquals(2, eco[0].recognitionStart)
             assertEquals(14, eco[1].recognitionStart)
-            assertEquals(org.instagene.core.Strand.FORWARD, eco[0].strand)
+            assertEquals(Strand.FORWARD, eco[0].strand)
 
             panel.selectEnzymeInTable(Enzymes.require("BamHI"))
             val bam = panel.displayedMatches()
@@ -595,7 +581,7 @@ class GuiSmokeTest {
                 prefs,
             )
             panel.selectEnzymeInTable(Enzymes.require("EcoRI"))
-            val table = descendants(panel, javax.swing.JTable::class.java).single {
+            val table = descendants(panel, JTable::class.java).single {
                 it.columnCount == 7 && it.getColumnName(0) == "Length"
             }
             assertEquals(listOf("Length", "Start", "End", "Strand", "Overhang", "Recognition sequence", "Cut type"),
@@ -608,11 +594,11 @@ class GuiSmokeTest {
             assertEquals("GAATTC", table.getValueAt(matchRow, 5))
             assertTrue(table.getValueAt(matchRow, 6).toString().isNotBlank())
 
-            val fragmentOnlyRow = (0 until table.rowCount).first { table.getValueAt(it, 3) == "—" }
+            val fragmentOnlyRow = (0 until table.rowCount).first { table.getValueAt(it, 3) == "â€”" }
             assertTrue(table.getValueAt(fragmentOnlyRow, 0).toString().endsWith("bp"))
             assertTrue(table.getValueAt(fragmentOnlyRow, 1).toString().isNotBlank())
             assertTrue(table.getValueAt(fragmentOnlyRow, 2).toString().isNotBlank())
-            assertEquals(listOf("—", "—", "—", "—"), (3..6).map { table.getValueAt(fragmentOnlyRow, it) })
+            assertEquals(listOf("â€”", "â€”", "â€”", "â€”"), (3..6).map { table.getValueAt(fragmentOnlyRow, it) })
             panel.dispose()
         }
     }
@@ -833,7 +819,7 @@ class GuiSmokeTest {
                 { _, _ -> },
                 prefs,
             )
-            val table = descendants(digest, javax.swing.JTable::class.java).single {
+            val table = descendants(digest, JTable::class.java).single {
                 it.columnCount >= 2 && it.getColumnName(0) == "Use" && it.getColumnName(1) == "Enzyme"
             }
             var ecoRow = digest.displayedEnzymes().indexOfFirst { it.name == "EcoRI" }
@@ -900,15 +886,15 @@ class GuiSmokeTest {
                     content.analysisPanel.selectTool("Assembly")
                     val partsField = descendants(content.analysisPanel, JTextField::class.java)
                         .single { it.columns == 36 }
-                    val assembly = partsField.getParent().getParent() as javax.swing.JPanel
+                    val assembly = partsField.getParent().getParent() as JPanel
 
                     descendants(assembly, JTextField::class.java).single { it.columns == 36 }.text =
                         "${partA.absolutePath},${partB.absolutePath}"
                     descendants(assembly, JTextField::class.java).single { it.text == "assembly_product" }.text =
                         "opened_from_analysis"
                     descendants(assembly, JCheckBox::class.java).single { it.text == "Circular product" }.isSelected = false
-                    descendants(assembly, javax.swing.JButton::class.java).single { it.text == "Preview" }.doClick()
-                    descendants(assembly, javax.swing.JButton::class.java).single { it.text == "Open product" }.doClick()
+                    descendants(assembly, JButton::class.java).single { it.text == "Preview" }.doClick()
+                    descendants(assembly, JButton::class.java).single { it.text == "Open product" }.doClick()
 
                     assertEquals("Sequence", content.toolTabs.getTitleAt(content.toolTabs.selectedIndex))
                     assertEquals("opened_from_analysis", content.activeDocument.seq.name)
@@ -1067,7 +1053,7 @@ class GuiSmokeTest {
 
             assertTrue(panel.design())
             assertNotNull(panel.lastPrimers())
-            val targetTm = descendants(panel, javax.swing.JSpinner::class.java).single()
+            val targetTm = descendants(panel, JSpinner::class.java).single()
             targetTm.value = (targetTm.value as Double) + 0.5
             assertNull(panel.lastPrimers())
             assertFalse(panel.areResultActionsEnabled())
@@ -1320,7 +1306,7 @@ class GuiSmokeTest {
                     kind = SavedKind.FRAGMENT,
                     name = "frag",
                     bases = "TTTT",
-                    context = org.instagene.app.gui.prefs.SavedContext("src", start = 2, end = 6),
+                    context = SavedContext("src", start = 2, end = 6),
                 )
             )
             assertEquals(1, panel.libraryTable.rowCount)
@@ -1347,7 +1333,7 @@ class GuiSmokeTest {
                     kind = SavedKind.PRIMER,
                     name = "screening_primer",
                     bases = "ACGT",
-                    context = org.instagene.app.gui.prefs.SavedContext("src", 1, 5),
+                    context = SavedContext("src", 1, 5),
                     description = "Original screening primer",
                 )
             )
@@ -1360,7 +1346,7 @@ class GuiSmokeTest {
             assertEquals("renamed_primer", updated.name)
             assertEquals("ACGT", updated.bases)
             assertEquals("Verification primer", updated.description)
-            assertEquals(org.instagene.app.gui.prefs.SavedContext("src", 1, 5), updated.context)
+            assertEquals(SavedContext("src", 1, 5), updated.context)
             assertEquals("Verification primer", panel.libraryTable.model.getValueAt(0, 4))
 
             assertNotNull(panel.updateLibraryElement(0, "renamed_primer", "AC?T", "Bad edit"))
@@ -1379,7 +1365,7 @@ class GuiSmokeTest {
                     kind = SavedKind.FRAGMENT,
                     name = "frag",
                     bases = "AAAA",
-                    context = org.instagene.app.gui.prefs.SavedContext("src", 0, 4),
+                    context = SavedContext("src", 0, 4),
                 )
             )
             assertEquals(1, panel.libraryTable.rowCount)

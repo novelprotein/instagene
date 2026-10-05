@@ -1,5 +1,13 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.alignment.SangerAlignment
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.molecular.CloningWorkflows
+import org.instagene.core.primer.*
+import org.instagene.core.report.Reports
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SequenceIdentity
+import org.instagene.core.sequence.Topology
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

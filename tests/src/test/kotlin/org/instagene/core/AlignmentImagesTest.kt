@@ -1,4 +1,10 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.alignment.AlignmentImageOptions
+import org.instagene.core.alignment.AlignmentImages
+import org.instagene.core.alignment.MultipleAlignmentAlgorithm
+import org.instagene.core.alignment.MultipleAlignmentResult
+import org.instagene.core.sequence.Seq
 
 import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO

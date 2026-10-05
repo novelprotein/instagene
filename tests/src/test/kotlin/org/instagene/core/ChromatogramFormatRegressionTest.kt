@@ -1,8 +1,10 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.alignment.ChromatogramReader
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /** Fixtures follow the published ABIF and Staden layouts, with distinct header fields and multiple bases. */
 class ChromatogramFormatRegressionTest {

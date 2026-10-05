@@ -1,5 +1,10 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.alignment.*
+import org.instagene.core.analysis.SequenceStatistics
+import org.instagene.core.molecular.CrisprDesign
+import org.instagene.core.primer.PrimerThermodynamics
+import org.instagene.core.sequence.*
 import kotlin.test.*
 
 class ScientificReferenceRegressionTest {

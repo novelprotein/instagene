@@ -2,114 +2,53 @@
 
 package org.instagene.app.gui
 
-import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.document.Doc
-import org.instagene.app.gui.document.DocumentHub
-import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.document.TextDocument
-import org.instagene.app.gui.document.TextEditorView
+import org.instagene.app.gui.component.*
 import org.instagene.app.gui.dialog.SettingsDialog
+import org.instagene.app.gui.document.*
 import org.instagene.app.gui.edit.EditHistoryPanel
 import org.instagene.app.gui.edit.EditMenu
 import org.instagene.app.gui.edit.EditRecorder
 import org.instagene.app.gui.edit.SequenceEditActions
 import org.instagene.app.gui.edit.TextEditActions
-import org.instagene.app.gui.file.FileType
-import org.instagene.app.gui.file.FileOpenBatch
-import org.instagene.app.gui.file.FileOpenFailure
-import org.instagene.app.gui.file.FileOpenService
-import org.instagene.app.gui.file.FileTypes
-import org.instagene.app.gui.file.OpenedFile
-import org.instagene.app.gui.menu.FileMenu
-import org.instagene.app.gui.menu.HelpMenu
-import org.instagene.app.gui.menu.ToolsMenu
-import org.instagene.app.gui.menu.ViewMenu
-import org.instagene.app.gui.menu.confirmDiscardChanges
-import org.instagene.app.gui.menu.menuShortcut
-import org.instagene.app.gui.menu.menuShortcutWithShift
+import org.instagene.app.gui.file.*
+import org.instagene.app.gui.menu.*
+import org.instagene.app.gui.prefs.Prefs
 import org.instagene.app.gui.project.BatchOperation
 import org.instagene.app.gui.project.ProjectDialogs
 import org.instagene.app.gui.project.ProjectTreePanel
-import org.instagene.app.gui.tool.DigestPanel
-import org.instagene.app.gui.tool.AnalysisPanel
-import org.instagene.app.gui.tool.FeaturesPanel
-import org.instagene.app.gui.tool.InfoPanel
-import org.instagene.app.gui.tool.LibraryPanel
-import org.instagene.app.gui.tool.PlasmidMapPanel
-import org.instagene.app.gui.tool.PrimersPanel
-import org.instagene.app.gui.tool.SequenceView
 import org.instagene.app.gui.theme.ThemeRefreshable
-import org.instagene.app.gui.tool.SequenceGraphics
-import org.instagene.app.gui.tool.SequenceInteraction
-import org.instagene.app.gui.tool.WorkflowLibraryPanel
-import org.instagene.core.ElnAdapters
-import org.instagene.core.ElnArtifactRole
-import org.instagene.core.ElnAttachment
-import org.instagene.core.ElnBundleRequest
-import org.instagene.core.ElnCopy
-import org.instagene.core.NcbiClient
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
+import org.instagene.app.gui.tool.analysis.AnalysisPanel
+import org.instagene.app.gui.tool.enzyme.DigestPanel
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.app.gui.tool.info.InfoPanel
+import org.instagene.app.gui.tool.library.LibraryPanel
+import org.instagene.app.gui.tool.library.WorkflowLibraryPanel
+import org.instagene.app.gui.tool.map.PlasmidMapPanel
+import org.instagene.app.gui.tool.primer.PrimersPanel
+import org.instagene.app.gui.tool.sequence.SequenceGraphics
+import org.instagene.app.gui.tool.sequence.SequenceInteraction
+import org.instagene.app.gui.tool.sequence.SequenceObject
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.app.gui.welcome.WelcomeExample
+import org.instagene.app.gui.welcome.WelcomePanel
 import org.instagene.core.Version
+import org.instagene.core.integration.*
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
-import org.instagene.core.project.ProjectSearch
-import org.instagene.core.project.ProjectLayout
-import org.instagene.core.project.ProjectFileRevision
-import org.instagene.core.project.ProjectReload
-import org.instagene.core.project.ProjectReloadDisposition
-import org.instagene.core.project.SeqProject
-import java.awt.BasicStroke
-import java.awt.BorderLayout
-import java.awt.CardLayout
-import java.awt.Component
-import java.awt.Desktop
-import java.awt.Dimension
-import java.awt.FlowLayout
-import java.awt.Graphics
-import java.awt.Graphics2D
-import java.awt.GraphicsEnvironment
-import java.awt.Insets
-import java.awt.RenderingHints
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
-import java.awt.event.InputEvent
-import java.awt.event.KeyEvent
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
+import org.instagene.core.project.*
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SeqKind
+import java.awt.*
+import java.awt.event.*
 import java.io.File
 import java.nio.file.Files
-import javax.swing.BorderFactory
-import javax.swing.Icon
-import javax.swing.JButton
-import javax.swing.JCheckBoxMenuItem
-import javax.swing.JComponent
-import javax.swing.JFileChooser
-import javax.swing.JFrame
-import javax.swing.JDialog
-import javax.swing.JLabel
-import javax.swing.JMenu
-import javax.swing.JMenuBar
-import javax.swing.JMenuItem
-import javax.swing.JPanel
-import javax.swing.JProgressBar
-import javax.swing.JScrollPane
-import javax.swing.JSplitPane
-import javax.swing.JTabbedPane
-import javax.swing.JToggleButton
-import javax.swing.JTextField
-import javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT as FocusedAncestorInputMap
-import javax.swing.KeyStroke
-import javax.swing.SwingUtilities
-import javax.swing.SwingWorker
-import javax.swing.JTable
-import javax.swing.JOptionPane
-import javax.swing.WindowConstants
-import javax.swing.table.DefaultTableModel
+import javax.swing.*
+import javax.swing.filechooser.FileNameExtensionFilter
 import javax.swing.plaf.basic.BasicSplitPaneDivider
 import javax.swing.plaf.basic.BasicSplitPaneUI
-import javax.swing.filechooser.FileNameExtensionFilter
+import javax.swing.table.DefaultTableModel
 import kotlin.math.roundToInt
+import javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT as FocusedAncestorInputMap
 
 /**
  * The entire editor UI, built as a plain [JPanel] so it can be constructed and
@@ -408,9 +347,9 @@ class InstaGeneContent(
             val index = toolTabs.indexOfTab(tab)
             if (index >= 0) toolTabs.selectedIndex = index
             when (val item = sequenceInteraction.selected) {
-                is org.instagene.app.gui.tool.SequenceObject.Annotation -> if (tab == "Features") featuresPanel.selectObject(item.feature)
-                is org.instagene.app.gui.tool.SequenceObject.Site -> if (tab == "Enzyme") digestPanel.selectObject(item.site)
-                is org.instagene.app.gui.tool.SequenceObject.Primer -> if (tab == "Primers") primersPanel.selectObject(item)
+                is SequenceObject.Annotation -> if (tab == "Features") featuresPanel.selectObject(item.feature)
+                is SequenceObject.Site -> if (tab == "Enzyme") digestPanel.selectObject(item.site)
+                is SequenceObject.Primer -> if (tab == "Primers") primersPanel.selectObject(item)
                 null -> {}
             }
         }
@@ -530,7 +469,7 @@ class InstaGeneContent(
         }
         hits.forEach { model.addRow(arrayOf(root.toPath().relativize(it.file.toPath()).toString(), it.field.name.lowercase(), it.summary)) }
         val table = JTable(model).apply {
-            setSelectionMode(javax.swing.ListSelectionModel.SINGLE_SELECTION)
+            setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
             toolTipText = "Double-click a result to open its sequence file."
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) {
@@ -1584,8 +1523,8 @@ class InstaGeneContent(
     private fun installCommandPaletteShortcut() {
         getInputMap(FocusedAncestorInputMap)
             .put(commandPaletteShortcut(), "show-command-palette")
-        actionMap.put("show-command-palette", object : javax.swing.AbstractAction() {
-            override fun actionPerformed(event: java.awt.event.ActionEvent?) = showCommandPalette()
+        actionMap.put("show-command-palette", object : AbstractAction() {
+            override fun actionPerformed(event: ActionEvent?) = showCommandPalette()
         })
     }
 

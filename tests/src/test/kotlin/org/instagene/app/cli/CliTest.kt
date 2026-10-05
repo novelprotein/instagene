@@ -1,15 +1,15 @@
-package org.instagene.app.cli
+﻿package org.instagene.app.cli
 
-import org.instagene.core.Topology
 import org.instagene.core.TestSequenceFixtures
-import org.instagene.core.WorkflowRecipes
-import org.instagene.core.GenericZipElnAdapter
+import org.instagene.core.integration.GenericZipElnAdapter
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.Topology
+import org.instagene.core.workflow.WorkflowRecipes
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
-import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test

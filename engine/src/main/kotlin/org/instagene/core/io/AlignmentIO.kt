@@ -1,7 +1,9 @@
 package org.instagene.core.io
 
-import org.instagene.core.Seq
-import org.instagene.core.view
+import org.instagene.core.alignment.MultipleAlignmentAlgorithm
+import org.instagene.core.alignment.MultipleAlignmentResult
+import org.instagene.core.alignment.view
+import org.instagene.core.sequence.Seq
 
 /** Interchange formats for a pre-aligned multiple-sequence alignment. */
 enum class AlignmentFormat(val displayName: String) {
@@ -163,7 +165,7 @@ object AlignmentIO {
 
     private fun writeClustal(sequences: List<Seq>, lineWidth: Int): String {
         val nameWidth = sequences.maxOf { it.name.length }.coerceAtLeast(8)
-        val view = org.instagene.core.MultipleAlignmentResult(org.instagene.core.MultipleAlignmentAlgorithm.BUILTIN, sequences).view()
+        val view = MultipleAlignmentResult(MultipleAlignmentAlgorithm.BUILTIN, sequences).view()
         return buildString {
             appendLine("CLUSTAL InstaGene multiple sequence alignment")
             appendLine()

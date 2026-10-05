@@ -1,5 +1,7 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.integration.*
+import org.instagene.core.sequence.*
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile

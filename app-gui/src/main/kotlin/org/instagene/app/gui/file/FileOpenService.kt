@@ -1,10 +1,10 @@
 package org.instagene.app.gui.file
 
-import org.instagene.core.ChromatogramReader
-import org.instagene.core.ChromatogramRecord
-import org.instagene.core.Seq
-import org.instagene.core.SequenceIdentity
+import org.instagene.core.alignment.ChromatogramReader
+import org.instagene.core.alignment.ChromatogramRecord
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.SequenceIdentity
 import java.io.File
 
 /**

@@ -1,6 +1,6 @@
 package org.instagene.core.io
 
-import org.instagene.core.Seq
+import org.instagene.core.sequence.Seq
 import java.io.File
 import java.util.concurrent.TimeUnit
 

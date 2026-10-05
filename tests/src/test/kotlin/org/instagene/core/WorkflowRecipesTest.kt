@@ -1,10 +1,11 @@
-package org.instagene.core
+﻿package org.instagene.core
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import org.instagene.core.molecular.CloningMethod
+import org.instagene.core.sequence.ProcedureRecord
+import org.instagene.core.sequence.Seq
+import org.instagene.core.workflow.RecipeOperation
+import org.instagene.core.workflow.WorkflowRecipes
+import kotlin.test.*
 
 class WorkflowRecipesTest {
 

@@ -1,12 +1,12 @@
 package org.instagene.app.gui.enzyme
 
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.core.Enzyme
-import org.instagene.core.EnzymeSetFile
-import org.instagene.core.Enzymes
-import org.instagene.core.LabLibraryFiles
-import org.instagene.core.LibraryImportMode
 import org.instagene.app.gui.prefs.UserPrefs
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.library.EnzymeSetFile
+import org.instagene.core.library.LabLibraryFiles
+import org.instagene.core.library.LibraryImportMode
 
 /**
  * Working state behind the Enzyme Manager dialog. Edits accumulate here against

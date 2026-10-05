@@ -1,10 +1,9 @@
 package org.instagene.app.gui.prefs
 
 import kotlinx.serialization.Serializable
-import org.instagene.core.Enzyme
-import org.instagene.core.SeqKind
-import org.instagene.core.Strand
-
+import org.instagene.core.enzyme.Enzyme
+import org.instagene.core.sequence.SeqKind
+import org.instagene.core.sequence.Strand
 /** A per-user replacement for the biochemical fields of one built-in enzyme. */
 @Serializable
 data class EnzymeOverride(

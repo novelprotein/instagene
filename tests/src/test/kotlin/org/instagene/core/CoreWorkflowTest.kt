@@ -1,6 +1,23 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.alignment.Alignment
+import org.instagene.core.alignment.ChromatogramReader
+import org.instagene.core.analysis.AdvancedSearch
+import org.instagene.core.analysis.GelLane
+import org.instagene.core.analysis.SearchRequest
+import org.instagene.core.analysis.VirtualGel
+import org.instagene.core.assembly.AssemblyWorkflows
+import org.instagene.core.assembly.Recombination
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.feature.FeatureDefinition
+import org.instagene.core.feature.FeatureLibrary
+import org.instagene.core.feature.FeatureScanProgress
+import org.instagene.core.integration.NcbiClient
 import org.instagene.core.io.*
+import org.instagene.core.molecular.DiagnosticSeverity
+import org.instagene.core.molecular.MasterMixComponent
+import org.instagene.core.molecular.MolecularCalculators
+import org.instagene.core.sequence.*
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals

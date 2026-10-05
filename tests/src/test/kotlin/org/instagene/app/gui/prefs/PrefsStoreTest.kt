@@ -1,7 +1,7 @@
-package org.instagene.app.gui.prefs
+﻿package org.instagene.app.gui.prefs
 
-import org.instagene.core.SeqKind
-import org.instagene.core.Strand
+import org.instagene.core.sequence.SeqKind
+import org.instagene.core.sequence.Strand
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -58,7 +58,7 @@ class PrefsStoreTest {
             selectedEnzymes = listOf("EcoRI"),
             primerDefaultTm = 62.5,
             activeTab = 3,
-            hostStrainSuggestions = listOf("My local host", "DH5α"),
+            hostStrainSuggestions = listOf("My local host", "DH5Î±"),
             analysisDefaults = AnalysisDefaults(
                 lastTool = "Repeats / Dot Plot",
                 alignmentAlgorithm = "MAFFT",
@@ -120,7 +120,7 @@ class PrefsStoreTest {
         assertEquals(15, reloaded.analysisDefaults.repeatWordSize)
         assertTrue(!reloaded.analysisDefaults.repeatIncludeInverted)
         assertEquals("CACHE_ONLY", reloaded.onlineCacheMode)
-        assertEquals(listOf("My local host", "DH5α"), reloaded.hostStrainSuggestions)
+        assertEquals(listOf("My local host", "DH5Î±"), reloaded.hostStrainSuggestions)
     }
 
     @Test

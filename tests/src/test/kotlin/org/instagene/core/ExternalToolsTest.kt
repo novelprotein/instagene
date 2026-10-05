@@ -1,5 +1,7 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.integration.*
+import org.instagene.core.sequence.Seq
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

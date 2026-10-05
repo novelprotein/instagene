@@ -1,9 +1,11 @@
-package org.instagene.core
+﻿package org.instagene.core
 
-import org.instagene.core.io.GenBank
+import org.instagene.core.enzyme.*
 import org.instagene.core.io.Embl
+import org.instagene.core.io.GenBank
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -52,12 +54,12 @@ class InfoMetadataTest {
 
     @Test
     fun hostInferenceRecognizesCommonBacterialStrainsAndLeavesUnknownHostsConservative() {
-        val positive = HostMethylationInferenceRules.infer("E. coli", "DH5α")
+        val positive = HostMethylationInferenceRules.infer("E. coli", "DH5Î±")
         assertEquals(true, positive.profile.dam)
         assertEquals(true, positive.profile.dcm)
-        assertEquals("DH5α", positive.matchedHost)
+        assertEquals("DH5Î±", positive.matchedHost)
 
-        val strainOnly = HostMethylationInferenceRules.infer(null, "DH5α")
+        val strainOnly = HostMethylationInferenceRules.infer(null, "DH5Î±")
         assertEquals(true, strainOnly.profile.dam)
         assertEquals(true, strainOnly.profile.dcm)
 
@@ -111,7 +113,7 @@ class InfoMetadataTest {
                 author = "Record author",
                 nucleicAcidCategory = "Bacterial",
                 labHostType = "Bacterial",
-                hostStrain = "DH5α",
+                hostStrain = "DH5Î±",
                 origin = SequenceOrigin.SYNTHETIC,
                 originLocked = true,
                 createdAt = 1_700_000_000_000,

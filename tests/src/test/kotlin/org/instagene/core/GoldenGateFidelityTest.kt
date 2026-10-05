@@ -1,4 +1,6 @@
-package org.instagene.core
+﻿package org.instagene.core
+
+import org.instagene.core.enzyme.GoldenGateFidelity
 
 import kotlin.test.Test
 import kotlin.test.assertNull

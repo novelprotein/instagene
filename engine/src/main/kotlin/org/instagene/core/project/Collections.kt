@@ -2,13 +2,13 @@ package org.instagene.core.project
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import org.instagene.core.FeatureDefinition
-import org.instagene.core.FeatureLibrary
-import org.instagene.core.MoleculeProperties
-import org.instagene.core.Seq
-import org.instagene.core.Topology
+import org.instagene.core.feature.FeatureDefinition
+import org.instagene.core.feature.FeatureLibrary
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.MoleculeProperties
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Topology
 import java.io.File
 
 @Serializable

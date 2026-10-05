@@ -1,17 +1,18 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
-import org.instagene.app.gui.tool.MapExportOptions
-import org.instagene.app.gui.tool.MapPreset
-import org.instagene.app.gui.tool.PlasmidMapPanel
-import org.instagene.app.gui.tool.FeatureLabelChoice
+
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.theme.Palette
-import org.instagene.core.Feature
-import org.instagene.core.Enzymes
-import org.instagene.core.Seq
+import org.instagene.app.gui.tool.feature.FeatureLabelChoice
+import org.instagene.app.gui.tool.map.MapExportOptions
+import org.instagene.app.gui.tool.map.MapPreset
+import org.instagene.app.gui.tool.map.PlasmidMapPanel
 import org.instagene.core.TestSequenceFixtures
-import org.instagene.core.Topology
+import org.instagene.core.enzyme.Enzymes
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Topology
 import java.awt.Color
 import java.awt.Rectangle
 import java.awt.event.InputEvent
@@ -52,7 +53,7 @@ class PlasmidMapPanelTest {
         map.setSize(400, 400)
         map.doLayout()
         val canvas = map.canvasForTest()
-        canvas.setSize(canvas.preferredSize)
+        canvas.size = canvas.preferredSize
         canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
         return canvas
     }
@@ -89,7 +90,7 @@ class PlasmidMapPanelTest {
         map.setSize(width, height)
         map.doLayout()
         val canvas = map.canvasForTest()
-        canvas.setSize(canvas.preferredSize)
+        canvas.size = canvas.preferredSize
         val image = BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB)
         val graphics = image.createGraphics()
         try { canvas.paint(graphics) } finally { graphics.dispose() }
@@ -114,6 +115,46 @@ class PlasmidMapPanelTest {
             graphics.dispose()
         }
         return image
+    }
+
+    @Test
+    fun circularBackboneDisplaySizeDoesNotChangeWithCrowdedLabels() {
+        SwingUtilities.invokeAndWait {
+            for (length in listOf(400, 10_000)) {
+                val sequence = Seq(bases = "ACGT".repeat(length / 4), topology = Topology.CIRCULAR)
+                val features = (0 until 30).map { index ->
+                    val start = if (length == 400) index * 13 else index * 330
+                    val featureLength = if (length == 400) 4 else 100
+                    Feature("label-$index", start = start, end = start + featureLength)
+                }
+                val plainMap = PlasmidMapPanel(SeqDocument(sequence))
+                val crowdedMap = PlasmidMapPanel(SeqDocument(sequence.copy(features = features)))
+                val plainDiameter = displayedBackboneDiameter(plainMap, length)
+                val crowdedDiameter = displayedBackboneDiameter(crowdedMap, length)
+
+                assertTrue(
+                    abs(plainDiameter - crowdedDiameter) < 0.001,
+                    "$length bp map changed size with crowded labels: $plainDiameter vs $crowdedDiameter px",
+                )
+                assertTrue(
+                    crowdedMap.canvasForTest().preferredSize.height > crowdedMap.viewportExtentForTest().height,
+                    "$length bp crowded labels should use the scrollable canvas",
+                )
+            }
+        }
+    }
+
+    private fun displayedBackboneDiameter(map: PlasmidMapPanel, sequenceLength: Int): Double {
+        map.setSize(360, 300)
+        map.doLayout()
+        val canvas = map.canvasForTest()
+        canvas.size = canvas.preferredSize
+        paintCanvas(canvas)
+        // Paint before measuring so backboneRadius and renderScale reflect the
+        // actual layout. The point-based display is separately exercised by
+        // the map interaction tests below.
+        map.backbonePointForTest(sequenceLength / 2)
+        return map.backboneDisplayDiameterForTest()
     }
 
     private fun labelPixels(image: BufferedImage, bounds: Rectangle, inset: Int = 1): List<Int> =
@@ -349,8 +390,7 @@ class PlasmidMapPanelTest {
             map.setSize(340, 300)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
-            assertTrue(canvas.height <= map.viewportExtentForTest().height, "crowded callouts must fit at 100%")
+            canvas.size = canvas.preferredSize
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val target = features.last()
             val hit = map.featureLabelHitCenterForTest(target.name)
@@ -374,7 +414,7 @@ class PlasmidMapPanelTest {
             map.setSize(340, 300)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
 
             val before = paintCanvas(canvas)
             val clickedBounds = map.featureLabelBoundsForTest(clicked.name)
@@ -492,7 +532,7 @@ class PlasmidMapPanelTest {
             map.setSize(360, 240)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             paintCanvas(canvas)
 
             val bounds = features.map { feature ->
@@ -550,7 +590,7 @@ class PlasmidMapPanelTest {
             map.setSize(360, 240)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             paintCanvas(canvas)
 
             val first = map.featureLabelBoundsForTest(features[0].name) ?: error("missing first label")
@@ -579,7 +619,7 @@ class PlasmidMapPanelTest {
             map.setSize(360, 240)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             paintCanvas(canvas)
 
             val bounds = features.map { feature ->
@@ -668,7 +708,7 @@ class PlasmidMapPanelTest {
             assertTrue(text.contains("width=\"640\""))
             assertTrue(text.contains("height=\"480\""))
             assertFalse(text.contains("font-size=\"24\""))
-            assertFalse(text.contains("features ·"))
+            assertFalse(text.contains("features Â·"))
         }
     }
 
@@ -801,7 +841,7 @@ class PlasmidMapPanelTest {
             val map = content.plasmidMapPanel
             map.setZoomPercent(200)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val hit = map.featureArcHitCenterForTest(feature.name)
             assertTrue(hit != null)
@@ -822,7 +862,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
 
             val bounds = map.featureLabelBoundsForTest()
@@ -848,7 +888,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val before = map.featureLabelBoundsForTest("feature-0")
 
@@ -873,7 +913,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             map.setViewportPositionForTest(360, 0)
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val target = features.mapNotNull { feature ->
@@ -908,7 +948,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             map.setViewportPositionForTest(520, 0)
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val viewport = map.viewportPositionForTest()
@@ -940,7 +980,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             map.setViewportPositionForTest(0, 0)
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val before = map.viewportPositionForTest()
@@ -964,7 +1004,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             val before = map.viewportPositionForTest()
             val event = MouseWheelEvent(
                 canvas,
@@ -1013,7 +1053,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
             val faded = map.featureLabelAlphasForTest().entries.firstOrNull { it.value < 0.18f }
 
@@ -1033,7 +1073,7 @@ class PlasmidMapPanelTest {
             map.setSize(340, 300)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             canvas.paint(BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics)
 
             assertEquals(Color.decode("#123456"), map.featureLabelStripeColorsForTest().getValue(custom.name))
@@ -1051,7 +1091,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             map.ensureStaticMapImageSizeForTest()
             val renderCount = map.staticMapRenderCountForTest()
 
@@ -1085,7 +1125,7 @@ class PlasmidMapPanelTest {
             map.setSize(320, 260)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             val graphics = BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB).graphics
             try {
                 canvas.paint(graphics)
@@ -1111,7 +1151,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             val cacheSize = map.ensureStaticMapImageSizeForTest()
 
             assertEquals(canvas.width, cacheSize.width)
@@ -1127,7 +1167,7 @@ class PlasmidMapPanelTest {
             map.setSize(420, 360)
             map.doLayout()
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             val image = BufferedImage(canvas.width * 2, canvas.height * 2, BufferedImage.TYPE_INT_ARGB)
             val graphics = image.createGraphics()
             try {
@@ -1152,7 +1192,7 @@ class PlasmidMapPanelTest {
             map.doLayout()
             map.setZoomPercent(300)
             val canvas = map.canvasForTest()
-            canvas.setSize(canvas.preferredSize)
+            canvas.size = canvas.preferredSize
             val image = BufferedImage(canvas.width, canvas.height, BufferedImage.TYPE_INT_ARGB)
             canvas.paint(image.graphics)
             val targetName = map.featureLabelAlphasForTest().entries.firstOrNull { it.value >= 0.18f }?.key

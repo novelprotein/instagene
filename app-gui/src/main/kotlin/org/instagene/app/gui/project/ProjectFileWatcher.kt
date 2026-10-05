@@ -2,12 +2,7 @@ package org.instagene.app.gui.project
 
 import org.instagene.core.project.SeqProject
 import java.io.File
-import java.nio.file.FileSystems
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardWatchEventKinds
-import java.nio.file.WatchKey
-import java.nio.file.WatchService
+import java.nio.file.*
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 
@@ -75,7 +70,7 @@ class ProjectFileWatcher(private val onChanged: () -> Unit) : AutoCloseable {
             }
         } catch (_: InterruptedException) {
             // Shutting down — normal.
-        } catch (_: java.nio.file.ClosedWatchServiceException) {
+        } catch (_: ClosedWatchServiceException) {
             // Shutting down — normal.
         }
     }
@@ -94,7 +89,7 @@ class ProjectFileWatcher(private val onChanged: () -> Unit) : AutoCloseable {
                         .forEach { registerRecursive(ws, it) }
                 }
             }
-        } catch (_: java.nio.file.ClosedWatchServiceException) {
+        } catch (_: ClosedWatchServiceException) {
             // Shutting down mid-registration — fine.
         }
     }

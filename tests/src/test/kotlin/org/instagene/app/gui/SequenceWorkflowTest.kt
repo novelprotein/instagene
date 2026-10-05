@@ -1,12 +1,19 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.app.gui.tool.*
-import org.instagene.core.*
+import org.instagene.app.gui.tool.primer.PrimersPanel
+import org.instagene.app.gui.tool.sequence.SequenceGraphics
+import org.instagene.app.gui.tool.sequence.SequenceInteraction
+import org.instagene.app.gui.tool.sequence.SequenceObject
+import org.instagene.app.gui.tool.sequence.SequenceView
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.PrimerAnnotation
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Strand
+import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 import javax.swing.SwingUtilities
 import kotlin.test.*
-import org.junit.jupiter.api.Test
 
 class SequenceWorkflowTest {
     private fun edt(action: () -> Unit) = SwingUtilities.invokeAndWait(action)

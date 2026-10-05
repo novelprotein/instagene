@@ -1,12 +1,12 @@
-package org.instagene.core.io
+﻿package org.instagene.core.io
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.instagene.core.CloningMethod
-import org.instagene.core.RecipeOperation
-import org.instagene.core.WorkflowRecipes
+import org.instagene.core.molecular.CloningMethod
+import org.instagene.core.workflow.RecipeOperation
+import org.instagene.core.workflow.WorkflowRecipes
 import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals

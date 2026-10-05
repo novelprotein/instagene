@@ -1,16 +1,16 @@
 package org.instagene.app.gui.menu
 
-import org.instagene.app.gui.dialog.AnalysisDialogs
+import org.instagene.app.gui.analysis.common.AnalysisDialogs
 import org.instagene.app.gui.document.SeqDocument
 import org.instagene.app.gui.enzyme.EnzymeManagerDialog
 import org.instagene.app.gui.enzyme.findEnzyme
 import org.instagene.app.gui.prefs.Prefs
-import org.instagene.app.gui.tool.DigestPanel
-import org.instagene.app.gui.tool.FeaturesPanel
-import org.instagene.app.gui.tool.LibraryPanel
-import org.instagene.app.gui.tool.PrimersPanel
-import org.instagene.core.SeqKind
-import org.instagene.core.Topology
+import org.instagene.app.gui.tool.enzyme.DigestPanel
+import org.instagene.app.gui.tool.feature.FeaturesPanel
+import org.instagene.app.gui.tool.library.LibraryPanel
+import org.instagene.app.gui.tool.primer.PrimersPanel
+import org.instagene.core.sequence.SeqKind
+import org.instagene.core.sequence.Topology
 import java.awt.event.KeyEvent
 import javax.swing.JMenu
 import javax.swing.JMenuItem

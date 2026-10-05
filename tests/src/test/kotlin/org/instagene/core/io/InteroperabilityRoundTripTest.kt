@@ -1,10 +1,6 @@
-package org.instagene.core.io
+﻿package org.instagene.core.io
 
-import org.instagene.core.Feature
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.Strand
-import org.instagene.core.Topology
+import org.instagene.core.sequence.*
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test

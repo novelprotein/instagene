@@ -2,11 +2,7 @@ package org.instagene.app.gui.menu
 
 import org.instagene.core.Version
 import java.awt.event.KeyEvent
-import javax.swing.JMenu
-import javax.swing.JMenuItem
-import javax.swing.JOptionPane
-import javax.swing.JScrollPane
-import javax.swing.JTextArea
+import javax.swing.*
 
 class HelpMenu {
 

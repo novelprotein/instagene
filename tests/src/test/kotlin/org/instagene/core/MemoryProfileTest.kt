@@ -1,7 +1,8 @@
-package org.instagene.core
+﻿package org.instagene.core
 
 import org.instagene.core.io.SeqFormat
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.Seq
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.io.File
 import java.nio.file.Files
@@ -56,10 +57,10 @@ class MemoryProfileTest {
             val abiFiles = (0 until traceCount).map { index ->
                 File(root, "read-$index.ab1").apply { writeBytes(minimalAbi()) }
             }
-            val scfReads = profile("SCF batch ($traceCount × $TRACE_BASES called bases)") {
+            val scfReads = profile("SCF batch ($traceCount Ã— $TRACE_BASES called bases)") {
                 scfFiles.map(SeqIO::read)
             }
-            val abiReads = profile("ABI batch ($traceCount × $TRACE_BASES called bases)") {
+            val abiReads = profile("ABI batch ($traceCount Ã— $TRACE_BASES called bases)") {
                 abiFiles.map(SeqIO::read)
             }
             assertEquals(traceCount, scfReads.size)

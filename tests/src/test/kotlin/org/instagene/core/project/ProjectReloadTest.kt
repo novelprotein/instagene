@@ -1,4 +1,4 @@
-package org.instagene.core.project
+﻿package org.instagene.core.project
 
 import java.io.File
 import java.nio.file.Files

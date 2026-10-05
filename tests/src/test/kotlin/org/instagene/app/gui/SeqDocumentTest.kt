@@ -1,16 +1,16 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.core.Enzymes
-import org.instagene.core.MethylationSource
-import org.instagene.core.Seq
+import org.instagene.app.gui.edit.SequenceEditService
 import org.instagene.core.TestSequenceFixtures
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.sequence.MethylationSource
+import org.instagene.core.sequence.Seq
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.instagene.app.gui.edit.SequenceEditService
 
 class SeqDocumentTest {
 

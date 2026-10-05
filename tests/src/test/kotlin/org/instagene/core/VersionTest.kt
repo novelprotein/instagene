@@ -1,4 +1,4 @@
-package org.instagene.core
+﻿package org.instagene.core
 
 import kotlin.test.Test
 import kotlin.test.assertTrue

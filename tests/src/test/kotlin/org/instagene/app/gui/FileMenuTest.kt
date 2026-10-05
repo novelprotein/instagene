@@ -1,11 +1,14 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
-import org.instagene.app.gui.menu.FileMenu
 import org.instagene.app.gui.document.SeqDocument
-import org.instagene.core.Enzymes
-import org.instagene.core.Feature
-import org.instagene.core.Seq
-import org.instagene.core.Topology
+import org.instagene.app.gui.menu.FileMenu
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Topology
+import org.junit.jupiter.api.MethodOrderer
+import org.junit.jupiter.api.Order
+import org.junit.jupiter.api.TestMethodOrder
 import java.io.File
 import java.nio.file.Files
 import javax.swing.SwingUtilities
@@ -13,9 +16,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.MethodOrderer
-import org.junit.jupiter.api.Order
-import org.junit.jupiter.api.TestMethodOrder
 
 /**
  * File I/O for the desktop app: loading and saving must never block the EDT,

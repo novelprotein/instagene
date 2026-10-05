@@ -1,7 +1,10 @@
-package org.instagene.core
+﻿package org.instagene.core
 
+import org.instagene.core.workflow.*
 import java.nio.file.Files
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFails
 
 class WorkflowLibraryTest {
     @Test
@@ -9,8 +12,8 @@ class WorkflowLibraryTest {
         val file = Files.createTempDirectory("workflow-library").resolve("library.json").toFile()
         val store = WorkflowLibraryStore(file)
         assertEquals(WorkflowLibrary(), store.load())
-        val protocol = WorkflowLibraryEntry(kind = WorkflowEntryKind.PROTOCOL, title = "Protocol α",
-            instructions = "# Notes\nUnicode: μ", steps = listOf(
+        val protocol = WorkflowLibraryEntry(kind = WorkflowEntryKind.PROTOCOL, title = "Protocol Î±",
+            instructions = "# Notes\nUnicode: Î¼", steps = listOf(
                 WorkflowLibraryStep("Second", "line one\nline two"), WorkflowLibraryStep("First", "")))
         val procedure = WorkflowLibraryEntry(kind = WorkflowEntryKind.PROCEDURE, title = "General instructions")
         val library = WorkflowLibrary(entries = listOf(protocol, procedure))

@@ -1,13 +1,9 @@
 package org.instagene.core.io
 
-import org.instagene.core.Alphabet
-import org.instagene.core.ChromatogramReader
-import org.instagene.core.ExampleMetadataInference
-import org.instagene.core.MoleculeProperties
-import org.instagene.core.Seq
-import org.instagene.core.SeqKind
-import org.instagene.core.Strandedness
-import org.instagene.core.Topology
+
+import org.instagene.core.alignment.ChromatogramReader
+import org.instagene.core.enzyme.ExampleMetadataInference
+import org.instagene.core.sequence.*
 import java.io.File
 import java.io.IOException
 
@@ -54,7 +50,7 @@ object SeqIO {
             seq.isCircular || seq.features.isNotEmpty() || seq.primers.isNotEmpty() || seq.provenance.isNotEmpty() ||
             seq.molecule != MoleculeProperties(
                 strandedness = if (seq.kind == SeqKind.PROTEIN) Strandedness.SINGLE else Strandedness.DOUBLE,
-            ) || seq.recordMetadata != org.instagene.core.SequenceRecordMetadata() ||
+            ) || seq.recordMetadata != SequenceRecordMetadata() ||
             seq.metadata.keys.any { it.startsWith("IG_") || it in setOf("ACCESSION", "SOURCE", "ORGANISM", "COMMENT", "REFERENCE", "DBLINK") }
         ) SeqFormat.GENBANK else SeqFormat.FASTA
 

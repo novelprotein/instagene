@@ -1,11 +1,15 @@
-package org.instagene.core
+﻿package org.instagene.core
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import org.instagene.core.assembly.Assembly
+import org.instagene.core.assembly.AssemblyException
+import org.instagene.core.enzyme.EndType
+import org.instagene.core.enzyme.Enzymes
+import org.instagene.core.enzyme.Fragment
+import org.instagene.core.enzyme.StickyEnd
+import org.instagene.core.sequence.Feature
+import org.instagene.core.sequence.Seq
+import org.instagene.core.sequence.Topology
+import kotlin.test.*
 
 class AssemblyTest {
 

@@ -1,6 +1,7 @@
-package org.instagene.core
+﻿package org.instagene.core
 
 import org.instagene.core.io.SeqIO
+import org.instagene.core.sequence.Seq
 
 /**
  * Test-only inputs derived from the bundled source records. These are not

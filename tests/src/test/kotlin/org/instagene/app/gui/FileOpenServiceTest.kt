@@ -1,4 +1,4 @@
-package org.instagene.app.gui
+﻿package org.instagene.app.gui
 
 import org.instagene.app.gui.file.FileOpenService
 import org.instagene.app.gui.file.OpenedFile
