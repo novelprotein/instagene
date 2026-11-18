@@ -88,6 +88,26 @@ QUIET level). Program arguments can be passed the Gradle way, e.g.
 | Script                    | Purpose                                                            |
 | ------------------------- | ------------------------------------------------------------------ |
 | `install-hooks.sh`        | Installs the repo git hooks (`.githooks/`) via `core.hooksPath`.   |
+| `check-ci.sh`             | Runs the complete local gate: build/tests, docs, distributions, hook tests. |
+| `check-build.sh`          | Runs fresh full tests and the full build; shared by the hook and CI. |
+| `check-env.sh`            | Shared runtime selection sourced by the check scripts.             |
+| `test-hooks.py`           | Exercises real Git hooks in temporary repositories using check stubs. |
 | `check-docs.sh`           | Builds the MkDocs site in strict mode.                             |
 | `check-distributions.sh`  | Verifies standalone JARs, CLI distribution ZIPs and file associations. |
 | `package.sh`              | Builds a native GUI installer (`DEB`, `MSI` or `DMG`) on its target OS. |
+
+Install the gate with `bash scripts/install-hooks.sh`. Stage all tracked changes
+before committing; the hook blocks commits if checks fail or tracked/staged files
+change during validation. Tests run with `--rerun`, including when Gradle has cached
+results. No merge, cherry-pick, or revert exception applies.
+
+Run `bash scripts/check-ci.sh` manually without staging or committing. It requires
+JDK 21, Python 3.12, and the dependencies from `docs/requirements.txt`. For IDE
+commits, configure `git config --local instagene.javaHome "/path/to/jdk-21"` and
+`git config --local instagene.python "/path/to/python"`. Environment variables
+`JAVA_HOME` and `INSTAGENE_PYTHON` take precedence. Missing tools block checks;
+the gate does not install dependencies.
+
+Local distribution checks cover portable artifacts and file associations, plus
+Linux packaging on Linux. Windows/macOS native installers and differences between
+operating systems remain in CI. Opt-in performance and memory tests stay excluded.

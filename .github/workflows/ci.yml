@@ -8,8 +8,6 @@ on:
     paths-ignore:
       - '**.md'
       - 'LICENSE'
-      - '.githooks/**'
-      - 'scripts/**'
   workflow_dispatch:
 
 concurrency:
@@ -38,7 +36,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build all modules and run all tests
-        run: ./gradlew build --console=plain
+        run: bash ./scripts/check-build.sh
+
+      - name: Verify commit gate behavior
+        run: python3 scripts/test-hooks.py
 
       - name: Upload test reports
         if: ${{ !cancelled() }}

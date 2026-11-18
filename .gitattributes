@@ -5,3 +5,7 @@
 # out as CRLF on Windows, which changes their content hash.
 tests/src/test/resources/fixtures/** text eol=lf
 engine/src/main/resources/org/instagene/core/samples/** text eol=lf
+
+# Git executes these hooks through Bash, including on Windows.
+.githooks/* text eol=lf
+scripts/*.sh text eol=lf

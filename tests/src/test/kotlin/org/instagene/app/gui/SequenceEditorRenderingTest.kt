@@ -127,10 +127,22 @@ class SequenceEditorRenderingTest {
                                 // Glyphs can overhang their advance: measure contrast against the blank
                                 // row background, rather than against a letter covered by the caret.
                                 val rowBackground = off.getRGB(left, top)
+                                val context = "$theme mode=$mode size=$size scale=$scale length=$length clickX=$clickX bounds=$bounds"
+                                val caretColor = on.getRGB(left, top)
                                 for (x in left until right) for (y in top until bottom) {
-                                    assertNotEquals(off.getRGB(x, y), on.getRGB(x, y), "Missing caret pixel at $x,$y, scale=$scale")
+                                    assertEquals(caretColor, on.getRGB(x, y), "Incomplete caret at $x,$y: $context")
                                     assertTrue(contrast(on.getRGB(x, y), rowBackground) >= 4.5,
-                                        "Caret contrast at $x,$y mode=$mode size=$size scale=$scale: on=${Color(on.getRGB(x, y))}, background=${Color(rowBackground)}, bounds=$bounds")
+                                        "Caret contrast at $x,$y: $context on=${Color(on.getRGB(x, y))}, background=${Color(rowBackground)}")
+                                }
+                                // A covered glyph may already have the caret's color. Require a visible
+                                // change on each track without requiring every covered pixel to change.
+                                val textHeight = view.getFontMetrics(font(view)).height
+                                for (track in 0 until bounds.height / textHeight) {
+                                    val trackTop = kotlin.math.ceil((bounds.y + track * textHeight) * scale).toInt() + 1
+                                    val trackBottom = kotlin.math.floor((bounds.y + (track + 1) * textHeight) * scale).toInt() - 1
+                                    assertTrue((left until right).any { x ->
+                                        (trackTop until trackBottom).any { y -> off.getRGB(x, y) != on.getRGB(x, y) }
+                                    }, "Caret must visibly change track=$track: $context")
                                 }
                                 if (mode == SequenceGraphics.DETAILED && size == 24 && length > columns && scale == 1.25 && clickX == view.xCoordinate(columns) - 1) {
                                     val previews = Path.of("build", "reports", "sequence-editor")
@@ -358,22 +370,37 @@ class SequenceEditorRenderingTest {
                                 val fm = view.getFontMetrics(font(view))
                                 val cell = view.xCoordinate(1) - view.xCoordinate(0)
                                 for (track in 0..2) {
+                                    val context = "$theme mode=$mode size=${view.fontSize()} track=$track selected=$selected scale=$scale"
                                     val x = view.xCoordinate(if (track == 2) 1 else 0)
                                     val top = 10 + track * fm.height
                                     val pixels = image.getRGB((x * scale).toInt(), (top * scale).toInt(),
                                         (cell * scale).toInt(), (fm.height * scale).toInt(), null, 0, (cell * scale).toInt())
                                     if (track == 0) {
                                         assertTrue(pixels.any { it == Palette.charColor('A', doc.seq.kind).rgb },
-                                            "$theme: primary colors, selected=$selected, scale=$scale")
+                                            "Primary colors: $context")
                                     } else {
                                         val background = pixels.first()
                                         val preferred = Palette.TEXT.rgb
                                         val foreground = if (contrast(preferred, background) >= 4.5) preferred else
                                             listOf(Color.WHITE.rgb, Color.BLACK.rgb).maxBy { contrast(it, background) }
-                                        assertTrue(pixels.any { it == foreground }, "$theme: neutral track $track, selected=$selected, scale=$scale")
-                                        assertTrue(contrast(foreground, background) >= 4.5)
+                                        assertTrue(pixels.any { it == foreground }, "Neutral text: $context")
+                                        assertTrue(contrast(foreground, background) >= 4.5, "Neutral contrast: $context")
                                     }
-                                    assertTrue(pixels.any { it != Palette.TEXT.rgb && it != pixels.first() }, "Glyph edges should be antialiased")
+                                    // Probe A, C (the complement of G), and M: their diagonal or curved
+                                    // edges need smoothing. A grid-aligned T can legitimately be solid.
+                                    val probeColumn = when (track) { 1 -> 2; 2 -> 1; else -> 0 }
+                                    val left = kotlin.math.ceil(view.xCoordinate(probeColumn) * scale).toInt()
+                                    val right = kotlin.math.floor(view.xCoordinate(probeColumn + 1) * scale).toInt()
+                                    // Stay inside the cell so shaded rectangle edges cannot count as text AA.
+                                    val probeTop = kotlin.math.ceil(top * scale).toInt() + 1
+                                    val probeBottom = kotlin.math.floor((top + fm.height) * scale).toInt() - 1
+                                    val probe = image.getRGB(left, probeTop, right - left, probeBottom - probeTop,
+                                        null, 0, right - left)
+                                    val background = probe.first()
+                                    val preferred = if (track == 0) Palette.charColor('A', doc.seq.kind).rgb else Palette.TEXT.rgb
+                                    val foreground = if (track == 0 || contrast(preferred, background) >= 4.5) preferred else
+                                        listOf(Color.WHITE.rgb, Color.BLACK.rgb).maxBy { contrast(it, background) }
+                                    assertTrue(probe.any { it != foreground && it != background }, "Glyph edges should be antialiased: $context")
                                 }
                                 // A blank corner in the start-codon cell proves selection paints over codon shading.
                                 val expected = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB)
@@ -385,7 +412,8 @@ class SequenceEditorRenderingTest {
                                     g.color = Palette.START_CODON; g.fillRect(0, 0, 1, 1)
                                     if (selected) { g.color = Palette.SELECTION; g.fillRect(0, 0, 1, 1) }
                                 } finally { g.dispose() }
-                                assertEquals(expected.getRGB(0, 0), image.getRGB(((view.xCoordinate(0) + 1) * scale).toInt(), ((10 + fm.height * 2 + 1) * scale).toInt()))
+                                assertEquals(expected.getRGB(0, 0), image.getRGB(((view.xCoordinate(0) + 1) * scale).toInt(), ((10 + fm.height * 2 + 1) * scale).toInt()),
+                                    "Codon shading: $theme mode=$mode size=${view.fontSize()} track=2 selected=$selected scale=$scale")
                             }
                         }
                     }

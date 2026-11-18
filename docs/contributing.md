@@ -8,24 +8,48 @@ and honest about what the application supports.
 
 Requirements:
 
-- Java 21 or newer;
+- JDK 21;
+- Python 3.12 with `python3 -m pip install -r docs/requirements.txt`;
+- Bash (Git Bash on Windows).
 
 ~~~bash
 git clone https://github.com/novelprotein/instagene.git
 cd instagene
-./gradlew build
+bash scripts/check-ci.sh
 ~~~
 
-On Windows, use `gradlew.bat`.
+On Windows, run the shell scripts in Git Bash.
 
-Install the repository hooks if you want the local commit checks:
+Install the repository hooks to enforce checks for Git and IDE commits:
 
 ~~~bash
-./scripts/install-hooks.sh
+bash scripts/install-hooks.sh
 ~~~
 
-The pre-commit hook runs the full Gradle build, strict documentation validation,
-and distribution checks for the current operating system. 
+The pre-commit hook runs a fresh full test suite, the full Gradle build, strict
+documentation validation, host-supported distribution checks, and hook integration
+tests. All tracked
+changes must be staged before committing. A failed check, missing prerequisite,
+or change to tracked files or the staged snapshot during validation blocks the
+commit. Merge, cherry-pick, and revert commits use the same gate.
+
+For IDE commits that do not inherit your terminal environment, persist runtime
+paths in this checkout (use your own installation paths):
+
+~~~bash
+git config --local instagene.javaHome "C:/path/to/jdk-21"
+git config --local instagene.python "C:/path/to/python.exe"
+~~~
+
+`JAVA_HOME` and `INSTAGENE_PYTHON` environment variables override these settings.
+Checks never install dependencies automatically. Git's explicit `--no-verify`
+bypass remains available; normal commits run the gate.
+
+Portable artifacts and file associations are checked on every host. Linux also
+checks DEB and app-image packages. Native Windows/macOS installers and platform
+differences, including Linux/GraalVM behavior, remain covered by CI. Opt-in
+performance and memory tests keep their normal exclusions.
+
 ## Module boundaries
 
 - engine/ contains front-end-free sequence and workflow logic.
@@ -38,7 +62,7 @@ The engine must not reference org.instagene.app, and front ends must not
 depend on one another. Check the rule with:
 
 ~~~bash
-./gradlew verifySeparation
+bash scripts/compile.sh all verifySeparation
 ~~~
 
 ## Tests and regression coverage
@@ -46,9 +70,7 @@ depend on one another. Check the rule with:
 Run the complete gate before opening a pull request:
 
 ~~~bash
-./gradlew build
-./gradlew :tests:test
-./scripts/check-distributions.sh
+bash scripts/check-ci.sh
 ~~~
 
 Every bug fix should include a focused regression test. Headless Swing tests
@@ -66,7 +88,7 @@ implementation and tests explicitly support them.
 Build the documentation with:
 
 ~~~bash
-mkdocs build --strict --site-dir site
+bash scripts/check-docs.sh
 ~~~
 
 The screenshots in `docs/screenshots/` are documentation assets. Use
@@ -79,11 +101,9 @@ avoid moving heavy computation onto Swing’s event dispatch thread.
 
 Before opening a pull request:
 
-1. run the relevant tests;
-2. run `./gradlew build`;
-3. run the strict MkDocs build;
-4. run `./scripts/check-distributions.sh` on the development host;
-5. describe user-visible behavior and limitations in the pull request.
+1. run `bash scripts/check-ci.sh` for the complete local gate;
+2. run `python3 scripts/test-hooks.py` when changing hook or gate behavior;
+3. describe user-visible behavior and limitations in the pull request.
 
 ## Benchmarks
 

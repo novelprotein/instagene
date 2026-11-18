@@ -7,31 +7,28 @@
 #
 # Install with:  ./scripts/install-hooks.sh   (or: git config core.hooksPath .githooks)
 # Bypass once with:  git commit --no-verify
-set -eu
+set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-# Recording a merge/revert/cherry-pick resolution: tests already ran on the
-# committed histories, so do not re-run the whole suite here.
-if [ -f "$ROOT/.git/MERGE_HEAD" ] || [ -f "$ROOT/.git/CHERRY_PICK_HEAD" ] || [ -f "$ROOT/.git/REVERT_HEAD" ]; then
-    exit 0
-fi
-
-run_gate() {
-    label="$1"
-    shift
-    echo "== InstaGene: $label =="
-    if ! "$@"; then
-        echo
-        echo "Commit blocked: $label failed."
-        echo "Fix the failures, then commit again (or bypass with: git commit --no-verify)."
+require_staged_changes() {
+    if ! git diff --quiet --ignore-submodules=none; then
+        echo 'Commit blocked: stage or restore all unstaged tracked changes before validation.' >&2
         exit 1
     fi
 }
 
-run_gate "building all modules and running tests" ./gradlew build --console=plain
-run_gate "building documentation in strict mode" ./scripts/check-docs.sh
-run_gate "checking distributions" ./scripts/check-distributions.sh
+require_staged_changes
+staged_tree="$(git write-tree)"
+if ! bash "$ROOT/scripts/check-ci.sh"; then
+    echo 'Commit blocked: local checks failed.' >&2
+    exit 1
+fi
+require_staged_changes
+if [[ "$(git write-tree)" != "$staged_tree" ]]; then
+    echo 'Commit blocked: staged files changed during validation. Commit again to recheck them.' >&2
+    exit 1
+fi
 
 echo "== Commit OK: local CI gate passed =="

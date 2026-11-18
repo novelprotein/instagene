@@ -3,13 +3,18 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+source "$repo_root/scripts/check-env.sh"
+if ! "$INSTAGENE_PYTHON" -c 'import zipfile' >/dev/null 2>&1; then
+    echo 'Python is unavailable. Set INSTAGENE_PYTHON or git config --local instagene.python to a Python 3 interpreter.' >&2
+    exit 1
+fi
 
 gradle=("$repo_root/gradlew" --console=plain)
 
 check_zip_entries() {
     archive="$1"
     shift
-    python3 - "$archive" "$@" <<'PY'
+    "$INSTAGENE_PYTHON" - "$archive" "$@" <<'PY'
 import sys
 import zipfile
 
