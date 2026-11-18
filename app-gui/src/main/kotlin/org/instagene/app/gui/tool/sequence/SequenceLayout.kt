@@ -21,6 +21,7 @@ internal class SequenceLayout(
 ) {
     data class Bar(val item: SequenceObject, val start: Int, val end: Int, val lane: Int)
     data class Row(val index: Int, val top: Int, val marks: Int, val height: Int, val bars: List<Bar>, val sites: List<SequenceObject.Site>)
+    data class VisualPosition(val offset: Int, val row: Row, val caretBounds: Rectangle)
     val rows: List<Row>
     val height: Int
     init {
@@ -66,13 +67,25 @@ internal class SequenceLayout(
         }
         return rows[lo]
     }
-    fun rowFor(position: Int) = rows[(position.coerceIn(0, length) / columns).coerceAtMost(rows.lastIndex)]
-    fun x(column: Int) = 10 + gutter + column * cellWidth
-    fun indexAt(x: Int, y: Int): Int {
-        val row = rowAt(y)
-        val col = ((x - this.x(0) + cellWidth / 2) / cellWidth).coerceIn(0, columns)
-        return (row.index * columns + col).coerceAtMost(length)
+    fun rowFor(position: Int, trailing: Boolean = false): Row {
+        val offset = position.coerceIn(0, length)
+        val index = if (trailing && offset > 0 && offset % columns == 0) (offset - 1) / columns else offset / columns
+        return rows[index.coerceAtMost(rows.lastIndex)]
     }
+    fun x(column: Int) = 10 + gutter + column * cellWidth
+    fun position(position: Int, trailing: Boolean = false): VisualPosition {
+        val offset = position.coerceIn(0, length)
+        val row = rowFor(offset, trailing)
+        return VisualPosition(offset, row, Rectangle(x(offset - row.index * columns), row.top + row.marks, 2, tracks * textHeight))
+    }
+    fun positionAt(x: Int, y: Int): VisualPosition {
+        val row = rowAt(y)
+        val count = minOf(columns, length - row.index * columns)
+        val col = ((x - this.x(0) + cellWidth / 2) / cellWidth).coerceIn(0, count)
+        val offset = row.index * columns + col
+        return position(offset, trailing = col == columns)
+    }
+    fun indexAt(x: Int, y: Int): Int = positionAt(x, y).offset
     fun bounds(row: Row, bar: Bar): Rectangle = Rectangle(
         x(bar.start - row.index * columns), row.top + row.marks + tracks * textHeight + bar.lane * laneHeight,
         maxOf(3, (bar.end - bar.start) * cellWidth), laneHeight - 2,

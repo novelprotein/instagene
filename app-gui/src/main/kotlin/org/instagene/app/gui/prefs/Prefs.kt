@@ -18,6 +18,10 @@ class Prefs(private val store: PrefsStore? = null) {
         listeners += listener
     }
 
+    fun removeListener(listener: () -> Unit) {
+        listeners -= listener
+    }
+
     /** Applies [transform], persists the result and notifies listeners. */
     fun update(transform: (UserPrefs) -> UserPrefs) {
         val next = transform(value)

@@ -95,6 +95,9 @@ class InstaGeneContent(
 
     private lateinit var sequenceInteraction: SequenceInteraction
     val sequenceView: SequenceView
+    private var disposed = false
+    private val sequenceGraphicsPreferencesListener: () -> Unit = { applySequenceGraphicsPreference() }
+
     val textEditorView: TextEditorView
     val digestPanel: DigestPanel
     val analysisPanel: AnalysisPanel
@@ -428,10 +431,25 @@ class InstaGeneContent(
 
         onActiveDocumentChanged()
         rebuildMenuBar()
+        prefs.addListener(sequenceGraphicsPreferencesListener)
+        applySequenceGraphicsPreference()
+    }
+
+    private fun applySequenceGraphicsPreference() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater { applySequenceGraphicsPreference() }
+            return
+        }
+        if (disposed) return
+        val mode = if (prefs.value.detailedSequenceGraphics) SequenceGraphics.DETAILED else SequenceGraphics.SIMPLIFIED
+        if (sequenceView.graphicsMode != mode) sequenceView.graphicsMode = mode
     }
 
     /** Releases resources held by shared panels when the containing window closes. */
     fun dispose() {
+        if (disposed) return
+        disposed = true
+        prefs.removeListener(sequenceGraphicsPreferencesListener)
         projectTreePanel.stopWatching()
         trackedTreeDivider?.removeMouseListener(treeDividerMouseListener)
         trackedTreeDivider = null

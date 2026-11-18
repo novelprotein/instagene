@@ -15,6 +15,10 @@ import java.awt.Component
 import java.awt.Container
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import javax.swing.JButton
+import javax.swing.JTextArea
 import javax.swing.JMenu
 import javax.swing.JTabbedPane
 import javax.swing.JTable
@@ -101,6 +105,48 @@ class ProjectFeatureGuiTest {
         val result = onEdt { batch.runBatch() }
         assertEquals(1, result.processed)
         assertEquals(true, output.listFiles()?.singleOrNull()?.isFile)
+    }
+
+    @Test
+    fun batchWorkerUsesSettingsCapturedBeforeTheControlsAreEdited() {
+        val root = Files.createTempDirectory("instagene-batch-snapshot").toFile()
+        try {
+            val source = File(root, "source.fasta").apply { writeText(">source\nACGTACGT\n") }
+            val project = SeqProject.create(root)
+            val output = File(root, "original-output")
+            val laterOutput = File(root, "later-output")
+            val completed = CountDownLatch(1)
+            val panel = onEdt { BatchOperationPanel(project, BatchOperation.ANNOTATE, listOf(source)) { completed.countDown() } }
+            onEdt {
+                panel.outputField.text = output.absolutePath
+                val definitions = descendants(panel, JTextArea::class.java).single { it !== panel.filesArea }
+                definitions.text = "original:ACGT:misc_feature"
+                descendants(panel, JButton::class.java).single { it.text == "Run" }.doClick()
+                panel.filesArea.text = ""
+                panel.outputField.text = laterOutput.absolutePath
+                definitions.text = "later:TTTT:misc_feature"
+            }
+            assertTrue(completed.await(10, TimeUnit.SECONDS), onEdt { panel.statusLabel.text })
+            assertTrue(SeqIO.read(File(output, "source.gb")).features.any { it.name == "original" })
+            assertFalse(laterOutput.exists())
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
+    fun unreadableCollectionsShowAnErrorAndDisableSaving() {
+        val root = Files.createTempDirectory("instagene-bad-collections").toFile()
+        try {
+            val project = SeqProject.create(root).also { it.save() }
+            val file = File(root, ".instagene/collections.json").apply { writeText("broken json") }
+            val panel = onEdt { ProjectCollectionsPanel(project) }
+            onEdt {
+                assertContains(panel.statusLabel.text, "Unable to load collections")
+                assertFalse(descendants(panel, JButton::class.java).single { it.text == "Save" }.isEnabled)
+                panel.saveCollections()
+                assertContains(panel.statusLabel.text, "Unable to save collections")
+            }
+            assertEquals("broken json", file.readText())
+        } finally { root.deleteRecursively() }
     }
 
     @Test

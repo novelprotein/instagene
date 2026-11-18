@@ -12,7 +12,7 @@ import kotlinx.coroutines.runBlocking
  * minimum) to amortize the dispatch overhead. For small collections the
  * sequential path is always faster.
  */
-internal object Parallel {
+object Parallel {
 
     /** Available processors, floored to 2 so single-core machines still get a pool. */
     val cores: Int = maxOf(2, Runtime.getRuntime().availableProcessors())
@@ -51,9 +51,9 @@ internal object Parallel {
         }
         val chunkSize = (items.size + cores - 1) / cores
         return runBlocking(Dispatchers.Default) {
-            items.chunked(chunkSize).map { chunk ->
+            items.chunked(chunkSize).mapIndexed { chunkIndex, chunk ->
                 async {
-                    val base = items.indexOf(chunk[0])
+                    val base = chunkIndex * chunkSize
                     chunk.mapIndexed { i, item -> transform(base + i, item) }
                 }
             }.awaitAll().flatten()

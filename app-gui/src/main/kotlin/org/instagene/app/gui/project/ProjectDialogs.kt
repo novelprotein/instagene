@@ -50,7 +50,8 @@ class ProjectCollectionsPanel(
     private val onOpenFile: (File) -> Unit = {},
 ) : JPanel(BorderLayout(8, 8)) {
     private val store = CollectionStore(project)
-    private var document: CollectionDocument = store.load()
+    private val loadResult = runCatching { store.load() }
+    private var document: CollectionDocument = loadResult.getOrDefault(CollectionDocument())
     private val model = object : DefaultTableModel(arrayOf("Collection", "Area", "File"), 0) {
         override fun isCellEditable(row: Int, column: Int): Boolean = false
     }
@@ -72,6 +73,7 @@ class ProjectCollectionsPanel(
             addActionListener { chooseFile() }
         }
         val add = JButton("Add").apply {
+            isEnabled = loadResult.isSuccess
             toolTipText = "Add the selected project file to the named collection area."
             addActionListener { addCurrentFile() }
         }
@@ -80,10 +82,12 @@ class ProjectCollectionsPanel(
             addActionListener { openSelected() }
         }
         val remove = JButton("Remove").apply {
+            isEnabled = loadResult.isSuccess
             toolTipText = "Remove the selected file from this collection. The file on disk is not deleted."
             addActionListener { removeSelected() }
         }
         val save = JButton("Save").apply {
+            isEnabled = loadResult.isSuccess
             toolTipText = "Save project collections to .instagene/collections.json."
             addActionListener { saveCollections() }
         }
@@ -102,6 +106,7 @@ class ProjectCollectionsPanel(
 
     fun addProjectFile(collectionName: String, areaName: String, file: File): String? {
         return runCatching {
+            loadResult.getOrThrow()
             require(file.isFile) { "Choose an existing project file." }
             require(project.relativePath(file) != null) { "File is outside the project." }
             document = store.addFile(
@@ -117,8 +122,9 @@ class ProjectCollectionsPanel(
     }
 
     fun saveCollections() {
-        store.save(document)
-        statusLabel.text = "Saved project collections."
+        runCatching { store.save(document) }
+            .onSuccess { statusLabel.text = "Saved project collections." }
+            .onFailure { statusLabel.text = "Unable to save collections: ${it.message}" }
     }
 
     private fun chooseFile() {
@@ -167,6 +173,9 @@ class ProjectCollectionsPanel(
             }
         }
         statusLabel.text = if (model.rowCount == 0) "No project collections yet." else "${model.rowCount} collection item(s)."
+        loadResult.exceptionOrNull()?.let {
+            statusLabel.text = "Unable to load collections: ${it.message}. The saved file has been preserved."
+        }
     }
 
     private fun resolveProjectFile(text: String): File? {
@@ -236,15 +245,35 @@ class BatchOperationPanel(
         .mapNotNull { resolveProjectFile(it)?.takeIf(File::isFile) }
         .distinctBy { it.canonicalFile.path }
 
-    fun runBatch(): BatchResult {
+    private data class BatchRequest(
+        val files: List<File>,
+        val output: File,
+        val operation: BatchOperation,
+        val format: SeqFormat,
+        val definitions: List<FeatureDefinition>,
+        val topology: Topology?,
+        val molecule: MoleculeProperties?,
+    ) {
+        fun execute(): BatchResult = when (operation) {
+            BatchOperation.CONVERT -> BatchOperations.convert(files, output, format)
+            BatchOperation.ANNOTATE -> BatchOperations.annotate(files, output, definitions)
+            BatchOperation.PROPERTIES -> BatchOperations.transformProperties(files, output, topology, molecule)
+        }
+    }
+
+    fun runBatch(): BatchResult = captureBatchRequest().execute()
+
+    private fun captureBatchRequest(): BatchRequest {
+        check(SwingUtilities.isEventDispatchThread()) { "Batch settings must be captured on the event-dispatch thread." }
         val files = selectedFiles()
         require(files.isNotEmpty()) { "Choose at least one project sequence file." }
         val output = File(outputField.text.trim().ifBlank { File(project.root, "batch-output").absolutePath })
-        return when (operation) {
-            BatchOperation.CONVERT -> BatchOperations.convert(files, output, formatBox.selectedItem as SeqFormat)
-            BatchOperation.ANNOTATE -> BatchOperations.annotate(files, output, parseDefinitions())
-            BatchOperation.PROPERTIES -> BatchOperations.transformProperties(files, output, selectedTopology(), selectedMolecule())
-        }
+        return BatchRequest(
+            files, output, operation, formatBox.selectedItem as SeqFormat,
+            if (operation == BatchOperation.ANNOTATE) parseDefinitions() else emptyList(),
+            if (operation == BatchOperation.PROPERTIES) selectedTopology() else null,
+            if (operation == BatchOperation.PROPERTIES) selectedMolecule() else null,
+        )
     }
 
     private fun operationPanel(): JPanel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 3)).apply {
@@ -303,15 +332,22 @@ class BatchOperationPanel(
     }
 
     private fun runBatchAsync() {
+        val request = try {
+            captureBatchRequest()
+        } catch (error: Exception) {
+            statusLabel.text = error.message ?: "Invalid batch settings."
+            return
+        }
         runButton.isEnabled = false
         statusLabel.text = "Running ${operation.displayName.lowercase()}..."
         object : SwingWorker<BatchResult, Unit>() {
-            override fun doInBackground(): BatchResult = runBatch()
+            override fun doInBackground(): BatchResult = request.execute()
 
             override fun done() {
                 runButton.isEnabled = true
                 runCatching { get() }.onSuccess { result ->
                     statusLabel.text = "Processed ${result.processed}; failed ${result.failed.size}."
+                    result.failed.values.firstOrNull()?.let { statusLabel.text += " $it" }
                     onComplete()
                 }.onFailure {
                     statusLabel.text = it.message ?: "Batch operation failed."

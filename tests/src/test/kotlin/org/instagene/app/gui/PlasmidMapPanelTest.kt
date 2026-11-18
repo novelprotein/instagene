@@ -1219,7 +1219,10 @@ class PlasmidMapPanelTest {
             map.setZoomPercent(600)
             val output = File.createTempFile("instagene-map-", ".png")
             try {
-                map.exportPng(output, 220, 180)
+                // A compact export needs to omit the optional caption and key;
+                // this test checks zoom isolation rather than dense-text fitting.
+                map.exportPng(output, MapExportOptions(width = 220, height = 180,
+                    showTitle = false, showMetadata = false, showFeatureKey = false))
                 assertEquals(600, map.zoomPercent)
                 assertEquals(220, ImageIO.read(output).width)
                 assertEquals(180, ImageIO.read(output).height)

@@ -277,9 +277,11 @@ object ExternalTools {
     private val pathCache = HashMap<String, String?>()
     private val diagnosticsJson = Json { prettyPrint = true; encodeDefaults = true }
 
-    /** Absolute path of [executable] on `PATH`, or null when it is not installed. */
+    /** Resolves an explicit executable path or searches `PATH`; null when unavailable. */
     fun locate(executable: String): String? = synchronized(pathCache) {
         pathCache.getOrPut(executable) {
+            val explicit = File(executable)
+            if (explicit.isAbsolute) return@getOrPut explicit.takeIf { it.isFile && it.canExecute() }?.absolutePath
             val pathEnv = System.getenv("PATH") ?: return@getOrPut null
             pathEnv.split(File.pathSeparator)
                 .asSequence()
@@ -466,6 +468,8 @@ object ExternalTools {
         }
         val unresolved = resolved.filter { it.contains(Regex("\\{[a-z]+}")) }
         if (unresolved.isNotEmpty()) {
+            inFile.delete()
+            outFile?.delete()
             return ToolResult(
                 tool, "$exe ${resolved.joinToString(" ")}", 2, "",
                 "Missing value for ${unresolved.joinToString(", ")}",
@@ -474,51 +478,15 @@ object ExternalTools {
 
         val command = listOf(exe) + resolved + extraArgs
         return try {
-            val process = ProcessBuilder(command)
-                .directory(workingDir ?: inFile.parentFile)
-                .start()
-
-            // Drain stdout and stderr concurrently: reading them in sequence can
-            // deadlock once a pipe buffer fills, which hangs both the reader and
-            // the child.
-            fun drain(stream: java.io.InputStream): String = stream.bufferedReader().readText()
-            val stdoutFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.inputStream) }
-            val stderrFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.errorStream) }
-
-            try {
-                if (tool.readsStdin) {
-                    process.outputStream.bufferedWriter().use { it.write(inputFasta) }
-                } else {
-                    process.outputStream.close()
-                }
-            } catch (_: java.io.IOException) {
-                // The child closed stdin before the FASTA was fully written.
-            }
-
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
-            var finished = false
-            while (!finished && System.nanoTime() < deadline && !cancellationRequested()) {
-                finished = process.waitFor(200, TimeUnit.MILLISECONDS)
-            }
-            val cancelled = cancellationRequested()
-            if (!finished) {
-                process.destroyForcibly()
-                process.waitFor(5, TimeUnit.SECONDS)
-            }
-            val stdout = stdoutFuture.get(5, TimeUnit.SECONDS)
-            val stderr = stderrFuture.get(5, TimeUnit.SECONDS)
-            if (cancelled) {
-                ToolResult(tool, command.joinToString(" "), 130, stdout, "Cancelled")
-            } else if (!finished) {
-                ToolResult(tool, command.joinToString(" "), 124, stdout, "Timed out after ${timeoutSeconds}s")
-            } else {
-                ToolResult(
-                    tool, command.joinToString(" "), process.exitValue(), stdout, stderr,
-                    outFile?.absolutePath,
-                )
-            }
-        } catch (e: Exception) {
-            ToolResult(tool, command.joinToString(" "), 1, "", "Failed to run: ${e.message}")
+            val result = ToolProcessRunner.run(
+                tool, command, if (tool.readsStdin) inputFasta else null,
+                workingDir ?: inFile.parentFile, timeoutSeconds, cancellationRequested,
+                outFile?.absolutePath,
+            )
+            if (result.outputFile == null) outFile?.delete()
+            result
+        } finally {
+            inFile.delete()
         }
     }
 
@@ -546,36 +514,10 @@ object ExternalTools {
             return ToolResult(tool, "$exe ${tool.argsTemplate.joinToString(" ")}", 2, "", "Missing value for ${unresolved.joinToString(", ")}")
         }
         val command = listOf(exe) + tool.argsTemplate
-        return try {
-            val process = ProcessBuilder(command).start()
-            fun drain(stream: java.io.InputStream): String = stream.bufferedReader().readText()
-            val stdoutFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.inputStream) }
-            val stderrFuture = java.util.concurrent.CompletableFuture.supplyAsync { drain(process.errorStream) }
-            try {
-                process.outputStream.bufferedWriter().use { it.write(input) }
-            } catch (_: java.io.IOException) {
-                // A tool may reject input and close stdin before all data arrives.
-            }
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
-            var finished = false
-            while (!finished && System.nanoTime() < deadline && !cancellationRequested()) {
-                finished = process.waitFor(200, TimeUnit.MILLISECONDS)
-            }
-            val cancelled = cancellationRequested()
-            if (!finished) {
-                process.destroyForcibly()
-                process.waitFor(5, TimeUnit.SECONDS)
-            }
-            val stdout = stdoutFuture.get(5, TimeUnit.SECONDS)
-            val stderr = stderrFuture.get(5, TimeUnit.SECONDS)
-            when {
-                cancelled -> ToolResult(tool, command.joinToString(" "), 130, stdout, "Cancelled")
-                !finished -> ToolResult(tool, command.joinToString(" "), 124, stdout, "Timed out after ${timeoutSeconds}s")
-                else -> ToolResult(tool, command.joinToString(" "), process.exitValue(), stdout, stderr)
-            }
-        } catch (e: Exception) {
-            ToolResult(tool, command.joinToString(" "), 1, "", "Failed to run: ${e.message}")
-        }
+        return ToolProcessRunner.run(
+            tool, command, input, timeoutSeconds = timeoutSeconds,
+            cancellationRequested = cancellationRequested,
+        )
     }
 
     /** One-line availability report, as used by `instagene tools`. */

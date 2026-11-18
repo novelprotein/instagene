@@ -43,10 +43,13 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         set(value) { field = value; relayout() }
     var previewRange: Pair<Int, Int>? = null
         set(value) { field = value; repaint() }
-    private var preferenceFont = UIManager.getFont("InstaGene.sequenceFont") ?: Font(Font.MONOSPACED, Font.PLAIN, 14)
+    private fun sequenceFont(): Font = Font(Font.MONOSPACED, Font.PLAIN, 14)
+        .deriveFont(UIManager.getFont("InstaGene.sequenceFont")?.size2D ?: 14f)
+    private var preferenceFont = sequenceFont()
     private var baseFont = preferenceFont
     private val labelFont get() = (UIManager.getFont("Label.font") ?: Font(Font.SANS_SERIF, Font.PLAIN, 12)).deriveFont(maxOf(12f, baseFont.size2D - 2))
     private var caretVisible = true
+    private var caretBackgrounds = emptyArray<Color>()
     private val caretBlinkTimer = SwingTimer(530) { caretVisible = !caretVisible; repaint() }
     private var geometry: SequenceLayout? = null
     private val layoutModel get() = geometry ?: createLayout().also { geometry = it }
@@ -58,6 +61,35 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
     private val overflow = mutableListOf<Pair<Rectangle, List<SequenceObject>>>()
     private var hover: SequenceObject? = null
     private var draggingBases = false
+    // Preserve the clicked visual row when adjacent rows share an insertion offset.
+    private var visualCaret: SequenceLayout.VisualPosition? = null
+    private var movingCaret = false
+    private fun caretPosition() = visualCaret?.takeIf { it.offset == doc.caret } ?: layoutModel.position(doc.caret)
+    private fun caretRow() = caretPosition().row
+    private fun restartCaretBlink() {
+        caretVisible = true
+        caretBlinkTimer.restart()
+        repaint()
+    }
+    private fun moveCaret(position: Int, extend: Boolean = false, trailing: Boolean = false) {
+        moveCaret(layoutModel.position(position, trailing), extend)
+    }
+    private fun moveCaret(position: SequenceLayout.VisualPosition, extend: Boolean) {
+        visualCaret = position
+        restartCaretBlink()
+        movingCaret = true
+        try { doc.moveCaret(position.offset, extend) } finally { movingCaret = false }
+    }
+    private fun moveCaretAt(x: Int, y: Int, extend: Boolean) {
+        moveCaret(layoutModel.positionAt(x, y), extend)
+    }
+    private fun moveVertically(rows: Int, extend: Boolean) {
+        val layout = layoutModel
+        val row = caretRow()
+        val column = doc.caret - row.index * layout.columns
+        val target = (row.index + rows).coerceIn(0, layout.rows.lastIndex)
+        moveCaret(minOf(doc.seq.length, target * layout.columns + column), extend, column == layout.columns)
+    }
     var selectedFeature: Feature? = null
         private set
 
@@ -71,11 +103,17 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         installMouseHandlers()
         installKeyHandlers()
         bindDocument(doc)
+        addPropertyChangeListener("graphicsConfiguration") { relayout() }
+        addFocusListener(object : FocusAdapter() {
+            override fun focusGained(e: FocusEvent) = restartCaretBlink()
+            override fun focusLost(e: FocusEvent) { repaint() }
+        })
     }
     fun bindDocument(newDoc: SeqDocument) {
         if (newDoc !== doc) {
             docListener?.let { doc.removeListener(it) }
             doc = newDoc
+            visualCaret = null
             selectedFeature = null
             primerPreview = emptyList()
             previewRange = null
@@ -83,6 +121,8 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         }
         if (docListener == null) {
             docListener = SeqDocument.Listener { _, reason ->
+                if (!movingCaret && (reason == SeqDocument.Reason.SELECTION || reason == SeqDocument.Reason.SEQUENCE)) visualCaret = null
+                if (reason == SeqDocument.Reason.SELECTION) restartCaretBlink()
                 if (reason == SeqDocument.Reason.SEQUENCE || reason == SeqDocument.Reason.ENZYMES) {
                     if (selectedFeature !in doc.seq.features) selectedFeature = null
                     relayout()
@@ -102,7 +142,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
     override fun updateUI() { super.updateUI(); background = Palette.BACKGROUND }
     override fun refreshTheme() {
         background = Palette.BACKGROUND
-        val next = UIManager.getFont("InstaGene.sequenceFont") ?: Font(Font.MONOSPACED, Font.PLAIN, 14)
+        val next = sequenceFont()
         if (next != preferenceFont) { preferenceFont = next; baseFont = next }
         relayout()
     }
@@ -115,7 +155,9 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         val fm = getFontMetrics(baseFont)
         val cw = maxOf(1, fm.charWidth('A'))
         val gutter = cw * (maxOf(6, "%,d".format(doc.seq.length).length) + 2)
-        val columns = ((((width.takeIf { it > 0 } ?: 900) - gutter - 20) / cw) / 10 * 10).coerceIn(10, 240)
+        // Leave trailing space for the complete caret, even in narrow viewports.
+        val fitting = (((width.takeIf { it > 0 } ?: 900) - gutter - 20) / cw).coerceIn(1, 240)
+        val columns = if (fitting >= 10) fitting / 10 * 10 else fitting
         val primers = if (doc.seq.kind == SeqKind.PROTEIN) emptyList() else doc.seq.primers.filter { it.visible }
         val objects = buildList<SequenceObject> {
             doc.seq.features.filter { f ->
@@ -134,8 +176,11 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
     }
     private var layoutVersion = 0
     private fun relayout() {
+        val previousColumns = geometry?.columns
+        val wasTrailing = visualCaret?.let { it.offset > 0 && it.caretBounds.x == geometry?.x(previousColumns ?: 0) } ?: false
         val anchor = geometry?.rowAt(visibleRect.y)?.let { it.index * (geometry?.columns ?: 60) }
         geometry = createLayout()
+        visualCaret = layoutModel.position(doc.caret, wasTrailing && previousColumns == layoutModel.columns)
         hits.clear(); overflow.clear()
         revalidate(); repaint()
         val version = ++layoutVersion
@@ -158,14 +203,22 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         val g2 = g.create() as Graphics2D
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            @Suppress("UNCHECKED_CAST")
+            val desktopHints = Toolkit.getDefaultToolkit().getDesktopProperty("awt.font.desktophints") as? Map<RenderingHints.Key, Any>
+            desktopHints?.let { g2.addRenderingHints(it) }
+            val textAA = g2.getRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING)
+            if (textAA == null || textAA == RenderingHints.VALUE_TEXT_ANTIALIAS_OFF || textAA == RenderingHints.VALUE_TEXT_ANTIALIAS_DEFAULT) {
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            }
+            g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_OFF)
             g2.color = background
             g2.fillRect(0, 0, width, height)
             hits.clear(); overflow.clear(); paintedCutSiteLabels.clear()
+            caretBackgrounds = emptyArray()
             val layout = layoutModel
             if (doc.seq.length == 0) {
                 lastPaintedRowCount = 0
-                g2.font = baseFont; g2.color = Palette.MUTED
+                g2.font = baseFont; g2.color = SequenceTextContrast.readable(Palette.MUTED, background)
                 g2.drawString("Empty sequence — type bases, or use File > Open.", 14, 30)
                 return
             }
@@ -175,12 +228,22 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
             lastPaintedRowCount = last - first + 1
             for (r in first..last) paintRow(g2, layout.rows[r])
             if (!doc.hasSelection && caretVisible && isFocusOwner) {
-                val row = layout.rowFor(doc.caret)
-                val x = layout.x(doc.caret - row.index * layout.columns)
-                g2.color = Palette.CARET
-                g2.drawLine(x, row.top + row.marks, x, row.top + row.marks + layout.textHeight * layout.tracks)
+                paintCaret(g2)
             }
         } finally { g2.dispose() }
+    }
+    private fun paintCaret(g: Graphics2D) {
+        val bounds = caretPosition().caretBounds
+        val caretGraphics = g.create() as Graphics2D
+        try {
+            // Adjacent antialiased rectangles leave partially covered seams at fractional scales.
+            // Keep this UI stroke solid while preserving text antialiasing on the canvas.
+            caretGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF)
+            for (track in 0 until layoutModel.tracks) {
+                caretGraphics.color = SequenceTextContrast.readable(Palette.CARET, caretBackgrounds.getOrNull(track) ?: background)
+                caretGraphics.fillRect(bounds.x, bounds.y + track * layoutModel.textHeight, bounds.width, layoutModel.textHeight)
+            }
+        } finally { caretGraphics.dispose() }
     }
     private fun paintRow(g: Graphics2D, row: SequenceLayout.Row) {
         val l = layoutModel
@@ -189,13 +252,21 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         val top = row.top + row.marks
         val fm = getFontMetrics(baseFont)
         val baseY = top + fm.ascent
+        val rowTint = if (caretRow().index == row.index) Palette.EDITOR_ACTIVE_ROW else Palette.EDITOR_ROW_ALT
+        val rowBackground = if (l.detailed) SequenceTextContrast.over(rowTint, background) else background
+        val cellBackgrounds = Array(l.tracks) { Array(to - from) { rowBackground } }
         if (l.detailed) {
-            g.color = if (l.rowFor(doc.caret).index == row.index) Palette.EDITOR_ACTIVE_ROW else Palette.EDITOR_ROW_ALT
+            g.color = rowTint
             g.fillRect(l.x(0) - 2, top, (to - from) * l.cellWidth + 4, l.tracks * l.textHeight)
         }
         fun shade(start: Int, end: Int, color: Color) {
             val s = maxOf(start, from); val e = minOf(end, to)
-            if (e > s) { g.color = color; g.fillRect(l.x(s - from), top, (e - s) * l.cellWidth, l.tracks * l.textHeight) }
+            if (e > s) {
+                g.color = color; g.fillRect(l.x(s - from), top, (e - s) * l.cellWidth, l.tracks * l.textHeight)
+                cellBackgrounds.forEach { track ->
+                    for (i in s until e) track[i - from] = SequenceTextContrast.over(color, track[i - from])
+                }
+            }
         }
         if (showHistoryColors) doc.recentChangeRange?.let { shade(it.first, it.last + 1, Palette.translucent(Palette.ACCENT, 35)) }
         previewRange?.let { shade(it.first, it.second, Palette.translucent(Palette.ACCENT, 24)) }
@@ -203,8 +274,25 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
             shade(selected.start, minOf(selected.end, doc.seq.length), Palette.translucent(Palette.ACCENT, 38))
             if (selected.end > doc.seq.length) shade(0, selected.end - doc.seq.length, Palette.translucent(Palette.ACCENT, 38))
         }
+        if (translationTrack()) {
+            val translationTop = top + (l.tracks - 1) * l.textHeight
+            forEachCodon(from, to) { c, codon, aa ->
+                if (aa == '*' || codon == "ATG") {
+                    g.color = if (aa == '*') Palette.STOP_CODON else Palette.START_CODON
+                    g.fillRect(l.x(maxOf(c, from) - from), translationTop,
+                        (minOf(c + 3, to) - maxOf(c, from)) * l.cellWidth, l.textHeight)
+                    val track = cellBackgrounds.last()
+                    for (i in maxOf(c, from) until minOf(c + 3, to)) track[i - from] = SequenceTextContrast.over(g.color, track[i - from])
+                }
+            }
+        }
         if (doc.hasSelection) shade(doc.selectionStart, doc.selectionEnd, Palette.SELECTION)
-        g.font = baseFont; g.color = Palette.GUTTER
+        if (row.index == caretRow().index) {
+            caretBackgrounds = Array(l.tracks) { track ->
+                if (doc.caret in from until to) cellBackgrounds[track][doc.caret - from] else rowBackground
+            }
+        }
+        g.font = baseFont; g.color = SequenceTextContrast.readable(Palette.GUTTER, background)
         g.drawString("%,d".format(from + 1), 10, baseY)
         if (l.detailed && complementTrack()) {
             g.font = labelFont
@@ -217,22 +305,17 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
             g.color = Palette.charColor(doc.seq.bases[i], doc.seq.kind)
             g.drawString(doc.seq.bases[i].uppercaseChar().toString(), l.x(i - from), baseY)
             if (complementTrack()) {
-                g.color = Palette.MUTED
+                g.color = SequenceTextContrast.readable(Palette.TEXT, cellBackgrounds[1][i - from])
                 g.drawString(Alphabet.complement(doc.seq.bases[i], doc.seq.kind).uppercaseChar().toString(), l.x(i - from), baseY + l.textHeight)
             }
         }
         if (translationTrack()) {
             val y = baseY + (l.tracks - 1) * l.textHeight
-            var c = maxOf(translationFrame, translationFrame + Math.floorDiv(from - translationFrame, 3) * 3)
-            while (c < to && c + 3 <= doc.seq.length) {
-                val codon = doc.seq.bases.substring(c, c + 3).uppercase()
-                val aa = codonTable.translate(codon)
-                if (aa == '*' || codon == "ATG") {
-                    g.color = if (aa == '*') Palette.STOP_CODON else Palette.START_CODON
-                    g.fillRect(l.x(maxOf(c, from) - from), y - fm.ascent, (minOf(c + 3, to) - maxOf(c, from)) * l.cellWidth, l.textHeight)
+            forEachCodon(from, to) { c, _, aa ->
+                if (c + 1 in from until to) {
+                    g.color = SequenceTextContrast.readable(Palette.TEXT, cellBackgrounds.last()[c + 1 - from])
+                    g.drawString(aa.toString(), l.x(c + 1 - from), y)
                 }
-                if (c + 1 in from until to) { g.color = Palette.TEXT; g.drawString(aa.toString(), l.x(c + 1 - from), y) }
-                c += 3
             }
         }
         paintSites(g, row)
@@ -269,7 +352,8 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
                 var text = item.name
                 while (text.isNotEmpty() && metrics.stringWidth(text) > available) text = text.dropLast(1)
                 if (text != item.name && text.length > 1) text = text.dropLast(1) + "…"
-                g.color = Palette.TEXT
+                g.color = SequenceTextContrast.readable(Palette.TEXT,
+                    SequenceTextContrast.over(Palette.translucent(color, if (selected) 90 else 38), background))
                 val labelBounds = Rectangle(bounds.x + 8, bounds.y + 2, minOf(available, metrics.stringWidth(text)), bounds.height - 4)
                 g.drawString(text, labelBounds.x, bounds.y + (bounds.height - metrics.height) / 2 + metrics.ascent)
                 hits += Hit(labelBounds, item, true)
@@ -277,6 +361,14 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         }
         g.color = Palette.GRID
         g.drawLine(l.x(0), row.top + row.height - 7, width - 10, row.top + row.height - 7)
+    }
+    private inline fun forEachCodon(from: Int, to: Int, draw: (Int, String, Char) -> Unit) {
+        var c = maxOf(translationFrame, translationFrame + Math.floorDiv(from - translationFrame, 3) * 3)
+        while (c < to && c + 3 <= doc.seq.length) {
+            val codon = doc.seq.bases.substring(c, c + 3).uppercase()
+            draw(c, codon, codonTable.translate(codon))
+            c += 3
+        }
     }
     private fun paintSites(g: Graphics2D, row: SequenceLayout.Row) {
         val l = layoutModel
@@ -298,7 +390,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
                     .firstOrNull { candidate -> occupied.none { it.intersects(candidate) } }
                 if (bounds == null || !l.detailed) hidden += item else {
                     occupied += bounds
-                    g.color = Palette.TEXT
+                    g.color = SequenceTextContrast.readable(Palette.TEXT, background)
                     g.drawString(item.name, bounds.x + 3, bounds.y + metrics.ascent)
                     hits += Hit(bounds, item, true)
                     paintedCutSiteLabels += item.name
@@ -315,7 +407,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         }
         if (hidden.isNotEmpty()) {
             val bounds = Rectangle(maxOf(l.x(0), width - 62), row.top, 52, metrics.height + 4)
-            g.color = Palette.ACCENT
+            g.color = SequenceTextContrast.readable(Palette.ACCENT, background)
             g.drawString("+${hidden.size} sites", bounds.x, bounds.y + metrics.ascent)
             overflow += bounds to hidden
         }
@@ -325,7 +417,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
         val row = layoutModel.rowFor(start)
         scrollRectToVisible(Rectangle(0, maxOf(0, row.top - 10), maxOf(1, width), minOf(row.height * 2, maxOf(1, visibleRect.height))))
     }
-    private fun scrollCaretIntoView() { val row = layoutModel.rowFor(doc.caret); scrollRectToVisible(Rectangle(0, row.top, 1, row.height)) }
+    private fun scrollCaretIntoView() { scrollRectToVisible(caretPosition().caretBounds) }
     fun selectFeature(feature: Feature) { selectedFeature = feature; interaction?.select(SequenceObject.Annotation(feature)); repaint() }
     fun clearFeatureSelection() { selectedFeature = null; interaction?.select(null); repaint() }
     fun refreshAnnotations() = relayout()
@@ -358,13 +450,13 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
                     repaint()
                 } else {
                     clearFeatureSelection()
-                    doc.moveCaret(indexAt(e.x, e.y), e.isShiftDown)
+                    moveCaretAt(e.x, e.y, e.isShiftDown)
                 }
             }
             override fun mouseReleased(e: MouseEvent) { draggingBases = false; if (e.isPopupTrigger) popup(e) }
         })
         addMouseMotionListener(object : MouseMotionAdapter() {
-            override fun mouseDragged(e: MouseEvent) { if (draggingBases) doc.moveCaret(indexAt(e.x, e.y), true) }
+            override fun mouseDragged(e: MouseEvent) { if (draggingBases) moveCaretAt(e.x, e.y, true) }
             override fun mouseMoved(e: MouseEvent) {
                 val next = hitAt(e.x, e.y)?.item
                 if (hover != next) { hover = next; repaint() }
@@ -415,7 +507,7 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
 
     private fun handleKeyPressed(e: KeyEvent) {
         val shift = e.isShiftDown
-        val menuMask = Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx
+        val menuMask = if (GraphicsEnvironment.isHeadless()) InputEvent.CTRL_DOWN_MASK else Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx
         val withMenu = (e.modifiersEx and menuMask) != 0
         when {
             withMenu && e.keyCode == KeyEvent.VK_A -> doc.selectAll()
@@ -425,16 +517,16 @@ class SequenceView(initial: SeqDocument) : JComponent(), Scrollable, ThemeRefres
             }
 
             withMenu && e.keyCode == KeyEvent.VK_V -> paste()
-            e.keyCode == KeyEvent.VK_LEFT -> doc.moveCaret(doc.caret - 1, shift)
-            e.keyCode == KeyEvent.VK_RIGHT -> doc.moveCaret(doc.caret + 1, shift)
-            e.keyCode == KeyEvent.VK_UP -> doc.moveCaret(doc.caret - basesPerLine, shift)
-            e.keyCode == KeyEvent.VK_DOWN -> doc.moveCaret(doc.caret + basesPerLine, shift)
-            e.keyCode == KeyEvent.VK_HOME -> doc.moveCaret(doc.caret / basesPerLine * basesPerLine, shift)
+            e.keyCode == KeyEvent.VK_LEFT -> moveCaret(doc.caret - 1, shift)
+            e.keyCode == KeyEvent.VK_RIGHT -> moveCaret(doc.caret + 1, shift)
+            e.keyCode == KeyEvent.VK_UP -> moveVertically(-1, shift)
+            e.keyCode == KeyEvent.VK_DOWN -> moveVertically(1, shift)
+            e.keyCode == KeyEvent.VK_HOME -> moveCaret(caretRow().index * basesPerLine, shift)
             e.keyCode == KeyEvent.VK_END ->
-                doc.moveCaret((doc.caret / basesPerLine + 1) * basesPerLine - 1, shift)
+                moveCaret(minOf(doc.seq.length, (caretRow().index + 1) * basesPerLine), shift, trailing = true)
 
-            e.keyCode == KeyEvent.VK_PAGE_UP -> doc.moveCaret(doc.caret - basesPerLine * 10, shift)
-            e.keyCode == KeyEvent.VK_PAGE_DOWN -> doc.moveCaret(doc.caret + basesPerLine * 10, shift)
+            e.keyCode == KeyEvent.VK_PAGE_UP -> moveVertically(-10, shift)
+            e.keyCode == KeyEvent.VK_PAGE_DOWN -> moveVertically(10, shift)
             e.keyCode == KeyEvent.VK_BACK_SPACE -> {
                 if (doc.hasSelection) deleteSelection() else if (doc.caret > 0) {
                     val at = doc.caret

@@ -16,6 +16,7 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.MouseMotionAdapter
 import java.awt.geom.Arc2D
+import java.awt.geom.Area
 import java.awt.geom.Ellipse2D
 import java.awt.image.BufferedImage
 import java.io.File
@@ -93,15 +94,6 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         }
     }
 
-    private data class CircularLabel(
-        val text: String,
-        val angle: Double,
-        val ring: Int,
-        val arcLength: Double,
-        val colorIndex: Int,
-        val feature: Feature,
-    )
-
     private data class LinearLabel(
         val text: String,
         val anchorX: Int,
@@ -174,6 +166,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val title: String,
         val cutSiteIdentity: Int,
         val cutSiteCount: Int,
+    )
+
+    private data class CircularTextCacheKey(
+        val map: StaticMapCacheKey, val viewport: Rectangle, val frameHeight: Int, val labels: Boolean,
     )
 
     private var baseCanvasWidth = 380
@@ -294,8 +290,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         }, BorderLayout.NORTH)
         showFeatureLabels.addActionListener { mapCanvas.clearLabelVisuals(); layoutMapViewport(); mapCanvas.repaint() }
         featureLabelMode.addActionListener { mapCanvas.clearLabelVisuals(); mapCanvas.invalidateStaticMapCache(); layoutMapViewport(); mapCanvas.repaint() }
-        showRestrictionSites.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
-        showFeatureKey.addActionListener { mapCanvas.invalidateStaticMapCache(); mapCanvas.repaint() }
+        showRestrictionSites.addActionListener { mapCanvas.invalidateStaticMapCache(); layoutMapViewport(); mapCanvas.repaint() }
+        showFeatureKey.addActionListener { mapCanvas.invalidateStaticMapCache(); layoutMapViewport(); mapCanvas.repaint() }
         showMetadata.addActionListener { mapCanvas.invalidateStaticMapCache(); layoutMapViewport(); mapCanvas.repaint() }
         mapFontSize.addChangeListener {
             applyMapFontSize()
@@ -366,7 +362,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             mapScrollPane.viewport.doLayout()
             updateCanvasBounds()
             val extent = mapScrollPane.viewport.extentSize
-            val centerY = (baseCanvasHeight * fitScale).roundToInt() / 2
+            val centerY = (mapCanvas.circularContentHeight() * fitScale).roundToInt() / 2
             mapScrollPane.viewport.viewPosition = Point(
                 mapScrollPane.viewport.viewPosition.x,
                 (centerY - extent.height / 2).coerceIn(0, (mapCanvas.height - extent.height).coerceAtLeast(0)),
@@ -525,6 +521,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val previousSize = Dimension(mapCanvas.size)
         val previousBaseWidth = baseCanvasWidth
         val previousBaseHeight = baseCanvasHeight
+        val previousCircularLayout = mapCanvas.circularLayoutForTest()
+        val previousViewportPosition = Point(mapScrollPane.viewport.viewPosition)
         try {
             // Export coordinates are independent from the interactive viewport.
             zoomFactor = 1.0
@@ -546,9 +544,10 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             zoomFactor = previousZoom
             baseCanvasWidth = previousBaseWidth
             baseCanvasHeight = previousBaseHeight
+            mapCanvas.restoreCircularLayout(previousCircularLayout)
             mapCanvas.size = previousSize
             mapCanvas.revalidate()
-            updateCanvasBounds()
+            mapScrollPane.viewport.viewPosition = previousViewportPosition
             mapCanvas.repaint()
         }
     }
@@ -609,6 +608,11 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
     private fun exportSvg(file: File, options: MapExportOptions, width: Int, height: Int) {
         require(options.featureLaneSpacing > 0) { "Feature lane spacing must be positive" }
+        require(width > 0 && height > 0) { "Map dimensions must be positive" }
+        if (doc.seq.isCircular) {
+            exportCircularSvg(file, options, width, height)
+            return
+        }
         val seq = doc.seq
         val cx = width / 2
         val cy = height / 2
@@ -656,6 +660,77 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
               $labelSvg
               $siteSvg
               $svgLegend
+            </svg>
+        """.trimIndent())
+    }
+
+    private fun exportCircularSvg(file: File, options: MapExportOptions, width: Int, height: Int) {
+        val size = options.fontSize.coerceIn(9, 24)
+        val font = Font(Font.SANS_SERIF, Font.PLAIN, size)
+        val titleFont = Font(Font.SANS_SERIF, Font.BOLD, (size * 15.0 / 11).roundToInt().coerceAtLeast(8))
+        val plan = circularTextLayout(width, height, height, font, titleFont, font, options = options)
+        val seq = doc.seq
+        val lanes = HashMap<Feature, Int>()
+        packLanes(seq.features, lanes)
+        val choice = options.featureType?.let { FeatureLabelChoice("type:$it", it, FeatureLabelMode.ALL, it) }
+            ?: FeatureLabelOptions.choices(seq.features).firstOrNull { it.id == options.featureLabelModeId }
+            ?: selectedFeatureLabelChoice()
+        val features = seq.features.filter { FeatureLabelOptions.include(it, choice) }
+        val arcs = features.joinToString("\n") { feature ->
+            val ring = plan.radius - 24 - (lanes[feature] ?: 0) * options.featureLaneSpacing
+            val start = feature.start.toDouble() / seq.length.coerceAtLeast(1) * 360 - 90
+            val end = feature.end.toDouble() / seq.length.coerceAtLeast(1) * 360 - 90
+            val path = svgArc(plan.center.x, plan.center.y, ring, start, end)
+            "<path d=\"$path\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"14\" stroke-linecap=\"round\"/><path d=\"$path\" fill=\"none\" stroke=\"${svgColor(feature, seq.features.indexOf(feature))}\" stroke-width=\"11\" stroke-linecap=\"round\"/>"
+        }
+        val lines = plan.texts.mapNotNull { item ->
+            item.anchor?.let { anchor ->
+                val x = if (anchor.x > item.bounds.centerX) item.bounds.x + item.bounds.width else item.bounds.x
+                "<path d=\"M ${anchor.x} ${anchor.y} L $x ${item.bounds.y + item.bounds.height / 2}\" fill=\"none\" stroke=\"#69727d\" stroke-width=\"1\"/>"
+            }
+        }.joinToString("\n")
+        val siteMarks = plan.texts.filter { it.kind == CircularMapLayout.Kind.SITE }.joinToString("\n") { item ->
+            "<circle cx=\"${item.anchor!!.x}\" cy=\"${item.anchor.y}\" r=\"3\" fill=\"#c0392b\"/>"
+        }
+        val masks = plan.texts.joinToString("\n") { item ->
+            "<rect x=\"${item.bounds.x - 2}\" y=\"${item.bounds.y - 2}\" width=\"${item.bounds.width + 4}\" height=\"${item.bounds.height + 4}\" fill=\"black\"/>"
+        }
+        val labels = plan.texts.joinToString("\n") { item ->
+            val box = if (item.kind == CircularMapLayout.Kind.FEATURE || item.kind == CircularMapLayout.Kind.SITE)
+                "<rect x=\"${item.bounds.x}\" y=\"${item.bounds.y}\" width=\"${item.bounds.width}\" height=\"${item.bounds.height}\" rx=\"5\" fill=\"#ffffff\" stroke=\"#c6cfd9\"/>" else ""
+            val swatch = if (item.kind == CircularMapLayout.Kind.KEY)
+                "<rect x=\"${item.x - 14}\" y=\"${item.baseline - item.metrics.ascent + 3}\" width=\"8\" height=\"8\" fill=\"${svgColor(item.feature!!, seq.features.indexOf(item.feature))}\"/>" else ""
+            val color = when (item.kind) {
+                CircularMapLayout.Kind.ORIGIN, CircularMapLayout.Kind.SITE -> "#c0392b"
+                CircularMapLayout.Kind.METADATA, CircularMapLayout.Kind.COORDINATE -> "#69727d"
+                else -> "#242628"
+            }
+            "<g><title>${escapeSvg(item.fullText)}</title>$box$swatch<text x=\"${item.x}\" y=\"${item.baseline}\" font-family=\"sans-serif\" font-size=\"${item.metrics.font.size}\" font-weight=\"${if (item.metrics.font.isBold) "bold" else "normal"}\" fill=\"$color\">${escapeSvg(item.text)}</text></g>"
+        }
+        val ticks = buildString {
+            var tick = 0
+            val step = CircularMapLayout.tickStep(seq.length)
+            while (tick < seq.length) {
+                val a = PI / 2 - tick.toDouble() / seq.length * PI * 2
+                val x1 = plan.center.x + cos(a) * (plan.radius - 8)
+                val y1 = plan.center.y - sin(a) * (plan.radius - 8)
+                val x2 = plan.center.x + cos(a) * (plan.radius + 8)
+                val y2 = plan.center.y - sin(a) * (plan.radius + 8)
+                append("<path d=\"M $x1 $y1 L $x2 $y2\" stroke=\"#9a9aa0\" stroke-width=\"1\"/>")
+                tick += step
+            }
+        }
+        val background = if (options.transparentBackground) "" else "<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>"
+        file.writeText("""
+            <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">
+              <defs><mask id="leaders" maskUnits="userSpaceOnUse" x="0" y="0" width="$width" height="$height"><rect width="$width" height="$height" fill="white"/>$masks</mask></defs>
+              $background
+              <circle cx="${plan.center.x}" cy="${plan.center.y}" r="${plan.radius}" fill="none" stroke="#d8dee6" stroke-width="10"/>
+              $ticks
+              $arcs
+              $siteMarks
+              <g mask="url(#leaders)">$lines</g>
+              $labels
             </svg>
         """.trimIndent())
     }
@@ -771,6 +846,32 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
     private fun mapTitleVisible(): Boolean = exportShowTitle ?: true
 
+    private fun circularTextLayout(
+        width: Int, height: Int, frameHeight: Int, labelFont: Font, titleFont: Font, detailFont: Font,
+        viewport: Rectangle = Rectangle(0, 0, width, height), gcPct: Double = SeqOps.gcContent(doc.seq),
+        options: MapExportOptions? = null,
+    ): CircularMapLayout.Plan {
+        val seq = doc.seq
+        val choice = options?.featureType?.let { FeatureLabelChoice("type:$it", it, FeatureLabelMode.ALL, it) }
+            ?: options?.let { selection -> FeatureLabelOptions.choices(seq.features).firstOrNull { it.id == selection.featureLabelModeId } }
+            ?: activeFeatureLabelChoice()
+        val lanes = HashMap<Feature, Int>()
+        packLanes(seq.features, lanes)
+        val features = seq.features.filter { FeatureLabelOptions.include(it, choice) }
+        val sites = if (options?.showRestrictionSites ?: showRestrictionSites.isSelected)
+            doc.cutSites.map { CircularMapLayout.SiteInput(it.topCut, "${it.enzyme.name} ${it.topCut + 1}") } else emptyList()
+        return CircularMapLayout.create(width, height, frameHeight, seq.length,
+            features.map { CircularMapLayout.FeatureInput(it, FeatureLabelOptions.text(it), lanes[it] ?: 0) }, sites,
+            if (options?.showTitle ?: mapTitleVisible()) options?.title?.takeIf { it.isNotBlank() } ?: mapTitle() else null,
+            if (options?.showMetadata ?: mapMetadataVisible()) listOf("${seq.length} bp ${seq.kind.name.lowercase()} circular",
+                "GC ${"%.1f".format(gcPct)}%", "${seq.features.size} features · ${doc.cutSites.size} sites") else emptyList(),
+            options?.showFeatureLabels ?: showFeatureLabels.isSelected, options?.showFeatureKey ?: mapFeatureKeyVisible(),
+            getFontMetrics(labelFont), getFontMetrics(titleFont), getFontMetrics(detailFont),
+            options?.featureLaneSpacing ?: exportFeatureLaneSpacing ?: 15, viewport,
+            crowded = features.size > 6 && (options != null || renderingExport || zoomPercent < 200),
+            compactCaption = options == null && !renderingExport && zoomFactor > 1.0)
+    }
+
     private fun selectedFeatureLabelChoice(): FeatureLabelChoice =
         featureLabelMode.selectedItem as? FeatureLabelChoice
             ?: FeatureLabelOptions.choices(doc.seq.features).first()
@@ -834,13 +935,19 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         val extension = if (format.selectedItem == "SVG") "svg" else "png"
         val chooser = JFileChooser().apply { dialogTitle = "Export map as $extension" }
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            if (extension == "svg") exportSvg(chooser.selectedFile, options) else exportPng(chooser.selectedFile, options)
+            try {
+                if (extension == "svg") exportSvg(chooser.selectedFile, options) else exportPng(chooser.selectedFile, options)
+            } catch (error: IllegalArgumentException) {
+                JOptionPane.showMessageDialog(this, error.message, "Map export", JOptionPane.WARNING_MESSAGE)
+            }
         }
     }
 
     /** Exposed for GUI regression tests: center of the latest painted feature label target. */
     fun featureLabelHitCenterForTest(name: String): Pair<Int, Int>? =
         mapCanvas.featureLabelHitCenterForTest(name)
+
+    fun circularLayoutForTest(): CircularMapLayout.Plan? = mapCanvas.circularLayoutForTest()
 
     /** Exposed for GUI regression tests: center of the latest painted feature arc target. */
     fun featureArcHitCenterForTest(name: String): Pair<Int, Int>? =
@@ -885,6 +992,21 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         private var centerX = 0
         private var centerY = 0
         private var backboneRadius = 0
+        private var circularLayout: CircularMapLayout.Plan? = null
+        private var circularTextCacheKey: CircularTextCacheKey? = null
+        private var circularTextCacheSequence: Seq? = null
+        private var circularTextCache: CircularMapLayout.Plan? = null
+        fun circularLayoutForTest(): CircularMapLayout.Plan? = circularLayout
+        fun restoreCircularLayout(plan: CircularMapLayout.Plan?) {
+            circularLayout = plan
+            if (plan != null) {
+                centerX = plan.center.x
+                centerY = plan.center.y
+                backboneRadius = plan.radius
+            }
+        }
+        fun circularContentHeight(): Int = baseCanvasHeight - CircularMapLayout.keyHeight(
+            if (mapFeatureKeyVisible()) visibleFeatures().size else 0, baseCanvasWidth, getFontMetrics(labelFont))
         private var linearAxisY = 0
         private var linearLaneHeight = 16
         private val ringOf = HashMap<Feature, Int>()
@@ -926,6 +1048,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
         init {
             isOpaque = true
             background = Palette.BACKGROUND
+            ToolTipManager.sharedInstance().registerComponent(this)
             addMouseListener(object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
                     if (e.isPopupTrigger) {
@@ -1033,6 +1156,9 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             background = Palette.BACKGROUND
         }
 
+        override fun getToolTipText(event: MouseEvent): String? = circularLayout?.texts
+            ?.firstOrNull { screenRect(it.bounds).contains(event.point) }?.fullText
+
         fun refreshTheme() {
             background = Palette.BACKGROUND
             clearLabelVisuals()
@@ -1122,9 +1248,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
             featureLabelVisualBounds.clear()
             featureLabelAlphas.clear()
             featureLabelStripeColors.clear()
+            circularLayout = null
+            circularTextCacheKey = null
         }
 
         fun invalidateStaticMapCache() {
+            circularTextCacheKey = null
             staticMapImage = null
             staticMapCacheKey = null
             staticMapSequence = null
@@ -1413,8 +1542,21 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
 
             val frameWidth = if (renderingExport) logicalWidth else baseCanvasWidth
             val frameHeight = if (renderingExport) logicalHeight else baseCircularCanvasHeight
-            val available = min(frameWidth, frameHeight) / 2
-            backboneRadius = (available - 26).coerceAtLeast(1)
+            val textKey = CircularTextCacheKey(currentStaticMapCacheKey(), labelViewport(), frameHeight, showFeatureLabels.isSelected)
+            val plan = if (!renderingExport && circularTextCacheKey == textKey && circularTextCacheSequence === seq) {
+                circularTextCache!!
+            } else circularTextLayout(frameWidth, logicalHeight, frameHeight, labelFont, titleFont, subtitleFont,
+                textKey.viewport, gcPct).also {
+                if (!renderingExport) {
+                    circularTextCache = it
+                    circularTextCacheKey = textKey
+                    circularTextCacheSequence = seq
+                }
+            }
+            circularLayout = plan
+            centerX = plan.center.x
+            centerY = plan.center.y
+            backboneRadius = plan.radius
             val r = backboneRadius
 
             if (!renderingDynamicOverlay) {
@@ -1441,11 +1583,7 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 g2.stroke = BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
                 g2.drawLine(pointX(PI / 2, r - 2), pointY(PI / 2, r - 2), pointX(PI / 2, r - 16), pointY(PI / 2, r - 16))
                 g2.fill(Ellipse2D.Double((pointX(PI / 2, r) - 3).toDouble(), (pointY(PI / 2, r) - 3).toDouble(), 6.0, 6.0))
-                g2.font = labelFont
-                val originX = pointX(PI / 2, r - 25)
-                val originY = pointY(PI / 2, r - 25) + 4
-                val originBounds = textBounds(g2.fontMetrics, "1", originX - g2.fontMetrics.stringWidth("1") / 2, originY)
-                drawLabelBox(g2, "1", originBounds.x + 3, originY, originBounds, Palette.CUT_MARK)
+
             }
 
             // Current selection, highlighted as an arc just inside the backbone.
@@ -1481,17 +1619,12 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                         pointX(a, r + 8), pointY(a, r + 8),
                     )
                     g2.color = Palette.MUTED
-                    drawCentered(g2, formatTick(tick), a, r - 20)
                     tick += tickStep
                 }
             }
 
             // Feature arcs, one packed ring per lane so overlaps stay readable.
             g2.font = labelFont
-            // Use component-space metrics so a HiDPI graphics transform does
-            // not inflate the logical row measurements used by the packer.
-            val fm = getFontMetrics(labelFont)
-            val labels = ArrayList<CircularLabel>(seq.features.size)
             visibleFeatures().forEachIndexed { index, f ->
                 val ring = r - 24 - (ringOf[f] ?: 0) * (exportFeatureLaneSpacing ?: 15)
                 val color = featureColor(f, index)
@@ -1515,210 +1648,105 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                     drawArrowHead(g2, angleOf(headAt), ring, f.strand)
                 }
 
-                val arcLength = ring * abs(extent) * PI / 180.0
-                labels += CircularLabel(
-                    featureLabel(f),
-                    angleOf((f.start + f.end) / 2),
-                    ring,
-                    arcLength,
-                    index,
-                    f,
-                )
+
             }
 
-            // Restriction sites outside the backbone.
             if (!renderingDynamicOverlay) {
-                // Restriction sites outside the backbone.
-                val sites = if (showRestrictionSites.isSelected) doc.cutSites else emptyList()
-                g2.font = labelFont
-                for ((enzyme, _, topCut) in sites) {
-                    val a = angleOf(topCut)
+                if (showRestrictionSites.isSelected) for (site in doc.cutSites) {
+                    val angle = angleOf(site.topCut)
                     g2.color = Palette.CUT_MARK
                     g2.stroke = BasicStroke(1.5f)
-                    g2.drawLine(
-                        pointX(a, r + 4), pointY(a, r + 4),
-                        pointX(a, r + 16), pointY(a, r + 16),
-                    )
-                    val labelBounds = drawRadialLabel(g2, "${enzyme.name} ${topCut + 1}", a, r + 20)
-                    addPositionHit(labelBounds, topCut)
+                    g2.drawLine(pointX(angle, r + 4), pointY(angle, r + 4), pointX(angle, r + 12), pointY(angle, r + 12))
                 }
-
-                // Centre caption.
-                if (mapTitleVisible()) {
-                    g2.color = Palette.TEXT
-                    g2.font = titleFont
-                    drawStringCentered(g2, mapTitle(), centerX, centerY - 6)
-                }
-                if (mapMetadataVisible()) {
-                    g2.font = subtitleFont
-                    g2.color = Palette.MUTED
-                    drawStringCentered(g2, "${seq.length} bp ${seq.kind.name.lowercase()} circular", centerX, centerY + 12)
-                    drawStringCentered(g2, "GC ${"%.1f".format(gcPct)}% · ${seq.features.size} features · ${doc.cutSites.size} sites", centerX, centerY + 28)
-                }
+                drawCircularText(g2, plan, featuresOnly = false)
             }
-
-            // Draw labels last so restriction marks and the backbone cannot obscure them.
-            if (!renderingStaticLayer && showFeatureLabels.isSelected) drawCircularFeatureLabels(g2, labels, fm, gcPct)
-
-            if (!renderingDynamicOverlay && mapFeatureKeyVisible()) paintFeatureLegend(g2, seq)
+            if (!renderingStaticLayer) drawCircularText(g2, plan, featuresOnly = true)
         }
 
-        /**
-         * Draws every feature name. Labels that fit their arc remain inline;
-         * the rest are placed in two callout columns inside the map.
-         */
-        private fun drawCircularFeatureLabels(
-            g2: Graphics2D,
-            labels: List<CircularLabel>,
-            fm: FontMetrics,
-            gcPct: Double = SeqOps.gcContent(doc.seq),
-        ) {
-            val occupied = mutableListOf(circularCaptionBounds(g2, gcPct))
-            val callouts = ArrayList<CircularLabel>()
+        private fun drawCircularText(g: Graphics2D, plan: CircularMapLayout.Plan, featuresOnly: Boolean) {
             val viewport = labelViewport()
-            // At higher zoom levels, give labels that fit their feature arc a
-            // chance to return inline instead of forcing every label into a
-            // distant column. Narrow features still use packed callouts.
-            val crowded = labels.size > 6 && zoomPercent < 200
-
-            for (label in labels) {
-                val baselineX = pointX(label.angle, label.ring - 20) - fm.stringWidth(label.text) / 2
-                val baselineY = pointY(label.angle, label.ring - 20) + fm.ascent / 2
-                val bounds = textBounds(fm, label.text, baselineX, baselineY)
-                val fitsArc = label.arcLength > fm.stringWidth(label.text) + 10
-                if (!crowded && fitsArc && paddedBoundsInsideCanvas(bounds) && occupied.none(bounds::intersects)) {
-                    drawFeatureLabel(g2, label.feature, label.text, baselineX, baselineY, bounds, null, edgeFadeAlpha(bounds, viewport))
-                    occupied += bounds
+            for (item in plan.texts) {
+                if ((item.kind == CircularMapLayout.Kind.FEATURE) != featuresOnly) continue
+                g.font = item.metrics.font
+                val feature = item.feature
+                if (item.kind == CircularMapLayout.Kind.FEATURE && feature != null) {
+                    val color = featureColor(feature, doc.seq.features.indexOf(feature))
+                    val edgeX = if (item.anchor != null && item.anchor.x > item.bounds.centerX) item.bounds.x + item.bounds.width else item.bounds.x
+                    val previous = labelVisuals[featureLabelKey(feature, item.text)]
+                    val path = previous?.let { textBounds(item.metrics, item.text, it.x.roundToInt(), it.baseline.roundToInt()).union(item.bounds) }
+                    val safeAnimation = path == null || plan.texts.none { it !== item && path.intersects(it.bounds) }
+                    drawFeatureLabel(g, feature, item.text, item.x, item.baseline, item.bounds,
+                        if (item.anchor == null) null else color, edgeFadeAlpha(item.bounds, viewport),
+                        item.anchor?.x, item.anchor?.y, if (item.anchor == null) null else edgeX,
+                        if (item.anchor == null) null else item.bounds.y + item.bounds.height / 2,
+                        animate = safeAnimation, color = color)
                 } else {
-                    callouts += label
-                }
-            }
-
-            val margin = 8
-            val visibleLeft = viewport.x + margin
-            val visibleRight = viewport.x + viewport.width - margin
-            val columnWidth = minOf(logicalWidth / 2 - margin * 3, viewport.width / 2 - margin * 2).coerceAtLeast(24)
-            val sides = callouts.groupBy { cos(it.angle) < 0 }
-            for ((onLeft, sideLabels) in sides) {
-                val sorted = sideLabels.sortedBy { pointY(it.angle, it.ring) }
-                val baselines = packedCircularCalloutBaselines(fm, sorted, viewport)
-                for ((index, label) in sorted.withIndex()) {
-                    val text = fitText(fm, label.text, columnWidth)
-                    val textWidth = fm.stringWidth(text)
-                    val x = if (onLeft) {
-                        visibleLeft.coerceIn(margin, (logicalWidth - margin - textWidth).coerceAtLeast(margin))
-                    } else {
-                        (visibleRight - textWidth).coerceIn(margin, (logicalWidth - margin - textWidth).coerceAtLeast(margin))
+                    if (item.anchor != null) {
+                        g.color = Palette.MAP_GUIDE
+                        g.stroke = BasicStroke(1f)
+                        val edgeX = if (item.anchor.x > item.bounds.centerX) item.bounds.x + item.bounds.width else item.bounds.x
+                        drawCircularLeader(g, item.anchor.x, item.anchor.y, edgeX, item.bounds.y + item.bounds.height / 2)
                     }
-                    val baseline = baselines[index]
-                    val bounds = textBounds(fm, text, x, baseline)
-                    val angle = label.angle
-                    val ring = label.ring
-                    val anchorX = pointX(angle, ring)
-                    val anchorY = pointY(angle, ring)
-                    val labelEdgeX = if (onLeft) bounds.x + bounds.width else bounds.x
-
-                    drawFeatureLabel(
-                        g2,
-                        label.feature,
-                        text,
-                        x,
-                        baseline,
-                        bounds,
-                        featureColor(label.feature, label.colorIndex),
-                        edgeFadeAlpha(bounds, viewport),
-                        anchorX,
-                        anchorY,
-                        labelEdgeX,
-                        bounds.y + bounds.height / 2,
-                        color = featureColor(label.feature, label.colorIndex),
-                    )
-                    occupied += bounds
+                    when (item.kind) {
+                        CircularMapLayout.Kind.SITE -> {
+                            drawLabelBox(g, item.text, item.x, item.baseline, item.bounds, Palette.CUT_MARK)
+                            item.position?.let { addPositionHit(item.bounds, it) }
+                        }
+                        CircularMapLayout.Kind.KEY -> {
+                            g.color = featureColor(feature!!, doc.seq.features.indexOf(feature))
+                            g.fillRect(item.x - 14, item.baseline - item.metrics.ascent + 3, 8, 8)
+                            g.color = Palette.TEXT
+                            g.drawString(item.text, item.x, item.baseline)
+                            addFeatureHit(feature, Rectangle(item.bounds.x - 14, item.bounds.y, item.bounds.width + 14, item.bounds.height), priority = 1)
+                        }
+                        else -> {
+                            g.color = when (item.kind) {
+                                CircularMapLayout.Kind.ORIGIN -> Palette.CUT_MARK
+                                CircularMapLayout.Kind.TITLE -> Palette.TEXT
+                                else -> Palette.MUTED
+                            }
+                            g.drawString(item.text, item.x, item.baseline)
+                        }
+                    }
                 }
             }
         }
 
-        private fun packedCircularCalloutBaselines(
-            fm: FontMetrics,
-            labels: List<CircularLabel>,
-            viewport: Rectangle,
-        ): List<Int> {
-            if (labels.isEmpty()) return emptyList()
-            val preferredSpacing = fm.height + 15 + zoomLabelPadding()
-            val minimumSpacing = textBounds(fm, "Ag", 0, 0).height + 10
-            val canFitInViewport = labels.size <= 1 || viewport.height >= minimumSpacing * (labels.size - 1) + fm.height + 16
-            val topLimit = fm.ascent + 11
-            val bottomLimit = (logicalHeight - fm.descent - 11).coerceAtLeast(topLimit)
-            val minBaseline = if (canFitInViewport) {
-                (viewport.y + topLimit).coerceIn(topLimit, bottomLimit)
-            } else {
-                topLimit
-            }
-            val maxBaseline = if (canFitInViewport) {
-                (viewport.y + viewport.height - fm.descent - 13)
-                    .coerceIn(minBaseline, bottomLimit.coerceAtLeast(minBaseline))
-            } else {
-                bottomLimit.coerceAtLeast(minBaseline)
-            }
-            val availableSpacing = if (labels.size == 1) {
-                preferredSpacing
-            } else {
-                ((maxBaseline - minBaseline).toDouble() / (labels.size - 1)).toInt().coerceAtLeast(1)
-            }
-            // At high zoom the enlarged canvas has enough room to keep all
-            // callouts visible; at the default fit, preserve the original
-            // readable spacing even when a crowded record needs extra height.
-            // Keep the preferred visual spacing whenever the available canvas
-            // allows it, but compact the column rather than placing a label
-            // outside the canvas when a larger font or zoom leaves less room.
-            val spacing = if (labels.size == 1) {
-                preferredSpacing
-            } else {
-                minOf(preferredSpacing, availableSpacing).coerceAtLeast(minimumSpacing)
-            }
-            val totalSpacing = spacing * (labels.size - 1)
-            val firstBaseline = if (totalSpacing <= maxBaseline - minBaseline) {
-                (minBaseline + maxBaseline - totalSpacing) / 2
-            } else {
-                minBaseline
-            }
-            return labels.indices.map { firstBaseline + it * spacing }
+        private fun drawCircularLeader(g: Graphics2D, x1: Int, y1: Int, x2: Int, y2: Int) {
+            val line = g.create() as Graphics2D
+            try {
+                val area = Area(Rectangle(0, 0, logicalWidth, logicalHeight))
+                circularLayout?.texts?.forEach { item ->
+                    area.subtract(Area(Rectangle(item.bounds).apply { grow(3, 3) }))
+                }
+                line.clip(area)
+                line.drawLine(x1, y1, x2, y2)
+            } finally { line.dispose() }
         }
-
-        private fun circularCaptionBounds(g2: Graphics2D, gcPct: Double = SeqOps.gcContent(doc.seq)): Rectangle {
-            val seq = doc.seq
-            g2.font = titleFont
-            val titleWidth = if (mapTitleVisible()) g2.fontMetrics.stringWidth(mapTitle()) else 0
-            g2.font = subtitleFont
-            val detailWidth = if (mapMetadataVisible()) maxOf(
-                g2.fontMetrics.stringWidth("${seq.length} bp ${seq.kind.name.lowercase()} circular"),
-                g2.fontMetrics.stringWidth("GC ${"%.1f".format(gcPct)}% · ${seq.features.size} features · ${doc.cutSites.size} sites"),
-            ) else 0
-            g2.font = labelFont
-            val captionWidth = maxOf(titleWidth, detailWidth) + 12
-            return Rectangle(centerX - captionWidth / 2, centerY - 24, captionWidth, if (mapMetadataVisible()) 74 else 34)
-        }
-
-        // --------------------------------------------------------------- linear
 
         /** Measures the vertical room needed by crowded circular callouts. */
         fun requiredCircularCanvasHeight(): Int {
-            if (doc.seq.length == 0 || !doc.seq.isCircular || !showFeatureLabels.isSelected) return 380
-            assignLayers()
+            if (doc.seq.length == 0 || !doc.seq.isCircular) return 380
             val fm = getFontMetrics(labelFont)
-            val visible = visibleFeatures()
-            if (visible.size <= 6) return 380
-            val leftCount = visible.count { feature ->
-                val angle = angleOf((feature.start + feature.end) / 2)
-                cos(angle) < 0
+            val features = visibleFeatures()
+            val footer = CircularMapLayout.keyHeight(if (mapFeatureKeyVisible()) features.size else 0, baseCanvasWidth, fm)
+            val count = if (showFeatureLabels.isSelected) features.size else 0
+            val sites = if (showRestrictionSites.isSelected) doc.cutSites.size else 0
+            val left = if (count > 0) features.count { cos(angleOf((it.start + it.end) / 2)) < 0 } else 0
+            val rows = maxOf(left, count - left)
+            val reserve = if (count + sites == 0) 0 else (if (mapMetadataVisible()) 230 else 160) + 200
+            var height = maxOf(baseCircularCanvasHeight, rows * (fm.height + 20) + reserve + sites * (fm.height + 20)) + footer
+            val gc = if (gcSequence === doc.seq) cachedGcPercent else SeqOps.gcContent(doc.seq).also { gcSequence = doc.seq; cachedGcPercent = it }
+            repeat(8) {
+                try {
+                    circularTextLayout(baseCanvasWidth, height, baseCircularCanvasHeight, labelFont, titleFont, subtitleFont, gcPct = gc)
+                    return height
+                } catch (error: IllegalArgumentException) {
+                    if (error.message != CircularMapLayout.TOO_SMALL) throw error
+                    height += maxOf(baseCircularCanvasHeight, (count + sites) * (fm.height + 20))
+                }
             }
-            val rightCount = visible.size - leftCount
-            val maxCallouts = maxOf(leftCount, rightCount)
-            if (maxCallouts <= 1) return 380
-            val topBaseline = fm.ascent + 11
-            val spacing = fm.height + 15 + zoomLabelPadding()
-            val lastBaseline = topBaseline + (maxCallouts - 1) * spacing
-            return maxOf(380, lastBaseline + fm.descent + 16)
+            throw IllegalArgumentException(CircularMapLayout.TOO_SMALL)
         }
 
         /** Measures the extra vertical room needed by the linear callout rails. */
@@ -2200,7 +2228,8 @@ class PlasmidMapPanel(initial: SeqDocument) : JPanel(BorderLayout(0, 4)), ThemeR
                 withAlpha(g2, drawAlpha) {
                     g2.color = Palette.MAP_GUIDE
                     g2.stroke = BasicStroke(1f)
-                    g2.drawLine(leaderStartX, leaderStartY, currentEndX, currentEndY)
+                    if (doc.seq.isCircular) drawCircularLeader(g2, leaderStartX, leaderStartY, currentEndX, currentEndY)
+                    else g2.drawLine(leaderStartX, leaderStartY, currentEndX, currentEndY)
                 }
             }
             drawLabelBox(g2, text, drawX, drawBaseline, drawBounds, stripe, drawAlpha)
